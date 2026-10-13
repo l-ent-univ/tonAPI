@@ -317,6 +317,12 @@ GET /mail -> 200   Set-Cookie: ZM_LOGIN_CSRF
 - **Erreur :** `Body.Fault`, dont `Detail.Error.Code` contient `AUTH_REQUIRED` ou `AUTH_EXPIRED`. Dans ce cas, refaire la chaîne CAS une fois.
 - Le portail pointe aussi vers `infoservices.umontpellier.fr/CUMZimbraEtudiant/index.html` (portlet) et `mail.umontpellier.fr` (personnel).
 
+### Attestations de réussite — `ardemat` + `ardemat-api` (ajout 2026-10-13)
+Front Angular derrière CAS ; backend Spring Boot avec **Swagger public** `/ardemat-api/v2/api-docs`. Le front appelle `GET /ardemat-api/api/etudiants/<ST>` (ticket CAS dans le chemin) → `EtudiantDto{codeEtu, codeInd, nom, email, estInterdit, attestations[AttestationDto]}` ; puis `POST /ardemat-api/api/attestations/download` (PDF) ou `/mail`. Détail : [research/pistes-api.md §6.3](research/pistes-api.md).
+
+### Mail : Zimbra REST (ajout 2026-10-13)
+Avec le cookie `ZM_AUTH_TOKEN` : `GET /home/~/inbox.json` (même forme que SOAP `SearchRequest.m[]`), `?query=is:unread`, `/home/~/sent?fmt=json`, `/home/~/inbox?fmt=rss`, `/home/~/calendar?fmt=ics`. `limit=` ignoré. Détail : [research/pistes-api.md §6.1](research/pistes-api.md).
+
 ### Autres services (liens seulement, non lus)
 
 - **Notes :** `app…/mdw/` (Mon Dossier Web), `app…/rn_demat/protected/student-result`, `app…/ardemat`, Moodle `/grade/report/overview/index.php`.

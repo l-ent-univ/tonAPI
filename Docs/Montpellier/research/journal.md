@@ -94,3 +94,7 @@ Modèle :
 ## 2026-10-13 — Sondage public des API
 - Annuaire UM public (esup-annuaire2), otpum, ardemat (Angular), securum, ip-web ; API Web ADE active mais compte requis ; Zimbra REST `/home/~/inbox.json` (401 sans cookie) ; `/uPortal/api/*` tout derrière login.
 - → [pistes-api.md](pistes-api.md)
+
+## 2026-10-13 (soir) — Session connectée : Zimbra REST, uPortal api, ardemat-api, otpum
+- Zimbra REST OK (`/home/~/inbox.json`, `calendar?fmt=ics`), `limit` ignoré. uPortal `/api/*` : rien de plus. ardemat-api : Swagger public, `GET /api/etudiants/<ST>`, DTOs relevés ; actuator ouvert. otpum : Vaadin, routes `home`/`methods`/`recoveryVerifyView`.
+- → [pistes-api.md §6](pistes-api.md)

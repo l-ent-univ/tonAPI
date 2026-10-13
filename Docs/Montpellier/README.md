@@ -91,6 +91,8 @@ Aucun secret ni donnée personnelle n'est reproduit.
 
 - Version esup-otp-api ≈ 2.3.0 (handshake `login.js?v=1`) ; champ justificatif `file` ; Nîmes/Sète sans Passerelle publique → [research/questions-ouvertes.md](research/questions-ouvertes.md) Q13/Q14/Q16.
 
+- Zimbra REST (`/home/~/inbox.json`) et API attestations (`ardemat-api`, Swagger public) → [research/pistes-api.md §6](research/pistes-api.md).
+
 ## Grandes inconnues
 
 - Durée de vie : TGC CAS UM ; session uPortal = timeout Tomcat (30 min par défaut, non vérifié) ; `PHPSESSID` ScoDoc ≈ 24 min, jeton Moodle 12 semaines, lien ADE non expirant — déduits du code, à mesurer (research Q6).

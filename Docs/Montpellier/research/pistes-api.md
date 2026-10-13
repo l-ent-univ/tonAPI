@@ -39,3 +39,46 @@ Sans session → `302 /uPortal/Login?refUrl=…`. À tester **connecté** (⏳) 
 3. uPortal : les 7 URLs de la §4 → lesquelles répondent 200, forme JSON.
 4. Annuaire : une recherche par nom → forme de la réponse (HTML ou JSON partiel).
 5. otpum : `protected/` → routes et méthodes 2FA activées (noms seulement).
+
+
+---
+
+## 6. Résultats de la session connectée du 2026-10-13 (soir)
+
+### 6.1 Zimbra REST ✅ — fonctionne, sans 2FA (jeton encore valide)
+| URL (cookie `ZM_AUTH_TOKEN`) | Réponse |
+|---|---|
+| `GET /home/~/inbox.json` (= `/home/~/inbox?fmt=json`, = `/service/home/~/inbox?fmt=json`) | 200 JSON `{"m":[{s,d,l,cid,f,rev,id,e,su,fr,…}]}` — mêmes clés que le SOAP `SearchRequest` ; ~85 Ko pour la boîte |
+| `GET /home/~/inbox?fmt=json&query=is:unread` | 200, filtre `query` honoré |
+| `GET /home/~/sent?fmt=json` | 200 |
+| `GET /home/~/inbox?fmt=rss` | 200 `application/rss+xml` |
+| `GET /home/~/calendar?fmt=ics` | 200 `text/calendar` (vide ici : 169 o, `X-WR-CALNAME:Calendar`) |
+| `GET /home/~/calendar?fmt=json`, `/home/~/?fmt=json` | 200 mais `{}` |
+| ⚠️ `limit=` | **ignoré** sur ces URLs (même taille avec `limit=1`) → paginer côté client ou passer par SOAP |
+
+→ Pour tonAPI : lire le mail en **un GET** avec le cookie ; garder SOAP pour `GetFolderRequest` (compteur non lus) et la pagination.
+
+### 6.2 uPortal `/api/*` ❌ — rien de plus que `session.json`, `people/<uid>.json`, `layout.json`
+`portlets.json` → `{"portlets":[]}` ; `marketplace/entries.json` → **500** ; tout le reste (`search`, `portlet-list`, `groups`, `categories`, `swagger-ui`, `api-docs`, `v5-0/people/me`, `announcements`, `sessions`) → 404.
+
+### 6.3 Attestations de réussite : `ardemat` + **`ardemat-api` (Spring Boot, Swagger public)** ✅
+- Front Angular `/ardemat/` derrière CAS (service `https://app.umontpellier.fr/ardemat/`). Au chargement il appelle **`GET /ardemat-api/api/etudiants/<ST>`** en passant **le ticket CAS dans le chemin** ; le backend valide le ticket lui-même.
+- Swagger **public** (sans session) : `/ardemat-api/v2/api-docs`, `/ardemat-api/swagger-ui.html`.
+
+| Route | Entrée | Sortie |
+|---|---|---|
+| `GET /ardemat-api/api/etudiants/{casTicket}` | ST CAS pour le service ardemat | `EtudiantDto{codeEtu, codeInd, nom, email, estInterdit, attestations[]}` |
+| `POST /ardemat-api/api/attestations/download` | body `AttestationDto` | PDF (`*/*`) |
+| `POST /ardemat-api/api/attestations/mail` | body `AttestationDto` | JSON (envoi par mail) |
+
+`AttestationDto{academie, annee, attestationToken, code, codeUtilisateur, commune, composante, cy3, etablissement, etudiantToken, libUtilisateur, libelle, report, session, type, version}` — les `*Token` sont fournis par `getEtudiant` et rejoués pour télécharger.
+- Pour un BUT1 en octobre : `attestations` vide (« Aucun document n'est disponible »).
+- **Pour tonAPI** : chaîne CAS silencieuse vers `https://app.umontpellier.fr/ardemat/` pour obtenir un ST (ne pas le consommer soi-même), puis `GET /ardemat-api/api/etudiants/<ST>`.
+- ⚠️ `/ardemat-api/actuator`, `/actuator/health`, `/actuator/info` sont **ouverts sans auth** (Spring Boot Actuator). Ne pas aller plus loin (`env`, `heapdump`…) ; à signaler à la DSI si l'occasion se présente.
+- `rn_demat` (relevés certifiés) n'expose pas de Swagger aux chemins testés (`rn_demat-api` 404, `rndemat-api` 503).
+
+### 6.4 otp-um ✅ — gestionnaire 2FA (Vaadin Flow)
+`/otpum/protected/` → `post-login` → redirige vers `recoveryVerifyView` (« Récupération de vos facteurs ») quand on arrive sans contexte ; `protected/home`, `protected/methods` existent (200, Vaadin). Échanges `POST /otpum/?v-r=uidl&v-uiId=0`. Rien d'utile pour tonAPI (gestion manuelle des facteurs). Le bouton « Envoyer le code » envoie un mail de secours : **ne pas cliquer**.
+
+### 6.5 Annuaire ⏳
+Formulaire JSF non soumis (demande d'accord avant d'envoyer un formulaire). À faire : une recherche par structure « IUT » et noter la forme des résultats.
