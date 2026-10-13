@@ -59,3 +59,8 @@ Modèle :
 - 2FA : règle `validated_otp` récent **par service** ou `no_otp` ; « appareil mémorisé » = `connect.sid` avec maxAge 30 j. Q4, Q5 résolues.
 - Passerelle ScoDoc : liste complète des `q` (Q12). Codes ADE↔ScoDoc↔Apogée : règle trouvée (Q9) → `codes.md`.
 - Q13 (autres IUT) : rien de public.
+
+## 2026-10-13 — Lecture du code source de la Passerelle ScoDoc et de Moodle
+- Passerelle : relais PHP sans cache devant l'API ScoDoc 9 (`/api/...`), session PHP (≈24 min), `{"redirect"}` = `defaultAuth()` ; login `prenom.nom` converti en NIP via `liste_etu.txt` ; absences en mode ScoDoc (`idAbs`) ; relevé PDF via `bulletin_PDF.php` ; JWT Bearer possible si activé.
+- Moodle : `token.php` passe par `authenticate_user_login` (LDAP ok, CAS non) ; jeton 12 semaines par défaut, pas d'expiration par inactivité ; erreurs REST toujours en 200.
+- → [../scodoc.md §11](../scodoc.md), [../moodle.md §7](../moodle.md)

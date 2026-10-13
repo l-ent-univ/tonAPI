@@ -259,3 +259,79 @@ Rien n'est notifié à la toute première synchro.
 - `tafac-ios/Tafac/Core/HTTPClient.swift`, `HTMLForm.swift`
 - `tafac-ios/TafacTests/CASConnectionTests.swift`
 - `tafac-ios/TafacTests/Fixtures/passerelle_first_connection.json`
+
+
+---
+
+## 11. Comment la Passerelle marche vraiment — lecture du code source (2026-10-13)
+
+Dépôt : **[SebL68/Scodoc_Notes](https://github.com/SebL68/Scodoc_Notes)** (GPL-2.0, PHP ≥ 7.3). Fichiers lus : `html/services/{data,doAuth,documentation,createStudentJWT,bulletin_PDF}.php`, `includes/{default_config,auth_CAS.class,user.class,annuaire.class,scodoc.class,absences.class,absences.scodoc.class}.php`.
+
+### 11.1 Architecture : un relais devant l'API ScoDoc
+
+```
+étudiant ──CAS IUT──► Passerelle (PHP, wscodoc.iutbeziers.fr)
+                          │  session PHP (PHPSESSID) : id, idCAS, name, statut
+                          │  Bearer <token ScoDoc> (compte technique, lecture seule)
+                          ▼
+                       ScoDoc  https://<scodoc>/ScoDoc/api/...   (non joignable depuis Internet)
+```
+
+- La Passerelle ne stocke pas les notes : chaque `q=` **appelle l'API ScoDoc en direct** (pas de cache). D'où les ~2 s de `dataPremièreConnexion`.
+- Elle s'authentifie à ScoDoc avec un compte technique : `POST /api/tokens` (Basic auth) → `Authorization: Bearer <token>` ; le jeton est mis en cache dans `includes/token.txt` et régénéré sur `'Non autorise (logic)'`.
+- **Pourquoi « l'API ScoDoc est réservée au personnel »** : parce que ScoDoc lui-même n'est pas exposé (IP blanche / VPN) et que seul le compte technique de la Passerelle y a accès. La Passerelle est la façade étudiante.
+
+### 11.2 Endpoints ScoDoc appelés derrière chaque `q` (classe `scodoc.class.php`)
+
+| Méthode Passerelle | `GET/POST <scodoc_url>/api/…` |
+|---|---|
+| `getStudentSemesters($nip)` | `formsemestres/query?nip=…` |
+| `getReportCards($sem,$nip)` (JSON) | `etudiant/nip/<nip>/formsemestre/<sem>/bulletin` |
+| `getReportCards(…,'pdf','BUT')` | `etudiant/nip/<nip>/formsemestre/<sem>/bulletin/butcourt/pdf/nosig` |
+| `getReportCards(…,'pdf',autre)` | `…/bulletin/long/pdf/nosig` |
+| `getNotesEval($eval)` | `evaluation/<eval>/notes` |
+| `getStudentDepartment($nip)` | `etudiant/nip/<nip>` |
+| `getStudentPic($nip)` | `etudiant/nip/<nip>/photo` |
+| `getStudentAbsences($sem,$nip)` | `assiduites/nip/<nip>/query?formsemestre_id=…` |
+| `getTotalsAbsences($sem,$nip)` | `assiduites/nip/<nip>/count/query?split&formsemestre_id&metric` |
+| `getJustifs($nip)` | `justificatifs/nip/<nip>/query` |
+| `setJustif` | `justificatif/nip/<nip>/create` puis `justificatif/<id>/import` (fichier) |
+| `getDepartmentsList()` | `departements` |
+| `getDepartmentSemesters($dep)` | `departement/<dep>/formsemestres_courants` |
+| `modules($sem)` | `formsemestre/<sem>/programme` |
+
+→ Le JSON `relevé` de `dataPremièreConnexion` est **le bulletin ScoDoc tel quel** (`…/bulletin`, format BUT). La doc officielle de l'API ScoDoc décrit donc ce format : <https://scodoc.org/ScoDoc9API/>.
+
+### 11.3 Authentification et session (explique les comportements vus dans tafac)
+
+- `doAuth.php` → `Auth::doAuth()` : `phpCAS::client(CAS_VERSION_2_0, host, port, context, "https://<HTTP_HOST>")` puis `phpCAS::forceAuthentication()` ; ensuite `header('Location: '.$_GET['href'])` si `href` commence par le même hôte. **Le service CAS est l'hôte nu `https://wscodoc.iutbeziers.fr`** (pas `doAuth.php?href=…` — c'est phpCAS qui ajoute l'URL courante).
+- Si la session PHP n'a pas de `statut`, `User` appelle `Auth::defaultAuth()` : si `phpCAS::isAuthenticated()` est faux, la réponse est **`exit(json {"redirect":"/services/doAuth.php"})`** → c'est exactement le signal « session expirée » (HTTP 200) décrit en §3.
+- **Durée de session = durée de la session PHP** (aucune logique propre). Défaut PHP `session.gc_maxlifetime` = **24 min** d'inactivité, sauf réglage serveur → cohérent avec « durée inconnue, à mesurer ».
+- Clés de session : `id` (NIP), `idCAS`, `name`, `statut`.
+- **Pourquoi le login IUT est `prenom.nom`** : le CAS de l'IUT renvoie un `idCAS` (config `CAS_return_type = 'idCAS'`), et la Passerelle le **convertit en NIP** via `data/annuaires/liste_etu.txt` (format `numéro:identifiantCAS`, une ligne par étudiant, rempli par LDAP ou à la main). Si l'étudiant n'y est pas : erreur « Votre compte n'est pas encore dans l'annuaire… ». Avec `CAS_return_type = 'nip'`, le CAS renverrait directement le numéro.
+- **Statut** (`annuaire.class.php`) : `super_admin.txt` → 40 ; si `acces_enseignants` est faux → **tout le monde est ETUDIANT (10)** ; sinon `utilisateurs.json` (administrateurs 30, vacataires 20), `liste_etu.txt` → 10, `liste_ens.txt`/`liste_biat.txt` → 20, défaut 10. Mis en cache dans `$_SESSION['statut']`. Constantes : INCONNU 0, ETUDIANT 10, PERSONNEL 20, ADMINISTRATEUR 30, SUPERADMINISTRATEUR 40.
+- **JWT** : si `JWT_key` est configuré, un en-tête **`Authorization: Bearer <JWT HS256>`** remplace le CAS (`user.class.php`), payload `{id, idCAS, name, statut, exp}`. `createStudentJWT.php` génère pour l'étudiant connecté un lien `?token=…` valable 7 jours. **Réservé à l'admin / tests** ; si l'IUT l'a activé, c'est une voie d'accès serveur-à-serveur sans CAS — à demander à l'IUT, ne pas supposer.
+- `logout` : vide `$_SESSION` et `phpCAS::logoutWithRedirectService('')`.
+
+### 11.4 Absences : deux implémentations possibles
+
+| `config.data_absences_scodoc` | Classe | Source des données |
+|---|---|---|
+| `false` (défaut) | `absences.class.php` | fichiers JSON de la Passerelle `data/absences/<sem>/<nip>.json` ; clés `debut, fin, statut, justifie, enseignant, matiere, matiereComplet` ; **pas** d'`idAbs`/`dateFin` |
+| `true` | `absences.scodoc.class.php` | API ScoDoc `assiduites/…` ; mapping : `idAbs ← assiduite_id`, `idJustif ← justificatifs[].justif_id`, `statut ← strtolower(etat)` (`ABSENT`→`absent`, `PRESENT`, `RETARD`), `justifie ← est_just`, `enseignant ← external_data.enseignant ?? user_name ?? 'Non défini'`, `matiereComplet ← moduleimpl_id`, `dateFin ← date(date_fin)`, `debut/fin ← heures décimales (10:30 → 10.5)` ; clé = `date_debut` |
+
+La fixture tafac contient `idAbs`, `idJustif`, `dateFin` → **l'IUT de Béziers est en mode ScoDoc** (`data_absences_scodoc = true`). `matiereComplet` est un **`moduleimpl_id`** ScoDoc, pas un libellé : pour afficher la matière il faut le croiser avec `relevé.ressources[*].id` / `saes[*].id` (même id ScoDoc). Les absences multi-jours ne sont pas découpées (une entrée, `dateFin` ≠ date).
+
+### 11.5 Options de config qui pilotent ce que l'étudiant voit (`default_config.php`)
+
+`releve_PDF` (défaut true) → `bulletin_PDF.php?sem_id=<formsemestre_id>&type=BUT` renvoie `application/pdf` (`bulletin.pdf`) — **le relevé PDF officiel ScoDoc est accessible à l'étudiant** ; `histogramme` (true) → `listeNotes&eval=` ; `afficher_absences`, `module_absences`, `data_absences_scodoc`, `metrique_absences`, `autoriser_justificatifs`, `nb_conge_menstruel` ; `liste_dep_masque_notes`, `liste_dep_publi_PDF`, `liste_dep_affichage_appreciations` (listes de départements) ; `etudiant_modif_photo` ; `doc_afficher_nip/id/date_naissance` ; `multi_scodoc` + cookie **`composante`** pour choisir l'instance. Tout cela se lit dans `dataPremièreConnexion.config`.
+
+### 11.6 Autres services présents dans `html/services/`
+`bulletin_PDF.php` (PDF), `trombi.php`, `studentsLists.php`, `portailPhoto.php` (personnel), `createJWT.php` / `createStudentJWT.php` (JWT), `diagnostic.php`, `documentation.php` (doc API, marquée obsolète), `analytics.php`, `getOthersData.php` (télémétrie sans auth), `messages.php` (aide statique).
+
+### 11.7 Ce que ça change pour tonAPI
+1. Le format `relevé` = **bulletin ScoDoc 9 API** → s'appuyer sur la doc officielle de ScoDoc pour les champs plutôt que de deviner.
+2. **Relevé PDF** disponible : `GET bulletin_PDF.php?sem_id=…&type=BUT` avec le `PHPSESSID`.
+3. Session PHP ≈ 24 min d'inactivité (probable) → prévoir le relogin CAS souvent ; c'est bon marché (5 allers-retours).
+4. `matiereComplet` → joindre sur les `id` du relevé pour nommer la matière d'une absence.
+5. Un échec « pas dans l'annuaire » est une erreur **métier**, pas un mauvais mot de passe.

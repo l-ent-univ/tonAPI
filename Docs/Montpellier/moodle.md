@@ -162,3 +162,30 @@ Un même devoir est souvent publié dans plusieurs espaces de cours (un par grou
 - `tafac-ios/Tafac/Services/MoodleClient.swift`
 - `tafac-ios/Tafac/Models/MoodleDTO.swift`
 - `tafac-ios/Tafac/Core/HTTPClient.swift`, `HTMLForm.swift`
+
+
+---
+
+## 7. Ce que dit le code source de Moodle (4.5 stable, lu le 2026-10-13)
+
+Fichiers : `login/token.php`, `lib/external/classes/util.php`, `webservice/rest/locallib.php`.
+
+### 7.1 `login/token.php`
+- Paramètres : `username` (mis en minuscules), `password` (brut), `service` (shortname, ex. `moodle_mobile_app`), `appsitecheck` optionnel (→ `{"appsitecheck":"ok"}`, sonde sans login).
+- Validation par `authenticate_user_login()` → **n'importe quel plugin d'auth à mot de passe** (manuel, **LDAP**, db…) fonctionne ; le plugin **CAS** ne marche pas ici (pas de mot de passe vérifiable localement). C'est pour ça que le Moodle BUT (login UM accepté) passe sans doute par **LDAP** vers l'annuaire UM, et que le Moodle UM (auth CAS, `enablemobilewebservice: 0`) ne peut pas donner de jeton.
+- Codes d'erreur possibles (toujours HTTP 200) : `enablewsdescription`, `restoredaccountresetpassword`, `sitemaintenance`, `noguest`, `usernotconfirmed`, `passwordisexpired`, `servicenotavailable`, `invalidlogin`, `missingparam`.
+- Retour : `{token, privatetoken}` (`privatetoken` seulement en HTTPS et pour un non-admin).
+
+### 7.2 Durée de vie du jeton (`util::generate_token_for_current_user`)
+- Réutilise un jeton **existant** (même user, même service, type permanent, le plus récent), après avoir supprimé ceux dont `validuntil < now` et écarté ceux hors `iprestriction`.
+- Nouveau jeton : `validuntil = timecreated + $CFG->tokenduration` ; commentaire du code : **« par défaut 12 semaines »**.
+- `lastaccess` est écrit mais jamais lu → **pas d'expiration par inactivité**.
+- Suppression sur changement de mot de passe : **non vérifié** dans ce code (à tester).
+- Capacité requise pour créer : `moodle/webservice:createmobiletoken` (service mobile officiel).
+
+→ tonAPI : rappeler `token.php` au plus toutes les 12 semaines, ou simplement sur `invalidtoken`.
+
+### 7.3 Serveur REST (`webservice/rest/locallib.php`)
+- `GET` et `POST` fusionnés ; `moodlewsrestformat` ∈ `xml|json` (sinon XML) ; `wsfunction`, `wstoken` retirés, le reste = arguments. Les tableaux `courseids[0]=…` sont parsés par PHP.
+- **Aucun code HTTP d'erreur** : toujours 200 ; erreur = `{"exception": "<classe>", "errorcode"?: "…", "message": "…", "debuginfo"?: "…"}`.
+- En-têtes : `Access-Control-Allow-Origin: *`.

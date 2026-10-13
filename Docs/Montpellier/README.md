@@ -83,9 +83,11 @@ Aucun secret ni donnée personnelle n'est reproduit.
 - 2FA : règle lue dans le code source d'esup-otp-cas-server ; « appareil mémorisé » = `connect.sid` 30 jours → [cas-umontpellier.md](cas-umontpellier.md).
 - Codes ADE ↔ ScoDoc ↔ Apogée : règle trouvée → [codes.md](codes.md).
 
+- Code source lu : Passerelle ScoDoc (→ [scodoc.md §11](scodoc.md)) et Moodle (→ [moodle.md §7](moodle.md)).
+
 ## Grandes inconnues
 
-- Durée de vie : TGC, session uPortal, `PHPSESSID` ScoDoc, jeton Moodle, lien ADE `data=`.
+- Durée de vie : TGC, session uPortal (`PHPSESSID` ScoDoc ≈ 24 min probable, jeton Moodle 12 semaines, lien ADE non expirant — déduits du code).
 - Page d'erreur « mauvais mot de passe » du CAS UM : jamais capturée en vrai.
 
 ## Projets sources
