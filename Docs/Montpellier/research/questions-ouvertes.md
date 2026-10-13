@@ -87,7 +87,8 @@ Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans
 ### Q16. ✅ RÉSOLU — `sendJustif` : champ `file` ou `mon_fichier` ?
 - **`file`** : la page publique `wscodoc.iutbeziers.fr/absences/justifications.php` (coquille HTML, v7.2.3) contient `name=file`. Multipart : `file` + `date_debut`, `date_fin`, `menstruel`?.
 
-### Q17. Réglages Moodle BUT invisibles — ⏳ nécessite l'utilisateur
+### Q17. Réglages Moodle BUT invisibles — ⏸️ reporté (pas de changement de mot de passe prévu, 2026-10-13)
+- Hypothèse de travail pour tonAPI : traiter `invalidtoken` comme un cas normal → relogin `token.php` + 1 retry. Ça couvre les deux issues possibles sans avoir besoin de la réponse.
 - Seul test possible : après un **changement volontaire** de mot de passe UM, vérifier si le jeton Moodle BUT stocké marche encore. À faire quand Lucas change son mot de passe.
 - `passwordchangetokendeletion` (purge des jetons), `lockoutthreshold` (verrouillage). Non lisibles via l'API. Déduire : après un changement de mot de passe volontaire, le jeton tonAPI survit-il ? Noter dans le journal.
 
