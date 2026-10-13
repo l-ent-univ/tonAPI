@@ -88,6 +88,8 @@ Aucun secret ni donnée personnelle n'est reproduit.
 - uPortal 4.3 lu dans le code : `session.json`, `layout.json`, `/Login`, `/Logout`, canonicalisation, keep-alive → [ent.md](ent.md) § uPortal.
 - API ScoDoc 9 (bulletin, assiduités, justificatifs) d'après la doc officielle → [scodoc.md §12](scodoc.md) ; ADE (liens directs, `/jsp/webapi`) → [lien-ade.md §7](lien-ade.md).
 
+- Version esup-otp-api ≈ 2.3.0 (handshake `login.js?v=1`) ; champ justificatif `file` ; Nîmes/Sète sans Passerelle publique → [research/questions-ouvertes.md](research/questions-ouvertes.md) Q13/Q14/Q16.
+
 ## Grandes inconnues
 
 - Durée de vie : TGC CAS UM ; session uPortal = timeout Tomcat (30 min par défaut, non vérifié) ; `PHPSESSID` ScoDoc ≈ 24 min, jeton Moodle 12 semaines, lien ADE non expirant — déduits du code, à mesurer (research Q6).

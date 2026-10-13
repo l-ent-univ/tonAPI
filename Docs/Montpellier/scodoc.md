@@ -637,3 +637,13 @@ Ordre de décision du constructeur (l.35-78) **[lu]** :
 - Le changelog `html/maj.php` s'arrête à « 18/08/2025 - 7.0.0 » (l.55-66 : PHP 8.4, multi-ScoDoc, appréciations, publipostage, correctifs). **Aucune entrée 7.1.x ni 7.2.x**, pas de fichier CHANGELOG, pas de tag git (clone de profondeur 1 ; seul commit visible : `699ed28`, 2026-10-06, renommage `mon_fichier` → `file`).
 - Il est donc impossible, depuis ce dépôt, de lister ce que 7.2.3 change par rapport à 7.0.0.
 - **[déduit]** : l'IUT annonçant 7.2.3 exécute le même numéro que le code lu. La seule divergence identifiable est le champ multipart de `sendJustif` (§3) si l'installation précède le commit HEAD : `installOrUpdate.sh` l.73 télécharge `main.zip` sans numéro, donc un même « 7.2.3 » peut recouvrir plusieurs états du code. Tout le reste (actions, clés JSON, authentification) est identique.
+
+
+### 11.8 Pages publiques de la Passerelle (sans session) — vérifié sur l'IUT le 2026-10-13
+| URL | Sans session |
+|---|---|
+| `/services/data.php?q=<tout>` | 200 `{"redirect":"/services/doAuth.php"}` — **y compris `getReportPageMessage` et `listeDépartements`** (le contrôle est dans `User`, pas dans le switch) |
+| `/services/documentation.php` | 200, doc API (obsolète) : `dataPremièreConnexion, donnéesAuthentification, listeEtudiants, listesEtudiantsDépartement, relevéEtudiant, semestresDépartement, semestresEtudiant` |
+| `/services/diagnostic.php`, `diagnostic2.php` | 200, page de contrôle de config (PHP, LDAP chargé, CAS) — pas de secret affiché |
+| `/services/trombi.php`, `/absences/justifications.php`, `/services/poursuiteEtudes.html` | 200, coquilles HTML (le contenu vient de `data.php`) ; `justifications.php` montre `name=file` |
+| `/sw.js` | 200, `var version = 'v7:2:3'` → **version exacte de l'instance** |

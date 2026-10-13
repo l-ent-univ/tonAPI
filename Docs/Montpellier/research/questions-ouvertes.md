@@ -77,14 +77,15 @@ Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans
 ### Q12. ✅ RÉSOLU — Liste complète des actions de la Passerelle ScoDoc
 - **Réponse** : lue dans `html/services/data.php` et reportée dans [../scodoc.md §4.2](../scodoc.md).
 
-### Q14. 🟡 PARTIEL — Version d'esup-otp-api à l'UM
-- `https://otp-api.umontpellier.fr/public/login.js` répond 200 `application/javascript` → `login.js` servi par l'API → **≥ 2.1.0**. La présence de `last_validated` (≥ 2.2.2) n'a pas pu être vérifiée (il faut être sur la page 2FA).
+### Q14. ✅ RÉSOLU — Version d'esup-otp-api à l'UM
+- **≈ v2.3.0** (avril 2026). Empreinte de `login.js?v=1` : module ESM (≥ 2.2.0), `last_validated` (≥ 2.2.2), `methodsRequiringExplicitChoice` (≥ 2.3.0), mais encore du jQuery et pas d'`alt=` (< 2.4.0). Méthodes compilées : push, totp, webauthn, random_code (+mail), passcode_grid, bypass, esupnfc ; socket.io présent.
+- **Handshake de compatibilité** : `login.js` doit être demandé avec `?v=1` ; sans `v` ou avec `v=0/2/3`, l'API renvoie un stub de 123 o `alert('FATAL ERROR: you must upgrade esup-otp-cas…')`. Un client maison n'a pas besoin de `login.js`, mais doit parler le protocole de cette version (voir cas-umontpellier.md §2.6).
 
 ### Q15. ✅ RÉSOLU — Le suffixe `,1` du lien ADE
 - **Test 2026-10-13** (curl, sans auth) : `,1` → 200 iCal ; sans suffixe, `,0`, `,2`, `,3`, `,10` → **302** (pas d'iCal). Le `,1` est donc **obligatoire et le seul accepté** pour ce lien. Sens probable : identifiant du type d'export/format, mais rien d'autre ne marche → à traiter comme partie fixe du lien.
 
-### Q16. 🟡 PARTIEL — `sendJustif` : champ `file` ou `mon_fichier` ?
-- `https://wscodoc.iutbeziers.fr/sw.js` → `var version = 'v7:2:3'` : l'IUT est bien en **7.2.3** (antérieure au renommage du 2026-10-06) → champ **`file`** très probable. À confirmer en lisant le `name` de l'`<input type=file>` connecté. La page `/absences/justifications.php` répond 200 sans auth (coquille vide, le contenu vient de `data.php`).
+### Q16. ✅ RÉSOLU — `sendJustif` : champ `file` ou `mon_fichier` ?
+- **`file`** : la page publique `wscodoc.iutbeziers.fr/absences/justifications.php` (coquille HTML, v7.2.3) contient `name=file`. Multipart : `file` + `date_debut`, `date_fin`, `menstruel`?.
 
 ### Q17. Réglages Moodle BUT invisibles — ⏳ nécessite l'utilisateur
 - Seul test possible : après un **changement volontaire** de mot de passe UM, vérifier si le jeton Moodle BUT stocké marche encore. À faire quand Lucas change son mot de passe.
@@ -94,6 +95,7 @@ Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans
 - **Oui** (testé 2026-10-13, connecté) : `{"person":{"name":"<userName>","attributes":{"username":[…],"displayName":[…],"givenName":[…],"sn":[…],"mail":[…],"telephoneNumber":[…],"postalAddress":[…]}}}`. Chaque attribut est un **tableau**. `me.json` → `{"person":null}` (n'existe pas).
 - `postalAddress` = adresse de la **composante** (celle de l'IUT, `…$BP…$BEZIERS`, séparateur `$`), pas celle de l'étudiant → 3e moyen de détecter l'IUT. `telephoneNumber` était vide (`+33` seul).
 
-### Q13. Autres IUT de l'UM — ❓ non concluant
-- Recherche web du 2026-10-13 : aucune trace publique de ScoDoc pour IUT Montpellier-Sète ou Nîmes. À demander à un étudiant de ces IUT.
-- Repérer les hôtes ScoDoc/Moodle des autres IUT (Montpellier-Sète, Nîmes) pour généraliser le modèle « parent + surcharge ».
+### Q13. 🟡 PARTIEL — Autres IUT de l'UM
+- **IUT de Nîmes** : intranet public `intranet.iut-nimes.fr` → **ScoDoc direct** `https://scodoc.iut-nimes.fr/ScoDoc` (pas de Passerelle), EDT `edt.iut-nimes.fr`, trombinoscope `trombi.iut-nimes.fr`, Nextcloud `nuage.iut-nimes.fr`. Tous répondent **403 « Restricted access »** depuis Internet (IP campus / VPN) → inaccessible à tonAPI sans VPN.
+- **IUT Montpellier-Sète** : rien de public ; le guide étudiant renvoie au « Dossier étudiant et résultats » de l'ENT (= Mon Dossier Web) et à `nextcloud-iut.iutmontp.univ-montp2.fr`. Pas de ScoDoc exposé.
+- Conclusion : le modèle « parent UM + surcharge IUT » reste valable, mais **seul Béziers** expose une Passerelle publique. Béziers = cas particulier favorable.

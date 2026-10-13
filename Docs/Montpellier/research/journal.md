@@ -84,3 +84,9 @@ Modèle :
 ## 2026-10-13 — Q18 résolue (test par l'utilisateur, connecté)
 - `people/<userName>.json` → username, displayName, givenName, sn, **mail**, telephoneNumber, postalAddress (adresse de l'IUT). `me.json` → null.
 - Conclusion : identité de base sans Mon Dossier Web. → [../ent.md §4](../ent.md)
+
+## 2026-10-13 — Q13/Q14/Q16 + découvertes API
+- Q14 : esup-otp-api UM ≈ v2.3.0 ; `login.js` exige `?v=1` (sinon stub FATAL ERROR). Résolu.
+- Q16 : champ `file` (page publique justifications.php). Résolu.
+- Q13 : Nîmes = ScoDoc direct derrière 403 (campus/VPN) ; Montpellier-Sète = rien de public. Partiel.
+- Passerelle : `data.php` renvoie toujours `redirect` sans session ; `sw.js` donne la version.

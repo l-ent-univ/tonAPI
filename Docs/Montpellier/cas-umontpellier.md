@@ -583,3 +583,9 @@ Plusieurs paquets peuvent être concaténés dans une même réponse de poll, s�
 - WebAuthn impossible depuis une origine non listée dans `allowed_origins` de l'UM.
 - Compatibilité de version : `login.js?v=1` (API ≥ 2.1.0 pour `login.js` servi par l'API, ≥ 2.2.0 pour le module ESM ; `last_validated` ≥ 2.2.2 ; anti-spam SMS et `trustedProxies` ≥ 2.0.0). Si l'instance UM est antérieure, certains champs de `GET /users` et le script peuvent différer ; les routes `/users/:uid/:hash`, `/users/:uid/methods/:method/transports/:transport/:hash`, la socket `/sockets` et `userAuth` sont stables sur toute la branche 1.7 → 2.4 **(déduit du CHANGELOG, qui ne mentionne aucun changement de ces routes)**.
 - Le CAS insère l'OTP tel quel dans l'URL `/protected/users/<uid>/<otp>/` : seuls des codes alphanumériques sont attendus (6 chiffres ou 16 alphanum WebAuthn) ; `maxParamLength: 250` (`server.js:26`).
+
+
+### Version de l'API OTP à l'UM et handshake `login.js?v=` (2026-10-13)
+- `GET https://otp-api.umontpellier.fr/public/login.js?v=1` → 200, ~35 Ko, ESM. **Sans `v` ou autre valeur → stub `alert('FATAL ERROR: you must upgrade esup-otp-cas / esup-otp-cas-server / esup-otp-shibboleth (or downgrade esup-otp-api)')`** : l'API vérifie la version du protocole attendue par la façade.
+- Empreinte → **esup-otp-api ≈ v2.3.0** (ESM, `last_validated`, `methodsRequiringExplicitChoice`, jQuery encore présent, pas de changements 2.4.0). Changelog : <https://github.com/EsupPortail/esup-otp-api/blob/v2.4.0/CHANGELOG.md>.
+- Changements qui concernent un client : 2.2.2 affiche la dernière méthode validée (`last_validated`) et distingue TOTP / codes de secours ; 2.3.0 lit l'IP du push dans `x-forwarded-for` et ajoute les **deep links** Esup Auth ; 2.2.3 a supprimé des routes inutilisées. Routes publiques inexistantes : `/version`, `/api`, `/package.json` (404 JSON).
