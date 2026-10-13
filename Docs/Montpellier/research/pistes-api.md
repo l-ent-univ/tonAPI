@@ -86,3 +86,33 @@ Sans session → `302 /uPortal/Login?refUrl=…`. À tester **connecté** (⏳) 
 - Technique : **JSF / Trinidad (ADF Faces)**, un seul `POST persons.xhtml` avec `javax.faces.ViewState`, `org.apache.myfaces.trinidad.faces.FORM`, `source`, `event`, et les champs `null:person_name`, `null:j_id21` (prénom), `null:structure_name`. Stateful : il faut rejouer le ViewState de la page précédente ; les « Afficher » sont des événements JSF (`source` = id du composant). Pas d'API JSON.
 - Résultat « structure = IUT de Béziers » : tableau `Détails | Nom | Libellé | Téléphone(s) | Courriel(s) ou site`, 7 lignes = **organigramme** (IUT, Site de Béziers, départements TC, R&T, **MMI**, LP ROBIA), libellé = chemin `Composantes pédagogiques - UM > … > Département …`. « Afficher » ouvre un panneau `Composantes, directions et services` + bouton **« Voir les agents affectés »** → sous-table `Nom | Téléphone / Numéro interne | Afficher les coordonnées des agents` avec `Civilité NOM Prénom` (2 agents listés pour MMI : les responsables, pas toute l'équipe). Les courriels n'apparaissent qu'après « Afficher les coordonnées des agents ».
 - **Verdict pour tonAPI** : utilisable pour résoudre un enseignant par **nom** (ADE donne `NOM   PRENOM`) → fiche (structure, mail pro), mais coûteux (JSF stateful, 2-3 POST par recherche). À réserver à un enrichissement en tâche de fond avec cache long ; ne pas stocker plus que nom + mail pro + structure.
+
+
+---
+
+## 7. Deuxième tour : les autres applis de l'ENT (2026-10-13, soir)
+
+### 7.1 Applis avec une vraie API (trouvées)
+
+| Appli | Hôte | Techno | API | État |
+|---|---|---|---|---|
+| **Stages (ESUP-Stage 3.1.14)** | `stages.umontpellier.fr` | Angular `/frontend/` + REST `/api/` (open source [EsupPortail/esup-stage](https://github.com/EsupPortail/esup-stage)) ; CAS service `http://stages.umontpellier.fr/login/cas` | appels vus au chargement : `GET /api/version`, `/api/config/theme`, `/api/contenus/<CODE>` (textes), **`/api/users/connected`** (utilisateur courant), **`/api/conventions/brouillon`** (conventions en cours). L'API complète est dans le dépôt (conventions, établissements d'accueil, évaluations). | ✅ existence ; endpoints à lire dans le code source, pas par sondage |
+| **Attestations (ardemat-api)** | `app.umontpellier.fr/ardemat-api` | Spring Boot, Swagger public | voir §6.3 | ✅ |
+| **Carte étudiant (CMSWEB)** | `cmsweb.umontpellier.fr` | **Symfony** (AdminLTE, UX Live Components, FOSJsRouting) ; CAS service `https://cmsweb.umontpellier.fr/` | pages : `/demande/new` (déclaration perte/vol + **paiement CB 6 €**), `/profile`, `/logout`. Routes JS exposées : seulement `admin_index`. Pas d'API étudiante ; formulaires Symfony (`_token` CSRF). | ✅ existence ; **ne rien soumettre** (paiement) |
+| **Listes de diffusion (Sympa)** | `listes.etu.umontpellier.fr` | Sympa, CAS (`gateway=1`) | **SOAP public** : `GET /sympa/wsdl` (21 Ko). Opérations : `login`, **`casLogin`**, `authenticateAndRun`, `authenticateRemoteAppAndRun`, `checkCookie`, `getUserEmailByCookie`, `lists`, `complexLists`, `which`, `complexWhich`, `amI`, `info`, `review`, `fullReview`, `subscribe`, `signoff`, `add`, `del`, `createList`, `closeList`, `getDetails`, `setDetails`, `setCustom`. → **`casLogin(proxyTicket)` puis `which`/`lists`** pour connaître ses listes. | ✅ WSDL ; ⏳ test |
+| **Vidéos (Esup-Pod)** | `video.umontpellier.fr` | Django, DRF | `GET /rest/` → 401 `WWW-Authenticate: Basic realm="api"` (jeton API personnel, réservé aux comptes autorisés) ; **public** : `/videos/` (HTML), **`/rss-video/`** (RSS), `/video/<slug>/`. CAS pour les vidéos restreintes. | ✅ |
+| **Site numérique (WordPress)** | `numerique.umontpellier.fr` | WordPress | `GET /wp-json/wp/v2/posts?per_page=…&_fields=id,date,link,title` → actualités numériques UM, public. | ✅ |
+
+### 7.2 Applis derrière le CAS sans API visible (à n'explorer que si besoin)
+`handy.umontpellier.fr` (handicap), `consentement.umontpellier.fr` (RGPD), `sport.umontpellier.fr` (SUAPS, service CAS `/fr/Connexion/Cas/cas-um`), `infoservices.umontpellier.fr/CDS_Etudiant/` (tickets d'assistance), `/Reins_Infos/`, `/CUMOffice365/`, `/zimbra_prolongateur/`, `/eCandidat/`, `app.umontpellier.fr/pjweb` (pièces justificatives, service `/pjweb/login/cas`), `iareins`, `ip-web`, `portail-applicatif…/RDWeb` (bureau distant), `app.wooclap.com/api/auth/umontpellier/login`, `infoservices…/Wooflash/` (public), `resum.umontpellier.fr` (site public), `bibliotheques.umontpellier.fr` (site public, pas d'`/api/`).
+
+### 7.3 uPortal : portlets techniques et keep-alive
+- `layout.json` : 66 nœuds portlet, 49 `fname` uniques ; régions `pre-header` = `notification-icon`, `portal-greeting`, `logout-launcher`, `session-timeout` ; webapps présentes : `/NotificationPortlet`, `/Announcements`, `/NewsReaderPortlet`, `/SimpleContentPortlet` (mais `/Announcements/`, `/NewsReaderPortlet/` → 404 : non déployés ou chemins différents).
+- `GET /uPortal/api/v4-3/portlet/notification-icon.html` → **500** (portlet notifications cassé) ; `portal-greeting.html` → « Bienvenue » ; `session-timeout.html` → dialogue d'expiration ; **`GET /uPortal/api/ajax-success` → `{ 'success': 'true' }` = le keep-alive de session** (`resetSessionURL`).
+- `ProlongationENT/log?user&app&search&index` → 200 vide (télémétrie de clics).
+
+### 7.4 Service CAS déclaré par chaque appli (pour la chaîne silencieuse)
+`cmsweb.umontpellier.fr/` · `http://stages.umontpellier.fr/login/cas` (http !) · `handy.umontpellier.fr/` · `consentement.umontpellier.fr/` · `sport.umontpellier.fr/fr/Connexion/Cas/cas-um` · `infoservices.umontpellier.fr/CDS_Etudiant/` · `video.umontpellier.fr/index.php?action=rediriger` · `app.umontpellier.fr/pjweb/login/cas` · `listes.etu.umontpellier.fr/sympa/` (+`gateway=1`) · `app.umontpellier.fr/ardemat/` · (déjà connus : `uPortal/Login`, `prose-etudiant/login/cas`, `mdw/login/cas`, `moodle…/login/index.php?authCAS=CAS`, `mail.etu…/public/preauthetu.jsp`).
+
+### 7.5 Limite posée
+L'énumération systématique des endpoints `/api/*` d'ESUP-Stage a été **refusée par le garde-fou** (assimilée à du scouting). Pour ESUP-Stage, lire le code source du dépôt plutôt que sonder le serveur.

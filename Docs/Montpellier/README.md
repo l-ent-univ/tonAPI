@@ -91,6 +91,7 @@ Aucun secret ni donnée personnelle n'est reproduit.
 
 - Version esup-otp-api ≈ 2.3.0 (handshake `login.js?v=1`) ; champ justificatif `file` ; Nîmes/Sète sans Passerelle publique → [research/questions-ouvertes.md](research/questions-ouvertes.md) Q13/Q14/Q16.
 
+- Stages (ESUP-Stage REST), Sympa SOAP, Pod RSS, CMSWEB, keep-alive uPortal → [research/pistes-api.md §7](research/pistes-api.md).
 - Zimbra REST (`/home/~/inbox.json`) et API attestations (`ardemat-api`, Swagger public) → [research/pistes-api.md §6](research/pistes-api.md).
 
 ## Grandes inconnues

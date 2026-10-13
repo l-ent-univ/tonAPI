@@ -106,3 +106,7 @@ Modèle :
 ## 2026-10-13 — Annuaire des personnels (avec accord)
 - JSF/Trinidad stateful, recherche par nom ou structure ; structure « IUT de Béziers » → organigramme + agents responsables ; mails derrière un clic supplémentaire. Pas d'API JSON.
 - → [pistes-api.md §6.5](pistes-api.md)
+
+## 2026-10-13 (soir) — Deuxième tour des applis ENT
+- ESUP-Stage (REST `/api/`, open source), CMSWEB (Symfony, paiement carte), Sympa SOAP (WSDL public, `casLogin`), Esup-Pod (REST Basic, RSS public), WordPress `wp-json`, keep-alive uPortal `/api/ajax-success`, notification portlet en 500.
+- → [pistes-api.md §7](pistes-api.md)
