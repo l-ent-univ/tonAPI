@@ -83,12 +83,16 @@ Aucun secret ni donnée personnelle n'est reproduit.
 - 2FA : règle lue dans le code source d'esup-otp-cas-server ; « appareil mémorisé » = `connect.sid` 30 jours → [cas-umontpellier.md](cas-umontpellier.md).
 - Codes ADE ↔ ScoDoc ↔ Apogée : règle trouvée → [codes.md](codes.md).
 
-- Code source lu : Passerelle ScoDoc (→ [scodoc.md §11](scodoc.md)) et Moodle (→ [moodle.md §7](moodle.md)).
+- Code source lu : Passerelle ScoDoc (→ [scodoc.md §11 et §13](scodoc.md)) et Moodle (→ [moodle.md §7 et §8](moodle.md)).
+- 2FA côté API : protocole complet d'esup-otp-api (userHash, push, socket, TOTP, WebAuthn, délais) → [cas-umontpellier.md](cas-umontpellier.md) § esup-otp-api.
+- uPortal 4.3 lu dans le code : `session.json`, `layout.json`, `/Login`, `/Logout`, canonicalisation, keep-alive → [ent.md](ent.md) § uPortal.
+- API ScoDoc 9 (bulletin, assiduités, justificatifs) d'après la doc officielle → [scodoc.md §12](scodoc.md) ; ADE (liens directs, `/jsp/webapi`) → [lien-ade.md §7](lien-ade.md).
 
 ## Grandes inconnues
 
-- Durée de vie : TGC, session uPortal (`PHPSESSID` ScoDoc ≈ 24 min probable, jeton Moodle 12 semaines, lien ADE non expirant — déduits du code).
+- Durée de vie : TGC CAS UM ; session uPortal = timeout Tomcat (30 min par défaut, non vérifié) ; `PHPSESSID` ScoDoc ≈ 24 min, jeton Moodle 12 semaines, lien ADE non expirant — déduits du code, à mesurer (research Q6).
 - Page d'erreur « mauvais mot de passe » du CAS UM : jamais capturée en vrai.
+- Version exacte d'esup-otp-api à l'UM, suffixe `,1` du lien ADE, nom du champ fichier de `sendJustif` à l'IUT (research Q14-Q18).
 
 ## Projets sources
 

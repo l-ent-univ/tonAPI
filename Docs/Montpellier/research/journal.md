@@ -64,3 +64,13 @@ Modèle :
 - Passerelle : relais PHP sans cache devant l'API ScoDoc 9 (`/api/...`), session PHP (≈24 min), `{"redirect"}` = `defaultAuth()` ; login `prenom.nom` converti en NIP via `liste_etu.txt` ; absences en mode ScoDoc (`idAbs`) ; relevé PDF via `bulletin_PDF.php` ; JWT Bearer possible si activé.
 - Moodle : `token.php` passe par `authenticate_user_login` (LDAP ok, CAS non) ; jeton 12 semaines par défaut, pas d'expiration par inactivité ; erreurs REST toujours en 200.
 - → [../scodoc.md §11](../scodoc.md), [../moodle.md §7](../moodle.md)
+
+## 2026-10-13 — Lecture de code (esup-otp-api, Moodle 4.5, uPortal 4.3, Passerelle) + recherche ADE / ScoDoc 9
+- Contexte : environnement sans navigateur ; `github.com` clonable, `scodoc.org`, `git.scodoc.org`, `archive.org` et les sites d'universités **injoignables** (proxy). Pour ScoDoc : extraits de recherche seulement.
+- esup-otp-api 2.4.0 : `userHash` calculé par le CAS (secret), push 6 chiffres / 3 min, socket `userAuth` unique par uid, refus de push silencieux, vérification du code uniquement par le CAS (`/protected/...` + `api_password`). → [../cas-umontpellier.md](../cas-umontpellier.md) § esup-otp-api.
+- Moodle 4.5 : jetons non purgés au changement de mot de passe par défaut ; `autologin` (clé 60 s, UA `MoodleMobile`, 1 demande / 6 min) donne une session web ; `auth_cas::user_login` ignore le mot de passe → `token.php` impossible pour un compte CAS et compte dans le lockout. → [../moodle.md §8](../moodle.md).
+- uPortal 4.3 : `session.json` (404/302 sans session, `guest`), `layout.json` v1 vs v4-3, `/Login` ne renvoie pas vers CAS lui-même, `/Logout` → `logoutRedirect.root`, timeout = Tomcat, `ajax-success` = keep-alive, canonicalisation max 5 redirections. → [../ent.md](../ent.md) § uPortal.
+- Passerelle : ordre de construction de `dataPremièreConnexion`, semestre courant = dernier après tri textuel, liste blanche de 41 clés `config`, `sendJustif` (corps ScoDoc exact, champ `file` renommé le 2026-10-06), `listeNotes` = tableau plat, SW sans cache API. → [../scodoc.md §13](../scodoc.md).
+- ADE : `direct_cal.jsp?data=` existe ailleurs (USMB) → fonction standard ADE 6 ; API Web `/jsp/webapi` (pyade) réservée à un compte API. → [../lien-ade.md §7](../lien-ade.md).
+- ScoDoc 9 (extraits) : versions de bulletin, objets `assiduite` / `justificatif`, métriques `count`. → [../scodoc.md §12](../scodoc.md).
+- Nouvelles questions : Q14 à Q18.

@@ -39,9 +39,9 @@ Quand une question est résolue : noter le résultat dans [journal.md](journal.m
 |---|---|
 | `connect.sid` passerelle | 30 min sans « se souvenir », **30 jours** avec (code source) ; `uid_validity_seconds` 30 min → revalidation silencieuse via TGC |
 | TGC CAS UM | se connecter, puis toutes les heures ouvrir `cas.umontpellier.fr/cas/login?service=https://ent.umontpellier.fr/uPortal/Login` ; noter quand le formulaire réapparaît |
-| Session uPortal | sonder `ent.umontpellier.fr/uPortal/layout.jsp?callback=x` à intervalles ; noter le premier 302 |
-| `PHPSESSID` ScoDoc | appeler `data.php?q=dataPremi%C3%A8reConnexion` à intervalles ; noter le premier `{"redirect":…}` |
-| Jeton Moodle BUT | réutiliser le jeton chaque jour ; noter le premier `invalidtoken` (et tester après changement de mot de passe) |
+| Session uPortal | **code lu** : pas de `session-timeout` dans uPortal, c'est celui de Tomcat (30 min par défaut) ; keep-alive canonique `GET /uPortal/api/ajax-success`. Mesurer : sonder `/uPortal/api/session.json` à intervalles ; noter le premier 302 vers `/Login` |
+| `PHPSESSID` ScoDoc | **code lu** : `session_start()` nu → `gc_maxlifetime` serveur (24 min par défaut, glissant). Mesurer : appeler `data.php?q=dataPremi%C3%A8reConnexion` à intervalles ; noter le premier `{"redirect":…}` |
+| Jeton Moodle BUT | **code lu** : `tokenduration` (12 semaines par défaut), pas d'expiration par inactivité, **pas de purge au changement de mot de passe sauf** `passwordchangetokendeletion` ou case « se déconnecter des autres services » (cochée par défaut dans le formulaire). Mesurer : réutiliser le jeton chaque jour ; noter le premier `invalidtoken` |
 | Lien ADE `data=` | déterministe, anciens liens valides ; refaire un GET chaque semaine pour détecter une éventuelle expiration (jamais observée) |
 
 Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans [journal.md](journal.md).
@@ -76,6 +76,23 @@ Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans
 
 ### Q12. ✅ RÉSOLU — Liste complète des actions de la Passerelle ScoDoc
 - **Réponse** : lue dans `html/services/data.php` et reportée dans [../scodoc.md §4.2](../scodoc.md).
+
+### Q14. Version d'esup-otp-api à l'UM
+- **Pourquoi** : le code lu est la 2.4.0 ; les champs `last_validated`, l'anti-spam SMS et `login.js` servi par l'API sont récents.
+- **Test** : connecté, lire la réponse de `GET otp-api.umontpellier.fr/users/<uid>/<hash>` (noter les clés seulement) et l'URL de `login.js?v=`.
+- **Conclure** : `last_validated` présent → ≥ 2.2.2 ; `login.js` chargé depuis l'API → ≥ 2.1.0.
+
+### Q15. Le suffixe `,1` du lien ADE
+- Aucune doc publique. Test sans risque : `curl` du lien avec `,1` retiré, puis avec `,2` ; noter si l'iCal change (format ?) ou si c'est une erreur.
+
+### Q16. `sendJustif` : champ `file` ou `mon_fichier` ?
+- Le dépôt a renommé le champ multipart le 2026-10-06 ; l'IUT (7.2.3) peut avoir l'ancien code. Lire le `name` de l'`<input type=file>` sur `/absences/justifications.php` connecté. Ne pas envoyer de justificatif de test.
+
+### Q17. Réglages Moodle BUT invisibles
+- `passwordchangetokendeletion` (purge des jetons), `lockoutthreshold` (verrouillage). Non lisibles via l'API. Déduire : après un changement de mot de passe volontaire, le jeton tonAPI survit-il ? Noter dans le journal.
+
+### Q18. `GET /uPortal/api/people/<userName>.json` donne-t-il l'e-mail ?
+- uPortal 4.3 filtre par permission `VIEW_USER_ATTRIBUTE`. Ouvrir l'URL connecté ; noter seulement les **noms** des attributs renvoyés.
 
 ### Q13. Autres IUT de l'UM — ❓ non concluant
 - Recherche web du 2026-10-13 : aucune trace publique de ScoDoc pour IUT Montpellier-Sète ou Nîmes. À demander à un étudiant de ces IUT.

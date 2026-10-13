@@ -53,7 +53,7 @@ Règles critiques :
 | Photo, session expirée | `Content-Type` ne commence pas par `image` | traiter comme session expirée |
 
 - tafac garde `PHPSESSID` dans le Keychain (compte `scodoc.phpsessid`, service `fr.strellastudio.tafac.session`) et le recharge au démarrage pour éviter les 5 allers-retours.
-- **Durée de vie réelle de `PHPSESSID` : inconnue** (à mesurer).
+- **Durée de vie de `PHPSESSID`** : `session_start()` nu, sans durée explicite → `session.gc_maxlifetime` du serveur (défaut **24 min** d'inactivité, prolongée à chaque requête) ; voir §13.7. À confirmer par mesure.
 - Code : `tafac-ios/Tafac/Services/ScoDocClient.swift` — `withSession` l.80-88, détection l.96-106, photo l.65-73.
 
 ---
@@ -247,9 +247,8 @@ Rien n'est notifié à la toute première synchro.
 
 ## 10. Inconnues
 
-- Durée de vie de `PHPSESSID` et du TGC CAS IUT.
+- Durée de vie du TGC CAS IUT (celle de `PHPSESSID` est déduite du code : ≈ 24 min, §13.7).
 - Nom du cookie TGC de `cas.iutbeziers.fr`.
-- Liste complète des actions `q` (à relire dans `SebL68/Scodoc_Notes`).
 - Signification exacte des valeurs `auth.statut` autres que 10.
 
 ## Fichiers de référence
@@ -409,3 +408,232 @@ La fixture tafac contient `idAbs`, `idJustif`, `dateFin` → **l'IUT de Béziers
 3. `moduleimpl_id` null → absence sans matière ; ne pas planter la jointure avec `relevé.*.id`.
 4. Les quatre états de justificatif (`attente`, `valide`, `non_valide`, `modifie`) sont à prévoir dans le modèle, même si la Passerelle ne les filtre pas.
 5. Quand l'IUT montera de version ScoDoc, revérifier les clés : la doc elle-même annonce une API « incomplète ».
+
+---
+
+## 13. La Passerelle, branche étudiant en détail — `dataPremièreConnexion`, justificatifs, front et service worker (lu le 2026-10-13)
+
+> Complète §4 et §11. Dépôt `SebL68/Scodoc_Notes`, commit `699ed28` du 2026-10-06, version déclarée `7:2:3` (celle de l'IUT).
+
+Convention : **[lu]** = constaté dans le code cité ; **[déduit]** = inféré (sémantique PHP/JS, comportement ScoDoc non lu ici).
+Chemins relatifs à la racine du dépôt. Aucune donnée réelle : `<nip>`, `<sem>`, `<composante>`, `<host>` sont des placeholders.
+
+### 13.1 `dataPremièreConnexion`, branche ÉTUDIANT (`html/services/data.php` l.266-304)
+
+Ordre exact de construction **[lu]** (l.267-287) :
+
+1. `new Scodoc()` (l.267) : ouvre le handle cURL, lit `includes/token.txt` ou appelle `POST /api/tokens` (`includes/scodoc.class.php` l.13-72).
+2. `$nip = $user->getId()` (l.269) : NIP résolu par la classe `User`, jamais lu dans `$_GET`.
+3. `$semestres = $Scodoc->getStudentSemesters($nip)` (l.270) → `GET <scodoc_url>/api/formsemestres/query?nip=<nip>` (`scodoc.class.php` l.208).
+4. Tableau `$output`, clés dans cet ordre : `config` (l.272, closure `$Config->getConfig`), `auth` (l.273-277), `semestres` (l.278), `relevé` (l.279), `absences` (l.280-283).
+5. Si `metrique_absences != 'passerelle'` : clé `totauxAbsences` ajoutée (l.285-287).
+6. Si `envoi_donnees_version` et que `data/analytics/last_data_sent_date.txt` date de plus de 24 h : `envoiDonneesVersion: true` (l.299-303, `envoiDonnees()` l.757-776). **[déduit]** : apparaît au plus une fois par jour pour tout le serveur, pas par utilisateur.
+7. Hook facultatif `Config::customOutput($output)` puis `json_encode` (l.717-721). `$output` vide → `{"erreur":"Mauvaise requête."}` (l.722-723).
+
+Appels ScoDoc, dans l'ordre, avec paramètres **[lu]** :
+
+| # | Méthode Passerelle | Requête ScoDoc | Source |
+|---|---|---|---|
+| 1 | `getStudentSemesters(<nip>)` | `GET formsemestres/query?nip=<nip>` | scodoc.class.php l.208 |
+| 2 | `getReportCards(<sem>, <nip>)` | `GET etudiant/nip/<nip>/formsemestre/<sem>/bulletin` | l.266 |
+| 3 | `Absences::getAbsence(<sem>, <nip>)` → `getStudentAbsences` | `GET assiduites/nip/<nip>/query?formsemestre_id=<sem>` | absences.scodoc.class.php l.118 ; scodoc.class.php l.600-606 |
+| 4 | (option) `getTotalsAbsences(<sem>, <nip>)` | `GET assiduites/nip/<nip>/count/query?split=1&formsemestre_id=<sem>&metric=<metrique_absences>` | l.620-632 |
+
+Chaque appel porte `Referer: <host>/?passerelle=7:2:3` et `Authorization: Bearer <token ScoDoc>` (l.26, l.36-39).
+Sur réponse `{"message":"Non autorise (logic)"}`, le token est régénéré et l'appel rejoué une fois (l.99-107).
+
+**Choix du semestre « courant » [lu]** :
+- `getStudentSemesters` trie avec `uasort` sur la **chaîne** `annee_scolaire . semestre_id`, ordre croissant (l.213-217).
+- Aucun filtre sur les dates, `etat` ou la publication.
+- Le courant est `end($semestres)` = **dernier** après tri (data.php l.279, l.282, l.286) ; le front fait pareil (`html/index.php` l.359 : `data.semestres[data.semestres.length-1]`).
+- **[déduit]** : la comparaison étant textuelle, un `semestre_id` 10 se classerait avant 2 pour une même année ; sans incidence pour un BUT (1 à 6).
+
+**Aucun semestre [déduit]** :
+- `[] != ''` est vrai en PHP, donc pas de `returnError` ; `$output = []`, `end([])` vaut `false`, `false['formsemestre_id']` vaut `null` (warning PHP 8).
+- `getReportCards(null, <nip>)` interroge `etudiant/nip/<nip>/formsemestre//bulletin`.
+- La réponse n'ayant pas `publie`, la branche `liste_dep_masque_notes` (l.270-283) attrape `in_array(null, [''])` (vrai en comparaison lâche) et renvoie `{"etudiant":{"dept_acronym":null},"ressources":[],"saes":[]}`.
+- Le front s'arrête alors sur `!data.relevé.date` (index.php l.451).
+- Si ScoDoc répond un objet erreur (non tableau) à `formsemestres/query`, `uasort` lève un `TypeError` fatal → réponse non JSON.
+- Si la réponse est vide / non JSON (`json_decode` → `null`) : `{"erreur":"Problème de compte, vous n'êtes pas dans Scodoc ou votre numéro d'étudiant est erroné, ..."}` (l.231-233).
+
+**Relevé non publié [lu]** :
+- `getReportCards` exige la clé `publie` dans le JSON ScoDoc (l.284).
+- `publie === false` → ajout de `message = $Config->message_non_publication_releve` (l.285-287), objet renvoyé tel quel.
+- `publie` absent → `{"erreur":"Relevé non disponible pour ce semestre, veuillez contacter votre responsable ... vérifier si l'export des notes du semestre est autorisé dans Scodoc."}` (l.291-293). `returnError` fait `exit` : toute la réponse `dataPremièreConnexion` est remplacée par cette erreur.
+- Le front affiche `relevé.message` en bandeau quand `publie == false` (index.php l.452-453).
+
+**Département masqué [lu]** : si l'acronyme extrait de `etudiant.photo_url` (regex `/ScoDoc\/(.+)\/Scolarite/`, l.268) est dans `liste_dep_masque_notes`, `relevé` est réduit à `{etudiant:{dept_acronym}, ressources, saes}` (l.275-282) : ni `date`, ni `publie`.
+
+**`module_absences` / `afficher_absences` faux [lu]** :
+- Aucune condition côté serveur : `absences` (et `totauxAbsences` selon la métrique) sont toujours calculés et renvoyés (data.php l.280-287).
+- Filtrage uniquement front : `feedAbsences` sort si `!config.afficher_absences`, ou si `liste_dep_publi_absences` est non vide et ne contient pas le département (index.php l.534-536).
+- `module_absences` ne sert au front qu'à poser la classe CSS `moduleAbsences` (`includes/clientIO.php` l.77).
+- `data_absences_scodoc = false` → c'est `includes/absences.class.php` (stockage local) qui est chargé (data.php l.29-33) : même clé `absences`, source différente.
+
+**Clés de `config` exposées [lu]** : `getConfig` = `getAllConfig` + `session`, `name`, `statut` (`includes/default_config.php` l.342-352). `getAllConfig` se limite à la liste blanche `$accepted_input` (l.287-330), soit exactement :
+- `passerelle_version`, `multi_scodoc` ;
+- `liste_dep_masque_notes`, `histogramme`, `message_non_publication_releve`, `releve_PDF`, `liste_dep_publi_PDF`, `liste_dep_affichage_appreciations`, `etudiant_modif_photo`, `acces_enseignants`, `cloisonner_enseignants`, `analystics_interne`, `envoi_donnees_version`, `analyse_temps_requetes`, `nom_IUT` ;
+- `doc_afficher_nip`, `doc_afficher_id`, `doc_afficher_date_naissance` ;
+- `idReg`, `idPlaceHolder`, `idInfo`, `nameReg`, `namePlaceHolder`, `nameInfo` ;
+- `module_absences`, `afficher_absences`, `data_absences_scodoc`, `metrique_absences`, `autoriser_justificatifs`, `liste_dep_ok_justificatifs`, `liste_dep_publi_absences`, `nb_conge_menstruel`, `message_rapport_absences`, `message_justificatifs`, `absence_heureDebut`, `absence_heureFin`, `absence_pas`, `absence_dureeSeance` ;
+- plus `session`, `name`, `statut` (38 + 3 = 41 clés).
+
+Jamais exposés : `scodoc_url/login/psw`, `scodoc_instances`, `JWT_key`, tout `LDAP_*`, `CAS_return_type`, `CAS_nip_key`, `auth_class`, `service_annuaire_class`, `service_data_class`, `scheduler_class`, `tmp_dir`, `CRON_delay`, `PHP_cmd`, `url_proxy`, `ipScodoc`, `urlPhoto`, les closures.
+
+**Contenu exact de `auth` [lu]** (data.php l.273-277) :
+- `session` = NIP (`User::getId`) ;
+- `name` = `Config::nameFromIdCAS(idCAS)` ?? attribut CAS `cn` ?? `displayName` ?? `'Mme, M.'` (`includes/user.class.php` l.58-62) ;
+- `statut` = entier, 10 pour un étudiant.
+- Pas de `departments` ici (seulement dans `donnéesAuthentification`, l.160). `config.session/name/statut` dupliquent `auth`.
+
+Squelette JSON de sortie (étudiant) :
+
+```json
+{
+  "config": {
+    "passerelle_version": "7:2:3", "multi_scodoc": false, "...36 autres clés de la liste blanche...": "...",
+    "session": "<nip>", "name": "<Prénom Nom ou 'Mme, M.'>", "statut": 10
+  },
+  "auth": { "session": "<nip>", "name": "<...>", "statut": 10 },
+  "semestres": [
+    { "titre": "BUT XXX", "formsemestre_id": 123, "semestre_id": 1, "annee_scolaire": "2024/2025" },
+    "... ordre croissant, le dernier est le semestre courant"
+  ],
+  "relevé": {
+    "...": "bulletin ScoDoc brut : version, type, date, publie, etudiant{...}, formsemestre_id, formation, options, ressources, saes, ues, semestre, appreciation...",
+    "message": "<message_non_publication_releve, présent seulement si publie === false>"
+  },
+  "absences": {
+    "YYYY-MM-DD": [
+      { "idAbs": 1, "idJustif": [], "debut": 8, "fin": 10, "statut": "absent", "justifie": false,
+        "enseignant": "<...>", "matiereComplet": 456, "dateFin": "YYYY-MM-DD" }
+    ]
+  },
+  "totauxAbsences": { "...": "réponse count/query?split brute ; le front lit .absent.non_justifie[<metric>] et .absent.justifie[<metric>] (index.php l.610-611)" },
+  "envoiDonneesVersion": true
+}
+```
+
+Nuances **[lu]** :
+- `absences` vaut `[]` (tableau JSON vide, pas `{}`) sans absence (`scoAbsDataToPasserelle` part de `[]`, absences.scodoc.class.php l.124).
+- `totauxAbsences` et `envoiDonneesVersion` sont optionnels.
+- Réponse gzippée (`ob_start("ob_gzhandler")`, data.php l.6-8), `Content-type: application/json`, `Access-Control-Allow-Origin: *` (l.9-12).
+
+### 13.2 `relevéEtudiant&semestre=` et `semestresEtudiant`
+
+**`relevéEtudiant` [lu]** (data.php l.219-243) :
+- Paramètres : `semestre` (obligatoire, `sanitize`) ; `etudiant` refusé à un étudiant (`{"erreur":"Vous n'êtes pas un personnel habilité ..."}`, l.221) : un étudiant doit l'omettre.
+- Retour : `{"relevé": <idem §1>, "absences": <idem §1>, "totauxAbsences": <optionnel, même condition>}` : mêmes clés que `dataPremièreConnexion`, sans `config`/`auth`/`semestres`.
+- Mêmes appels ScoDoc 2-4 du tableau §1 avec `<sem>` = paramètre.
+
+**`semestresEtudiant` [lu]** (l.209-217) :
+- Sans paramètre pour un étudiant (`etudiant` refusé, l.211).
+- Retour = tableau de `getStudentSemesters` (scodoc.class.php l.219-227) ; chaque élément a **exactement 4 champs, recomposés par la Passerelle** : `titre` ← `formation.acronyme`, `formsemestre_id`, `semestre_id`, `annee_scolaire` ← `"<annee>/<annee+1>"`.
+- Tous les autres champs de `formsemestres/query` (titre long, date_debut/fin, etat, dept, etc.) sont **filtrés**. Tri croissant comme en §1.
+
+### 13.3 `getJustifs`, `sendJustif`
+
+**`getJustifs` [lu]** (data.php l.378-385) :
+- Étudiant → `$id = $user->getId()` ; le paramètre `nip` est ignoré (le front l'envoie vide : `getJustifs&nip=`, `html/absences/justifications.php` l.340). Personnel → `$_GET['nip']`, non `sanitize`.
+- Retour = JSON brut de `GET justificatifs/nip/<nip>/query` (absences.scodoc.class.php l.204-207 ; scodoc.class.php l.696-698), sans mapping.
+- Champs lus par le front : `entry_date`, `date_debut`, `date_fin`, `etat` (`VALIDE` | `NON_VALIDE` | `ATTENTE`), `raison` (justifications.php l.276, l.358-365).
+- Le compteur de demi-journées « Congé menstruel » (`raison == "Congé menstruel"` et `etat != "NON_VALIDE"`) est calculé côté client (l.268-337).
+
+**`sendJustif` [lu]** (l.387-407) : `POST multipart/form-data` vers `/services/data.php?q=sendJustif`.
+- Conditions : statut **exactement** `ETUDIANT` (l.388, test `!=`), `$_FILES['file']` présent (l.389) ; sinon `{"erreur":...}` générique.
+- Champs POST : `date_debut`, `date_fin` (valeur brute d'`<input type=datetime-local>`, ex. `2025-10-13T08:00`, justifications.php l.180-181) ; `menstruel` = `on` si coché (l.183), absent sinon (→ `false`, data.php l.404).
+- Validation serveur : uniquement `sanitize` (regex `'/\.\.|\\|\//'`, l.737-742 ; **[déduit]** après interprétation des guillemets simples elle ne rejette que `..` et la séquence `|/`). Aucun contrôle de format/ordre des dates, de type MIME ni de taille.
+- `ini_set('upload_max_filesize'/'post_max_size', '8M')` (l.395-396) est sans effet **[déduit]** (directives `PHP_INI_PERDIR`) ; la limite réelle est celle du php.ini.
+- Validation **front** seulement : `date_debut <= date_fin`, taille du 3ᵉ champ `< 8 000 000` octets, `accept="application/pdf, image/jpeg, image/png, image/avif, image/webp"` (l.187, l.386, l.419-431).
+
+Mapping ScoDoc (`Scodoc::setJustif`, scodoc.class.php l.638-682) **[lu]** :
+1. `POST justificatif/nip/<nip>/create`, corps JSON exact :
+   `[{"etat":"attente","date_debut":"<date_debut>","date_fin":"<date_fin>","raison":"Congé menstruel"}]`
+   (`raison` = `""` si `menstruel` absent ; `etat` vaut `"valide"` seulement sans fichier, cas `setJustifie` administrateur).
+2. `justif_id = $r->success[0]->message->justif_id` (l.667), puis `POST justificatif/<justif_id>/import` en multipart, champ `files` = `CURLFile(tmp_name, type, name)` (l.664-671).
+3. `{"result":"OK"}` si la réponse d'import contient `filename` (l.673-677). Sinon la fonction ne renvoie rien → `$output` vide → `{"erreur":"Mauvaise requête."}` **[déduit]**. Le front ne teste que `JSON.result == "OK"` (justifications.php l.441).
+
+Nommage du champ fichier : le commit HEAD `699ed28` s'intitule « Rename file input key from 'mon_fichier' to 'file' » (data.php l.389, l.405 ; justifications.php l.187).
+**[déduit]** : une installation 7.2.3 antérieure au 2026-10-06 attend `mon_fichier` ; tonAPI devrait lire le `name` de l'`<input type=file>` de `/absences/justifications.php`, ou réessayer avec `mon_fichier`.
+
+### 13.4 `listeNotes&eval=` (data.php l.245-252 ; scodoc.class.php l.308-323)
+
+- **[lu]** Refusé si `histogramme != true` : `{"erreur":"L'histogramme n'est pas activé"}`. Appel `GET evaluation/<eval>/notes`.
+- Retour : **pas un histogramme** mais un tableau JSON plat de notes normalisées `value / note_max * 20`, ex. `[12.5, 8, 15.25]`.
+- Seules les entrées dont `value` est un float PHP sont gardées (l.313). **[déduit]** : une note décodée en `int`, ou une valeur non numérique (absence, dispense), est ignorée.
+- Moins de 6 notes retenues → `["too low"]` (l.318-320).
+- Les 21 buckets 0..20 sont calculés par le front (`html/assets/js/releve-but.js` l.48-66, `Math.floor(note)`), requête `fetch` GET nue sans en-tête (l.42).
+- Aucun contrôle que l'étudiant appartient à l'évaluation : seul un statut connecté est requis.
+
+### 13.5 Photos (data.php l.502-570)
+
+`getStudentPic` (l.521-563), GET ; un étudiant ne peut cibler que lui-même (`nip` ignoré si statut ≤ ETUDIANT, l.522). Ordre **[lu]** :
+1. fichier `data/studentsPic/<nip>.jpg` existant → `Content-type: image/jpeg` ;
+2. hook `Config::customPic(<nip>)` s'il est défini ;
+3. personnel demandant sa propre photo → SVG inline ;
+4. `GET etudiant/nip/<nip>/photo` ScoDoc ; si vide, commençant par `<` (HTML) ou identique à `html/images/default-scodoc-img.jpeg` → `Content-type: image/svg+xml` (silhouette) ; sinon mise en cache dans `data/studentsPic/<nip>.jpg` et `image/jpeg`.
+
+Le `header('Content-type:application/json')` initial est écrasé. **[déduit]** : tester `Content-Type != image/svg+xml` pour savoir s'il y a une vraie photo (c'est ce que fait `html/avatar.php` l.202).
+
+- `setStudentPic` (l.502-519) : POST multipart, champ `image` (le front envoie un blob `image/jpeg` qualité 0,8 nommé `photo.jpg`, avatar.php l.299-312). `etudiant_modif_photo` faux ou `move_uploaded_file` en échec → `{"result":"Not ok"}` ; sinon `{"result":"OK"}`. Aucun contrôle MIME/taille ; le fichier est écrit tel quel en `.jpg`.
+- `deleteStudentPic` (l.565-570) : GET, aucun contrôle de statut, `unlink` puis `{"result":"OK"}` même si le fichier n'existait pas **[déduit]** (warning non bloquant).
+
+### 13.6 Service worker et front : ce que fait réellement le navigateur
+
+**`html/sw.js` [lu]** :
+- `version = 'v7:2:3'` (l.1). À l'installation, pré-cache de `/`, `manifest.json`, deux JS et deux CSS (l.8-15).
+- Le handler `fetch` n'intercepte **que** les GET dont l'URL contient `-no-sw` (l.21), en cache-first (l.22-50). Tout le reste, dont `data.php`, part directement au réseau.
+- **[déduit]** : le pré-cache n'est donc jamais servi ; seuls `maj.php?-no-sw` / `diagnostic.php?-no-sw` sont effectivement cachés. `activate` purge les caches d'une autre version (l.54-70).
+- Aucun cache client pour l'API ; `localStorage` ne sert qu'au thème (`theme.js`), à `seenEvaluations` (releve-but.js l.472-500) et à `composante`.
+
+**Séquence au chargement de `/` (`html/index.php`) [lu]** :
+1. `GET /` → HTML ; aucun contrôle de session côté serveur sur cette page, tout passe par JS.
+2. Chargement de `sw.js`, `assets/js/theme.js`, `releve-dut.js`, `releve-but.js` (l.316-322).
+3. Script inline `includes/clientIO.php` : si `multi_scodoc`, pose le cookie `composante` depuis `localStorage` ou bloque (clientIO.php l.80-99).
+4. `checkStatut()` → `fetchData("dataPremièreConnexion")` (index.php l.339) = **`POST /services/data.php?q=dataPremièreConnexion`**, sans corps ; en-têtes `Content-type: application/x-www-form-urlencoded; charset=UTF-8` et `Authorization: Bearer <token>` si `?token=` dans l'URL, sinon **`Authorization:` vide** (clientIO.php l.18-31). Pas de `X-Requested-With`. Le serveur ne lit que `$_GET` : un GET est équivalent.
+5. `GET /services/data.php?q=getStudentPic` (attribut `src`, l.344).
+6. Étudiant : rendu du dernier semestre, puis **`POST /services/data.php?q=getReportPageMessage&dep=<dep>`** (l.514), avec `dep = relevé.etudiant.dept_acronym || relevé.etudiant.photo_url.split("/")[2]` (l.450) ; retour `{"message": "<html ou ''>"}` (data.php l.679-698).
+7. Si `envoiDonneesVersion` : `GET https://notes.iutmulhouse.uha.fr/services/getOthersData.php?name=<host>&passerelle_version=...` depuis le navigateur (l.365-375) ; sans intérêt pour tonAPI.
+8. Clic sur un semestre : `POST ...?q=relevéEtudiant&semestre=<id>` (l.443, sans `etudiant` pour un étudiant), puis à nouveau `getReportPageMessage`.
+9. Histogramme : `GET ...?q=listeNotes&eval=<id>`. PDF : formulaire `POST services/bulletin_PDF.php?type=BUT&sem_id=<sem>&etudiant=<nip>`, cible `_blank` (l.459).
+
+Pas de polling (aucun `setInterval`).
+
+Gestion des réponses dans `fetchData` (clientIO.php l.33-54) **[lu]** :
+- `data.redirect` → `window.location.href = redirect + "?href=" + encodeURIComponent(location.href)` ;
+- `data.erreur` → affichage, et la promesse se résout en `undefined` (le code appelant plante ensuite sur `data.auth`) ;
+- sinon, si `data.config` existe, `displayFromOptions` lit `config.name` et `config.statut` (pas `auth`).
+- `avatar.php` (l.316-331) et `justifications.php` réimplémentent la même logique `redirect` / `erreur`.
+
+### 13.7 Classe `User` et session (`includes/user.class.php`)
+
+**[lu]** `session_start()` nu (l.19) : pas de `session_set_cookie_params`, pas de `session_name` (cookie `PHPSESSID` par défaut), pas de `session_regenerate_id`, pas de durée explicite ; aucune occurrence de ces fonctions hors `lib/CAS`.
+**[déduit]** : durée = `session.gc_maxlifetime` du php.ini (1440 s par défaut), cookie de session sans `Max-Age`, prolongée à chaque requête. Le seul autre `session_start` est celui de phpCAS (`lib/CAS/CAS/Client.php` l.973) ; phpCAS 1.6.1 peut remplacer l'id de session par un id dérivé du ticket lors de la validation (l.1262-1274).
+
+Ordre de décision du constructeur (l.35-78) **[lu]** :
+- (a) en-tête `Authorization: Bearer x.y.z` **et** `JWT_key` non vide → `tokenAuth` (HS256 ; champs `id`, `idCAS`, `name`, `statut` textuel `etudiant`/`personnel`/..., l.111-139) puis `defineSession` ;
+- (b) sinon `$_SESSION['statut']` non vide → relecture de `id`, `idCAS`, `name`, `statut`, **sans** réinterroger le CAS ;
+- (c) sinon `Auth::defaultAuth()`.
+
+**Ce qui produit `{"redirect":"/services/doAuth.php"}` [lu]** : `includes/auth_CAS.class.php` l.34-50 : `phpCAS::isAuthenticated()` faux → `exit(json_encode(['redirect' => '/services/doAuth.php']))`.
+- `isAuthenticated()` ne redirige jamais : il réussit seulement si la session PHP contient déjà l'utilisateur phpCAS, ou si l'URL courante porte un `ticket` valide (`Client.php` l.1590-1625, l.1755+).
+- Toute requête `data.php` sans cookie de session valide (ni JWT) reçoit donc ce JSON, quel que soit `q`.
+- Parcours d'un client : `GET /services/doAuth.php?href=<url même hôte>` → `phpCAS::forceAuthentication()` (redirection vers le login CAS, retour avec `ticket`, validation) → `Location: <href>` si `href` commence par `://<host>` après `ltrim(..., 'https')` (l.72-85). La session contient alors l'utilisateur CAS ; la requête `data.php` suivante passe par (c), renseigne `id/idCAS/name/statut` (user.class.php l.56-77) et journalise `newSession` si analytics actif.
+
+**`logout`** (`html/logout.php` → `Auth::logout`, l.94-103) : `$_SESSION = array()` puis `phpCAS::logoutWithRedirectService('')`, qui fait `session_unset(); session_destroy()` et redirige vers le logout CAS (`Client.php` l.1887-1906). Aucun endpoint JSON de déconnexion.
+
+### 13.8 `multi_scodoc` et cookie `composante`
+
+- **[lu]** `data.php` l.35-37 : si `Config::$multi_scodoc` et pas de `$_COOKIE['composante']` → `{"erreur":"Veuillez choisir une composante."}` avant toute autre chose, pour **toutes** les actions `q=`.
+- Le cookie sélectionne `config/config<composante>.json` (default_config.php l.21-25), l'instance `scodoc_instances[<composante>]` (`url/login/psw`, l.139-150) et le préfixe des messages `data/messages/<composante>-<dep>.txt` (data.php l.655-659).
+- La valeur doit être une clé de `scodoc_instances` (placeholders `IUTM`, `ENSCMu`, `ENSISA` dans `config/config.php` l.82-102) ; elle n'est pas filtrée.
+- Le front la pose depuis `localStorage.composante`, `path=/` (clientIO.php l.84-93).
+- `multi_scodoc` faux (défaut) : cookie ignoré, non requis.
+- Le flag est visible dans `config.multi_scodoc`, mais seulement après avoir passé ce contrôle. **[déduit]** : tonAPI peut détecter le mode par l'erreur ci-dessus ou par la présence du `<select>` dans `<header>` (`html/assets/header.php` l.20-30).
+
+### 13.9 Versions
+
+- **[lu]** `includes/default_config.php` l.37 : `passerelle_version = '7:2:3'` (format à deux-points, exposé dans `config`) ; `html/sw.js` l.1 : `'v7:2:3'` ; README l.224-226 : la version se lit dans `sw.js` et en pied de page (`index.php` l.305). `config_version` attendu `'1.0.0'` (default_config.php l.7-15).
+- Le changelog `html/maj.php` s'arrête à « 18/08/2025 - 7.0.0 » (l.55-66 : PHP 8.4, multi-ScoDoc, appréciations, publipostage, correctifs). **Aucune entrée 7.1.x ni 7.2.x**, pas de fichier CHANGELOG, pas de tag git (clone de profondeur 1 ; seul commit visible : `699ed28`, 2026-10-06, renommage `mon_fichier` → `file`).
+- Il est donc impossible, depuis ce dépôt, de lister ce que 7.2.3 change par rapport à 7.0.0.
+- **[déduit]** : l'IUT annonçant 7.2.3 exécute le même numéro que le code lu. La seule divergence identifiable est le champ multipart de `sendJustif` (§3) si l'installation précède le commit HEAD : `installOrUpdate.sh` l.73 télécharge `main.zip` sans numéro, donc un même « 7.2.3 » peut recouvrir plusieurs états du code. Tout le reste (actions, clés JSON, authentification) est identique.
