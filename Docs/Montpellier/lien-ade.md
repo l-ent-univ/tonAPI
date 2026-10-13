@@ -95,3 +95,55 @@ Conséquence : tonAPI peut garder le lien **indéfiniment** et ne le relire que 
 3. Si la réponse n'est plus `BEGIN:VCALENDAR` (HTML) → re-lire la page iCal via le CAS, remplacer le lien.
 4. Optionnel : re-lire la page iCal 1×/semaine pour suivre un changement de groupes.
 5. Ne jamais journaliser ni exposer le lien : il donne l'emploi du temps sans login.
+
+---
+
+## 7. Ce que dit le monde extérieur sur ADE (recherche documentaire du 2026-10-13)
+
+> Sources : code de [s-celles/pyade](https://github.com/s-celles/pyade) (client Python non officiel de l'API ADE Web, 2011-2015), README de [papjul/ade-planning-viewer](https://github.com/papjul/ade-planning-viewer), pages d'aide d'universités (USMB, Paris Cité, Saint-Étienne, Limoges, Strasbourg, Colmar, Grenoble). **Aucune documentation publique Adesoft** n'existe pour `direct_cal.jsp`, `direct/?data=` ni l'API Web : la doc officielle est réservée aux clients (administrateur ADE de l'UM).
+
+### 7.1 `direct_cal.jsp?data=…` n'est pas propre à l'UM
+
+- L'Université Savoie Mont Blanc publie elle aussi ses plannings sous la forme `https://<ade-hôte>/jsp/custom/modules/plannings/direct_cal.jsp?data=<hex>` (page Moodle « Espace Étudiants »). C'est donc une **fonction standard d'ADE Campus 6** (« Direct Planning »), pas un développement de Montpellier. Le suffixe `,1` n'est documenté nulle part **[inconnu]**.
+- Paris Cité expose son ADE à `https://<hôte>/direct` ; Saint-Étienne et Colmar décrivent le bouton **« Export Agenda »** (en bas à gauche de Direct Planning) → choisir l'intervalle, cocher **iCalendar**, **« Générer URL »**. Le bouton « OK » donne au contraire un **fichier `.ics` statique** (pas de mise à jour) : ne pas confondre.
+- Strasbourg signale une limite d'affichage de **4 semaines à partir du jour courant** sur son ADE ; l'export UM observé contient toute l'année (364 cours) → c'est un **réglage par instance**.
+- Limoges a **désactivé définitivement** le générateur de liens « pour raisons de sécurité » : ce n'est pas garanti à vie. D'où la règle « si l'iCal renvoie du HTML, relire la page prose ».
+- Les liens `data=` sont **personnels** (donnent l'emploi du temps sans login) : à traiter comme un secret.
+
+### 7.2 Les deux faces d'ADE Web : `/direct` (GWT) et `/jsp`
+
+D'après ade-planning-viewer : une URL `…/direct/…` indique une installation dont la base JSP est `…/jsp` (anciennes versions : `…/ade`). Sous `/jsp` vivent les pages historiques (`custom/modules/plannings/*.jsp`) :
+
+| Page | Rôle | Paramètres connus |
+|---|---|---|
+| `direct_cal.jsp` | export iCal d'une sélection chiffrée (ADE 6) | `data=<hex>[,1]` |
+| `anonymous_cal.jsp` | export iCal « anonyme » (ADE ≤ 6.5, si l'accès anonyme est ouvert) | `resources=<id,id>&projectId=<n>&calType=ical&nbWeeks=<n>` (ex. 2013, Paris Descartes) |
+| `myplanning.jsp` | planning personnel (Pau) avec « Export Agenda » | — |
+| `imageET` (via API) | image GIF du planning | `identifier=<32 hex>&projectId&resources&weeks&days&displayConfId&width&height` ; l'`identifier` expire (≈ 1 jour) |
+
+- Les **identifiants de ressources** (groupes, salles, enseignants) sont des entiers ADE. Dans Direct Planning ils se lisent dans le DOM : `<div id="Direct Planning Tree_<id>">` ; dans l'ancien JSP, `javascript:check(<id>, …)`. Ce sont ces ids que prose encode (chiffrés) dans `data=` **[déduit]**.
+- `projectId` (ou `idProject`) = **l'année universitaire** chez la plupart des universités (un projet par an) → cohérent avec « prose-etudiant » vs « n-1-prose-etudiant » et avec le fait que le lien change d'une année à l'autre.
+
+### 7.3 L'API ADE Web (`/jsp/webapi`) — existe, mais pas pour un étudiant
+
+Lue dans pyade (`pyade/__init__.py`) : une seule URL, `GET https://<hôte>/jsp/webapi?function=<nom>&sessionId=<sid>&…`, réponses **XML** (`<error …>` en cas d'échec).
+
+| `function` | Paramètres | Retour |
+|---|---|---|
+| `connect` | `login`, `password` | `<session id="<sid>">` |
+| `setProject` | `projectId` | `<setProject sessionId projectId>` |
+| `getProjects` | `detail?`, `id?` | `<project id name uid …>` (uid = timestamp ms) |
+| `getResources` | `tree`, `folders`, `leaves`, `id`, `name`, `category` (`trainee`, `room`, `instructor`…), `code`, `detail`, … | `<resource …>` / `<trainee …>` |
+| `getActivities` | `tree`, `id`, `name`, `resources`, `type`, `code`, `detail`, … | `<activity …>` |
+| `getEvents` | `eventId`, `activities`, `name`, `resources`, `weeks`, `days`, `date`, `detail` | `<event …>` |
+| `getDate` | `week`, `day`, `slot` | `<date time="<ms>">` (sert à convertir semaine/jour/créneau en date) |
+| `getCosts`, `getCaracteristics`, `imageET`, `disconnect` | | |
+
+- Il faut un **compte API ADE** (login/mot de passe dédiés, créés par l'administrateur ADE). Ce n'est **pas** le compte étudiant CAS. → Pour tonAPI, cette API n'est utilisable que si l'UM accepte de fournir un compte (peu probable) ; le lien `direct_cal.jsp` reste la voie étudiante.
+- Les semaines sont numérotées **à partir de la première semaine du projet** (`week=0`), pas en ISO.
+
+### 7.4 Ce que ça confirme pour tonAPI
+
+1. Le lien iCal est une **fonction standard ADE 6** liée à une sélection de ressources + un projet (année). Stable tant que l'UM ne désactive pas la fonction.
+2. Pas d'API publique à viser : **prose → lien → GET**, c'est la bonne architecture.
+3. Prévoir le cas « générateur désactivé » (Limoges) : le repli est la lecture GWT de Direct Planning (déjà décrite dans [ent.md](ent.md)), ou, en dernier recours, une image `imageET` (inexploitable en pratique).
