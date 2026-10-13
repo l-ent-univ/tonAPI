@@ -102,3 +102,7 @@ Modèle :
 ## 2026-10-13 — Test 2FA à la demande
 - `/cas/session` + lien `logout?remove_session&noservice` détruit la session OTP sans redemander le mot de passe ; la 2FA revient au prochain service ; nouvelle session datée. Formulaire 2FA et `start({…})` relevés.
 - → [../cas-umontpellier.md](../cas-umontpellier.md) § « Réinitialiser la 2FA »
+
+## 2026-10-13 — Annuaire des personnels (avec accord)
+- JSF/Trinidad stateful, recherche par nom ou structure ; structure « IUT de Béziers » → organigramme + agents responsables ; mails derrière un clic supplémentaire. Pas d'API JSON.
+- → [pistes-api.md §6.5](pistes-api.md)
