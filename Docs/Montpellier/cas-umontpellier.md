@@ -398,3 +398,188 @@ Donc **pas d'OTP** si l'une de ces conditions est vraie :
 - `GET /cas/session` : page qui affiche l'état `validated_otp` de la session (utile pour déboguer).
 - `/logout` : détruit la session si `remove_session`, puis redirige vers `/pre-otp/logout`.
 - Routes : `GET|POST /login*`, `/validate`, `/serviceValidate`, `/p3/serviceValidate`, `/proxyValidate`, `/proxy`, `/logout`, `/session`, `DELETE /api/ssoSessions`.
+
+---
+
+## Ce que dit le code source d'esup-otp-api (le serveur 2FA lui-même) — lu le 2026-10-13
+
+> Complète la section précédente (passerelle CAS) et le § « API OTP » du flux de connexion. Dépôt : [EsupPortail/esup-otp-api](https://github.com/EsupPortail/esup-otp-api). Les sous-sections ci-dessous sont numérotées O.1 à O.9.
+
+Source analysée : dépôt `esup-otp-api` **v2.4.0** (`package.json:3`, CHANGELOG daté 2026-10-01, dernier commit `da72e89` du 2026-10-09) et `esup-otp-cas-server` (package.json `1.0.0`, commit `da948f2` du 2026-09-30). L'instance UM (`otp-api.umontpellier.fr`) peut être plus ancienne : les points marqués **[v≥x]** n'existent pas avant cette version. Les chemins cités sont relatifs à `esup-otp-api/` sauf mention `cas-server/`. Tout ce qui n'est pas marqué **(déduit)** est lu dans le code.
+
+### O.1 Authentification « user » : le `userHash`
+
+- Calcul côté API (`services/utils.js:19-40`) : `hash = SHA256hex( MD5hex(users_secret) + uid + salt )` avec `salt = "" + d.getUTCDate() + d.getUTCHours()` (jour UTC puis heure UTC concaténés **sans zéro de remplissage**, ex. 13 h UTC le 5 → `"513"`). L'API accepte 3 hashes : heure UTC −1, courante, +1 (`utils.js:26-31`), comparaison à temps constant (`validator.js:17-21`).
+- Calcul côté CAS (`cas-server/lib/helpers.js:20-25`) : même formule, heure courante uniquement, avec `conf.api_users_secret` (`cas-server/conf.js:38`) = `users_secret` de `properties/esup.json:6`. Le hash est injecté dans la page de login (`cas-server/lib/cas_server.js:282-293`, `views/login.ejs:69`) dans `params.userHash` et lu par `public/login.js:635`.
+- Qui calcule : **uniquement le CAS serveur** (il détient `users_secret`). tonAPI ne peut pas le calculer sans ce secret ; il doit le récupérer depuis la page HTML du CAS (`start({...})`, JSON inline) et il est valable ~1 h (±1 h côté API) **(déduit)**.
+- Mauvais hash → HTTP 403 `{"code":"Forbidden","message":"User '<uid>' tried to use wrong hash (...)"}` (`validator.js:7-12`, confirmé par `test/test.js:261-267`).
+- Multi-tenant (`services/multiTenantUtils.js:33-62`) : si des tenants sont configurés, l'uid doit être `login@scope`. Hors sujet si l'UM est mono-tenant (`esup.json:21`, `tenants: []`).
+
+### O.2 Tableau des routes publiques « user » (uid + hash, sans api_password)
+
+Déclarées dans `server/routes.js:120-126` (middleware `validator.check_hash`). Routes « Esup Auth » (appareil, authentifiées par `tokenSecret`) : `routes.js:131-143`. Routes `/protected/*` : Bearer `api_password` (`validator.js:23-34`, ou dernier segment d'URL pour `verify_code`, `routes.js:177`). `ignoreTrailingSlash: true` (`server/server.js:24`).
+
+| Méthode / chemin | Auth | Corps | Réponse 200 | Erreurs |
+|---|---|---|---|---|
+| `GET /users/:uid/:hash` | hash | – | `{"code":"Ok","user":{displayName, methods:{...}, transports:{sms,mail,push}, last_send_message, last_validated, has_enabled_method}}` (`controllers/api.js:260-280`) | 403 hash ; 404 `{"code":"Error","message":"User not found"}` si `auto_create_user` false (`databases/api/mongodb.js:233-243`) |
+| `POST /users/:uid/methods/:method/transports/:transport/:hash[?auto]` | hash | – | dépend de la méthode (§4-6) ; enregistre `last_send_message={method,time,auto}` (`api.js:288-299`) | 404 `Method not found` si méthode inconnue, inactive pour l'utilisateur ou désactivée globalement (`api.js:537-557`) |
+| `POST /users/:uid/methods/webauthn/secret/:hash` | hash | – | `{nonce, auths:[{credentialID,credentialPublicKey,counter,name}], user_id, rp:{name,id}, pubKeyTypes}` — **pas de champ `code`** (`methods/webauthn.js:44-60`) | 403 hash |
+| `POST /users/:uid/webauthn/login/:hash` | hash | JSON `{response:{id,type,rawId,response:{authenticatorData,clientDataJSON,signature,userHandle}}, credID}` | `{"token":"<16 alphanum>"}` (`webauthn.js:313-319`) | 404 `{"code":"Error","message":"Please use a valid, previously-registered authenticator."}` ; 400 `{message}` ou `{message:{title,desc}}` (origine inattendue) ; 401 `Invalid credentials` |
+| `GET /users/:uid/methods/push/:tokenSecret` | appareil | – | « pending » (§3) | 404 si `push.pending` false |
+| `POST /users/:uid/methods/push/:loginTicket/:tokenSecret` | appareil | – | `{"code":"Ok","tokenSecret":null}` + émission socket (§3) | 404 `Unvailable method operation` si lt/tokenSecret faux |
+| `POST /users/:uid/methods/push/:loginTicket/:tokenSecret/reject` | appareil | – | `{"code":"Ok"}` (`methods/push.js:389-416`) | idem |
+| `GET /esupnfc/infos?requireDeepLink=true` | aucune | – | `{"code":"Ok","server_infos":{numeroId,url,etablissement,deepLink}}` ou `{"code":"Ko"}` (`methods/esupnfc.js:75-97`) | – |
+| `POST /protected/users/:uid/:otp[/:api_password]` | api_password | – | `{"code":"Ok","method":"<méthode>","message":"Valid credentials"}` (`api.js:333-365`) | 401 `{"code":"Error","message":"Invalid credentials"}` (`test/test.js:364-369`) ; 403 `{"code":"Forbidden"}` |
+| `GET /status` | aucune | – | `{"code":"Ok"}` (`routes.js:108-115`) | – |
+
+Format d'erreur générique : `{"code":"Error","message":"<messages.json error.*>"}` (`services/errors.js:4-15`, `properties/messages.json:13-23`).
+
+#### O.2.1 Champs de `GET /users/:uid/:hash` (`databases/api/mongodb.js:245-338`)
+
+- `methods.codeRequired` : `true` si au moins une méthode « à code saisi » est active pour l'utilisateur : totp, random_code, random_code_mail, bypass, passcode_grid (`mongodb.js:251,273,280,287,298`).
+- `methods.waitingFor` : `true` si push ou esupnfc actif (`mongodb.js:310,331`) — le code arrivera par la socket.
+- `methods.<m>.active` / `.transports` : une méthode n'apparaît que si elle est activée globalement (`properties.getMethod(m).activate`). `transports` = intersection des transports de l'utilisateur (par défaut tous, `userPreferencesSchema.js`) et de ceux configurés pour la méthode (`mongodb.js:340-348`) : en pratique `["sms"]`, `["mail"]`, `["push"]` ou `[]`.
+- `methods.push.device` : `{platform, phone_number, manufacturer, model, canReceiveNotifications, ...}` ; `activationCode`/`qrCode`/`api_url` sont des chaînes/objets vides sur cette route.
+- `methods.bypass` : `available_code`, `used_code`, `generation_date`, `codes: []` (jamais les codes).
+- `methods.totp.secret_hash` : seulement avec `api_password` (`mongodb.js:258-263`), jamais avec le hash.
+- `transports` : valeurs masquées (`utils.js:54-72`) : `sms` → 2 premiers + 2 derniers caractères, `mail` → 4 + 5 ; `push` → `"<manufacturer> <model>"`.
+- `last_send_message {method,time,auto,verified}` / `last_validated {method,time}` **[v≥2.2.2 pour last_validated, CHANGELOG #77]** : servent à `login.js:828-857` pour rejouer automatiquement la dernière méthode validée (avec `?auto`).
+- `has_enabled_method` : utilisé par le CAS pour `no_otp.if_not_activated_for_user_and` (`cas-server/lib/cond_no_otp.js:46-59`).
+- `autoActivateTotp` / `totpKey` / `autoActivateEsupnfc` ne sont **pas** dans cette réponse : ils figurent dans la réponse d'activation push côté appareil (`push.js:326-334`, `totp.js:66-79`).
+- Effet de bord : un `GET` avec hash valide sur un uid inconnu **crée** l'enregistrement (et l'utilisateur dans `userDb` si `auto_create_user`, `mongodb.js:137-146,233-243`).
+
+Exemple reconstitué à partir de `mongodb.js:245-338` et `api.js:269-279` (valeurs fictives) :
+
+```json
+{
+  "code": "Ok",
+  "user": {
+    "displayName": "<Prénom Nom>",
+    "methods": {
+      "codeRequired": true,
+      "waitingFor": true,
+      "totp": { "active": true, "message": "", "qrCode": "", "transports": [] },
+      "webauthn": { "active": false, "transports": [] },
+      "random_code": { "active": true, "transports": ["sms"] },
+      "random_code_mail": { "active": false, "transports": ["mail"] },
+      "bypass": { "active": true, "codes": [], "available_code": 8, "used_code": 2, "generation_date": 1700000000000, "transports": [] },
+      "passcode_grid": { "active": false, "generation_date": null, "transports": [] },
+      "push": { "device": { "platform": "Android", "phone_number": null, "manufacturer": "<marque>", "model": "<modèle>", "canReceiveNotifications": true, "activationCode": {}, "qrCode": {}, "api_url": {} },
+                "activationCode": "", "api_url": "", "qrCode": "", "active": true, "transports": ["push"] },
+      "esupnfc": { "active": false, "transports": [] }
+    },
+    "transports": { "sms": "06******78", "mail": "pren*******om.fr", "push": "<marque> <modèle>" },
+    "last_send_message": { "method": "push", "time": 1700000000000, "auto": true, "verified": true },
+    "last_validated": { "method": "push", "time": 1700000000000 },
+    "has_enabled_method": true
+  }
+}
+```
+
+### O.3 Séquence push pas à pas
+
+1. Navigateur : `GET /users/<uid>/<hash>` → `methods.push.active === true`, `transports.push` = nom de l'appareil.
+2. Navigateur ouvre la socket (§3.1) **avant** d'envoyer la demande (`login.js:748-754`).
+3. `POST /users/<uid>/methods/push/transports/push/<hash>?auto` (`login.js:862-864`). `?auto` n'a **aucun effet** sur le push : il ne fait que positionner `last_send_message.auto=true` (`api.js:297`), information réutilisée par `login.js:846` pour détecter « la dernière méthode a échoué ».
+4. Côté API (`push.js:69-149`) : génère `push.code` = 6 chiffres (`random_code.code_length`, `push.js:70`), `push.validity_time = now + push.validity_time min` (3 min par défaut, `esup.json:125`), `push.lt` = 30 caractères alphanumériques (`push.js:74`), `push.text` = `text1 [+ text2 avec la ville géolocalisée depuis x-forwarded-for]` (`push.js:151-162`). Sauvegarde **avant** d'envoyer. Si `push.notification` et `gcm_id` valides → message Firebase (FCM) `{notification:{title,body}, data:{message,text,action:"auth",trustGcm_id,url:<api_url>,uid,lt}, token:gcm_id}` (`push.js:94-113`).
+5. Réponse HTTP 200 dans tous les cas : `{"code":"Ok","message":"notification sent successfully"}` si FCM a accepté, sinon `{"code":"Ok","message":"Notification is deactivated. Launch Esup Auth app to authenticate."}` (`push.js:134-148`). Un échec FCM ne remonte pas en erreur HTTP.
+6. Verrouillage après refus : si l'utilisateur a rejeté une notification, pendant `push.timeout` s le push est envoyé en `dryRun` (pas de notification, mais le code et `lt` sont quand même régénérés, donc le mode « pending » reste utilisable) (`push.js:83-88`). Timeout = 3 s, puis 9, 81, 6561 s (carré du précédent, `push.js:393-407`) ; remis à 0 à la prochaine vérification réussie (`push.js:174`).
+7. Appareil (Esup Auth) : soit il reçoit la notification (données `uid`, `lt`, `url`), soit il interroge `GET /users/<uid>/methods/push/<tokenSecret>` (« pending », `push.js:186-217`) : si un code valide est en attente → `{code:"Ok", bad_GCM_ID, message, text, action:"auth", lt}` ; si tokenSecret faux ou push désactivé → `action:"desync"` ; sinon `{code:"Ok", bad_GCM_ID}`. (Avec `Accept: text/html` sans `json` → page HTML de deep-link, `api.js:316-319`.)
+8. Acceptation : `POST /users/<uid>/methods/push/<lt>/<tokenSecret>` (`push.js:378-387`, vérifs `push.js:418-440` : `tokenSecret` = `push.token_secret` 128 car. généré à l'activation, ou `gcm_id` si `trustGcm_id`). L'API émet **`userAuth`** `{"code":"Ok","otp":"<push.code>"}` dans la room `user-<uid>` (`server/sockets.js:73-75`) puis répond `{"code":"Ok","tokenSecret":null}`. Le code n'est **pas** consommé ici : il reste valide jusqu'à `validity_time` ou vérification.
+9. Refus : `POST .../<lt>/<tokenSecret>/reject` → `push.code=null`, timeout incrémenté, réponse `{"code":"Ok"}`. **Aucun événement socket n'est émis** : le navigateur ne sait pas que l'utilisateur a refusé, il attend indéfiniment (`push.js:389-416`).
+10. Navigateur : sur `userAuth` avec `code=="Ok"`, remplit `#token` avec `otp` et soumet le formulaire CAS (`login.js:893-898`) : `POST /login?service=...` avec `ticket`, `uid_hint`, `token`.
+11. CAS → `POST /protected/users/<uid>/<otp>/` (Bearer api_password). `push.verify_code` (`push.js:170-180`) : égalité à temps constant **et** `now < validity_time`, puis `code=null`, `timeout=0`. Le code push est à usage unique.
+12. Événements socket émis par l'API : **`userAuth`** (seul événement destiné à l'application `cas`, émis aussi par esupnfc `methods/esupnfc.js:36`). `userPushActivate` / `userPushDeactivate` sont réservés à la room manager (`sockets.js:68-71`, `push.js:325,511`). Il n'existe ni `userAuthSuccess` ni `userAuthFailed`. Nombre d'essais : aucune limite côté API sur `verify_code` ; `nbMaxFails` (3) ne concerne que l'activation initiale (`push.js:298`).
+
+#### O.3.1 Socket (`server/sockets.js`)
+
+- Socket.IO 4.x (`package.json:30`), `path: "/sockets"`, namespace par défaut `/`, attaché au même serveur HTTP (`sockets.js:20`). Transports Engine.IO 4 : polling puis upgrade websocket (`README.md:47-53` pour le reverse proxy).
+- Query de handshake obligatoire : `uid`, `hash`, `app=cas` (`login.js:888-892`, `sockets.js:26-34`). `app=manager` exige un `secret` = api_password. Autre valeur → `BadRequestError`.
+- Authentification : `validator.check_hash({params: query})` dans un middleware `io.use` (`sockets.js:56-58`) ; échec → la connexion au namespace est refusée. **(déduit)** : au niveau protocole, le handshake Engine.IO (`0{"sid":...}`) réussit, c'est le paquet `40` (CONNECT) qui reçoit `44{"message":"Forbidden"}` (CONNECT_ERROR) ; le client voit `connect_error`.
+- Room : `user-<uid>`. À chaque nouvelle connexion, `io.socketsLeave(room)` **expulse toutes les sockets précédentes** de la room avant d'y faire entrer la nouvelle (`sockets.js:59-61`) : une seule socket écoute par uid, la plus récente gagne. Les anciennes restent connectées mais ne reçoivent plus `userAuth`.
+- CORS : `origin` = `https://<casVhost>` + `otherHosts` (`sockets.js:15-20`, `CONFIGURATION.md:5-6`). **(déduit)** : un client serveur sans en-tête `Origin` n'est pas filtré par le middleware `cors`.
+- Pings : paramètres annoncés dans le paquet `0` du handshake (`pingInterval`, `pingTimeout`). Valeurs par défaut socket.io 4 : 25 000 ms / 20 000 ms **(déduit, non configurées dans le code)** ; le serveur envoie `2`, le client doit répondre `3` avant `pingTimeout`. Aucune durée de vie imposée côté serveur ; le navigateur se déconnecte quand il revient à la liste des méthodes (`login.js:900-905`).
+- Paquet utile : `42["userAuth",{"code":"Ok","otp":"123456"}]`.
+
+Séquence filaire en long-polling (protocole Engine.IO 4 / Socket.IO 4 ; les deux premiers échanges sont ceux observés dans le HAR, les valeurs de ping sont les défauts de la bibliothèque **(déduit)**) :
+
+```text
+GET  /sockets/?uid=<uid>&hash=<userHash>&app=cas&EIO=4&transport=polling&t=<rand>
+  <- 0{"sid":"<sid>","upgrades":["websocket"],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}
+POST /sockets/?...&EIO=4&transport=polling&sid=<sid>     corps : 40          (CONNECT namespace "/")
+  <- ok
+GET  /sockets/?...&EIO=4&transport=polling&sid=<sid>
+  <- 40{"sid":"<socket-id>"}           (succès)   |   44{"message":"Forbidden"}  (hash refusé)
+GET  /sockets/?...&sid=<sid>             (poll bloquant, ré-émis à chaque réponse)
+  <- 2                                   (ping serveur, toutes les 25 s)  -> répondre  POST corps : 3
+  <- 42["userAuth",{"code":"Ok","otp":"<6 chiffres>"}]
+POST /sockets/?...&sid=<sid>             corps : 41   (déconnexion propre, optionnel)
+```
+
+Plusieurs paquets peuvent être concaténés dans une même réponse de poll, séparés par `\x1e` (séparateur Engine.IO 4) **(déduit du protocole)**.
+
+### O.4 Séquence TOTP
+
+- Génération (`methods/totp.js:51-64`) : bibliothèque `otpauth` 9.x, `issuer = methods.totp.name` (« Esup Auth »), label = uid, secret base32 ; algorithme SHA1, période 30 s, 6 chiffres = défauts otpauth **(déduit)**, `digits: 6` explicite à la vérification (`totp.js:46`).
+- Vérification (`totp.js:26-33,42-48`) : `OTPAuth.TOTP.validate({token, secret, digits:6})` — fenêtre = défaut otpauth (`window: 1`, soit ±1 période) **(déduit)**. Anti-rejeu : après un succès, `expiry_time_of_last_code_used` = fin de la période de 30 s courante ; **tout** code TOTP est refusé jusqu'à la fin de cette période (`totp.js:27-28,35-40`).
+- Qui vérifie : **esup-otp-api**, jamais le CAS. Il n'existe aucune route de vérification avec hash. Le CAS appelle `POST {api_url_internal}protected/users/<uid>/<otp>/` avec `Authorization: Bearer <api_password>` (`cas-server/lib/cas_server.js:73-78,93-110`). Il n'y a pas de chemin `/protected/users/<uid>/<method>/<transport>/verify/<otp>`.
+- `verify_code` (`api.js:333-365`) essaie **toutes** les méthodes actives dans l'ordre d'`esup.json` trié par `priority` décroissante (`properties/properties.js:39-48` ; toutes à 5 par défaut → totp, random_code, random_code_mail, bypass, passcode_grid, push, esupnfc, webauthn). Première qui accepte → `{"code":"Ok","method":"totp",...}` et `last_validated` mis à jour. Aucune → 401. Un même code à 6 chiffres peut donc être accepté par totp, random_code, push ou bypass indifféremment.
+- Côté navigateur : pas d'appel API pour TOTP (`login.js:668-676`, pas de transport) ; saisie puis auto-submit dès 6 chiffres (`login.js:377-383,629`).
+
+### O.5 WebAuthn
+
+1. `POST /users/<uid>/methods/webauthn/secret/<hash>` → `nonce` (challenge base64url, écrase le précédent, `webauthn.js:46-49`), `auths` (credentialID, **clé publique**, counter, name), `rp`, `pubKeyTypes` (ES256, EdDSA, ES512, PS256/384/512, RS256/384/512, `webauthn.js:23-33`).
+2. Navigateur (`login.js:497-539`) : `navigator.credentials.get({publicKey:{challenge, rpId: rp.id, allowCredentials: auths→{id,type:"public-key"}, timeout: 180000, attestation:"none", pubKeyCredParams}})`.
+3. `POST /users/<uid>/webauthn/login/<hash>` body `{response: PKC sérialisé base64url, credID}` (`login.js:570-584`). Vérification `@simplewebauthn/server` avec `expectedChallenge = registration.nonce`, `expectedOrigin = webauthn.allowed_origins`, `expectedRPID = relying_party.id`, `requireUserVerification:false` (`webauthn.js:255-268`). Le nonce de login n'a **pas** de péremption (le délai de 60 s ne s'applique qu'à l'enregistrement, `webauthn.js:90-100`) et n'est pas effacé après usage ; seul le compteur de signature est mis à jour (`webauthn.js:310`).
+4. Succès → `{"token":"<16 alphanum>"}` valable **30 s** (`webauthn.js:313-319`). Le navigateur le met dans `#token` et soumet au CAS ; le CAS appelle `/protected/users/<uid>/<token>` → `webauthn.verify_code` (`webauthn.js:228-236`) → `method:"webauthn"`.
+5. Contrainte forte : l'assertion doit provenir d'une origine listée dans `allowed_origins` et du domaine `rp.id` de l'UM (`esup.json:11-19`). Une page servie par tonAPI sur un autre domaine ne peut pas produire d'assertion acceptée **(déduit)**.
+
+### O.6 random_code (SMS), random_code_mail, bypass, passcode_grid, esupnfc
+
+- **random_code / sms** (`methods/random_code.js`) : `POST .../methods/random_code/transports/sms/<hash>` → code 6 chiffres valable 15 min (`esup.json:77`), envoyé via `transports/sms.js` (requête HTTP vers le broker `sms.url`). Réponse `{"code":"Ok"|"KO","message":<JSON du broker>,"codeRequired":<bool>,"waitingFor":<bool>}` (`sms.js:54-59`). Anti-spam **[v≥2.0.0]** : si le dernier envoi date de < 60 s → HTTP 200 `{"code":"Ok"}` + en-tête `Retry-After`, **sans nouvel envoi** (l'ancien code reste valide) (`random_code.js:10-18`). Numéro invalide → HTTP 200 `{"code":"Error","message":"Invalid phone number"}` (`errors.js:65-69`). Vérification : égalité + `now < validity_time`, code consommé.
+- **random_code_mail / mail** (`methods/random_code_mail.js`, `transports/mailer.js`) : idem, validité 30 min (`esup.json:85`), pas d'anti-spam, réponse `{"code":"Ok","message":"Message sent","codeRequired","waitingFor"}` ; erreur SMTP → HTTP 200 `{"code":"Error","message":<erreur>}`.
+- **bypass** (`methods/bypass.js`) : pas de `send_message` (404 `Unvailable method operation`). Codes 6 chiffres (10 par défaut), à usage unique ; vérification par parcours et suppression (`bypass.js:20-41`). Uniquement saisie + `/protected/.../<otp>`.
+- **passcode_grid** (`methods/passcode_grid.js`) : `POST .../methods/passcode_grid/transports/passcode_grid/<hash>` (le transport est fictif, `login.js:744-746`) → `{"code":"Ok","message":{"challenge":[ligne,colonne]}}` indices 0-based (affichés `A..`/`1..`, `login.js:876-877`). Le même challenge est conservé tant qu'il n'a pas expiré (3 min, `esup.json:105`, `passcode_grid.js:17-22`). Grille 8×8 de codes à 6 chiffres.
+- **esupnfc** (`methods/esupnfc.js`) : le code (6 chiffres, 3 min) est généré par `/esupnfc/validateTag` appelé **par le serveur NFC** (IP filtrée, `routes.js:149-152`) et poussé par `userAuth` comme le push. `send_message` répond un corps vide `""` (`esupnfc.js:44-49`), non JSON.
+
+### O.7 Côté esup-otp-cas-server (`cas-server/lib/cas_server.js`)
+
+1. `GET /login?service=S` : sans uid valide en session → redirection vers le CAS « mot de passe » avec `service = <our_base_url>/login[-md5(S)]?service=S&auth_checked` (`cas_server.js:302-305`). Au retour avec `ticket`, validation par `/serviceValidate` (`cas_server.js:132-143`), `session.uid` posé.
+2. Si OTP requis (`cas_server.js:510-528`) : rendu de `login.ejs` avec `ticket` et `params = {apiUrl: conf.api_url_public, uid, userHash, validated_otp_too_old}`. Sinon (`no_otp`, ou `validated_otp` récent) → `onLoginSuccess` direct.
+3. Navigateur : charge `<apiUrl>/public/login.js?v=1` (contrôle de compatibilité `routes.js:40-57` : `v` ≠ 1 → script `alert('FATAL ERROR...')`), puis `GET /users/<uid>/<hash>` et le reste (§3-6). `uid_hint` est renseigné depuis `params.uid` (`login.ejs:46`) et ne sert qu'aux logs de session expirée (`cas_server.js:574-585`).
+4. `POST /login?service=S` avec `ticket`, `uid_hint`, `token` (`cas_server.js:562-572`) : exige `req.session.uid` (cookie `connect.sid`, `SameSite=None`, `run.js:46`) ; `may_throttle(uid)` : au-delà de 2 tentatives dans une fenêtre de 2 min, attente de N s (N = nombre de tentatives récentes) (`cas_server.js:445-457`) ; `verifyOtp` = `POST protected/users/<uid>/<token>/` Bearer `api_password` (`cas_server.js:93-110`) : `code:"Ok"` → méthode ; `code:"Error"` → « Le code est invalide. » ; autre → « Problème technique ».
+5. Succès : `session.validated_otp = now`, cookie `maxAge = otp_validity_seconds` (30 min, `conf.js:42`), redirection vers `/login?service=S&ask=rememberMe&ticket=T` → page `rememberMe.ejs` → `POST` `rememberMe=submit|skip` : si accepté, `long_term_otp` et cookie 30 jours (`conf.js:43`, `cas_server.js:554-561`).
+6. `onLoginSuccess` (`cas_server.js:319-356`) : stocke `ticket → {uid, service, v2_response, date, ...}` dans le store Mongo (TTL `ticket_validity_seconds`, `run.js:42`) et redirige vers `S?ticket=T`. L'application valide ensuite `T` sur `/serviceValidate` d'esup-otp-cas-server : le ticket doit avoir < **10 s** (`conf.js:40`, `cas_server.js:213`), même `service`, usage unique (`cas_server.js:200-219`).
+7. Autres délais CAS : `uid_validity_seconds` 30 min (re-vérification du mot de passe), `max_otp_validity_per_service` (ex. 15 min pour le manager), `fetchFromCas` abandonné après 10 s (`cas_server.js:84-89`).
+
+### O.8 Récapitulatif des délais
+
+| Élément | Valeur par défaut (UM peut différer) | Source |
+|---|---|---|
+| `userHash` | salt horaire UTC ; API accepte h−1/h/h+1 | `utils.js:26-31` |
+| Code push | 6 chiffres, 3 min (`push.validity_time`) | `esup.json:125`, `push.js:70-73` |
+| Verrou après refus push | 3 → 9 → 81 → 6561 s | `push.js:393-407` |
+| Code SMS | 6 chiffres, 15 min, 1 envoi / 60 s | `esup.json:77`, `random_code.js:10-18` |
+| Code mail | 6 chiffres, 30 min | `esup.json:85` |
+| Grille | challenge 3 min | `esup.json:105` |
+| TOTP | 30 s, 6 chiffres, ±1 période (déduit) ; anti-rejeu jusqu'à fin de période | `totp.js:27-48` |
+| Token WebAuthn | 16 alphanum, 30 s | `webauthn.js:313-314` |
+| Code NFC | 6 chiffres, 3 min | `esup.json:152` |
+| Socket ping | 25 s / timeout 20 s (déduit, défauts socket.io 4) | – |
+| Ticket CAS (ST) | 10 s, usage unique | `conf.js:40` |
+| Session OTP / rememberMe | 30 min / 30 jours | `conf.js:42-43` |
+| Throttle saisie CAS | > 2 essais / 2 min → N s d'attente | `cas_server.js:445-457` |
+
+### O.9 Pièges pour une réimplémentation côté tonAPI
+
+- Le `userHash` ne se calcule pas sans `users_secret` : il faut le récupérer depuis la page CAS et il expire (≈ ±1 h). Son usage hors de la page CAS n'est pas prévu par le protocole **(déduit)**.
+- La vérification du code (`/protected/...`) exige `api_password` : tonAPI ne peut pas vérifier un code lui-même ; il doit toujours le soumettre au CAS (`POST /login` avec le cookie `connect.sid` de la session où `uid` a été posé, sinon redirection « La session avait expiré »).
+- Le refus d'un push n'émet rien sur la socket ; prévoir un timeout client ≈ `push.validity_time` (3 min) et le verrou exponentiel après refus (le serveur répond quand même `code:"Ok"` en dryRun).
+- Une seule socket par uid : ouvrir une socket depuis tonAPI expulse celle du navigateur de l'utilisateur (et inversement). Ouvrir la socket **avant** le `POST` push, sinon un `userAuth` peut être manqué.
+- Réponses HTTP 200 avec `code:"Error"`/`"KO"` (SMS/mail invalides, broker SMS) : tester le champ `code`, pas le statut. Le corps esupnfc `send_message` est vide (non JSON).
+- Le `GET /users/<uid>/<hash>` crée l'utilisateur s'il n'existe pas ; ne pas l'utiliser comme test d'existence.
+- Les méthodes affichées dépendent de `methods.<m>.active` **et** de la présence de la méthode dans la réponse (désactivation globale = clé absente).
+- Anti-rejeu TOTP : après une validation, aucun TOTP accepté avant la fin de la période de 30 s courante ; anti-spam SMS : second envoi < 60 s silencieusement ignoré (`Retry-After`).
+- WebAuthn impossible depuis une origine non listée dans `allowed_origins` de l'UM.
+- Compatibilité de version : `login.js?v=1` (API ≥ 2.1.0 pour `login.js` servi par l'API, ≥ 2.2.0 pour le module ESM ; `last_validated` ≥ 2.2.2 ; anti-spam SMS et `trustedProxies` ≥ 2.0.0). Si l'instance UM est antérieure, certains champs de `GET /users` et le script peuvent différer ; les routes `/users/:uid/:hash`, `/users/:uid/methods/:method/transports/:transport/:hash`, la socket `/sockets` et `userAuth` sont stables sur toute la branche 1.7 → 2.4 **(déduit du CHANGELOG, qui ne mentionne aucun changement de ces routes)**.
+- Le CAS insère l'OTP tel quel dans l'URL `/protected/users/<uid>/<otp>/` : seuls des codes alphanumériques sont attendus (6 chiffres ou 16 alphanum WebAuthn) ; `maxParamLength: 250` (`server.js:26`).
