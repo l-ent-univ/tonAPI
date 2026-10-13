@@ -351,3 +351,50 @@ Correspondance avec les messages de l'app : `LoginViewController.message(for:)` 
     - un fichier JSON invalide faisait disparaître toutes les universités (signalé comme « peut attendre »).
 12. **Lenteur** (analyse sans mesure) : environ 25 à 30 allers-retours séquentiels entre l'OTP et l'accueil ; la branche ADE en fait 17 à 21, et un second `gather` complet était lancé après la configuration des services. Des pistes ont été proposées ; leur mise en œuvre n'est pas confirmée [incertain].
 
+
+
+---
+
+## Ce que dit le code source de la passerelle 2FA (esup-otp-cas-server) — lu le 2026-10-13
+
+La façade `/cas` de `cas.umontpellier.fr` est le logiciel libre **[EsupPortail/esup-otp-cas-server](https://github.com/EsupPortail/esup-otp-cas-server)** (Node/Express + MongoDB). Son code explique **pourquoi** on observe ce qu'on observe. (Lecture de `lib/cas_server.js`, `lib/cond_no_otp.js`, `conf.js`, `run.js`.)
+
+### Pourquoi `login-<md5(service)>` et `auth_checked`
+- Quand la passerelle n'a pas d'utilisateur valide en session, elle renvoie vers le CAS mot de passe (`/pre-otp`) avec comme service **sa propre URL de retour** : `our_base_url + '/login-' + md5(service sans query) + '?service=…&auth_checked'`.
+- Le **md5 porte sur l'URL du service sans sa query string**. Raison : Apereo CAS normalise les services en ignorant la query ; en mettant un hash dans le *chemin*, chaque appli reste distincte côté `/pre-otp`.
+- `auth_checked` est un simple **marqueur** « je reviens de l'étape mot de passe ». Sans ticket et sans besoin d'OTP (cas `gateway`), la passerelle renvoie directement au service.
+- Le ticket reçu de `/pre-otp` est validé en CAS v2 ; la session Mongo garde `uid`, `validated_uid` (date), `ticket_for_SLO`, et `attrs` (attributs choisis).
+
+### Quand la 2FA est demandée — la vraie règle
+```js
+const validated_otp_too_old = is_validated_otp_too_old(req.session.validated_otp, service)
+let no_need_otp = Boolean(req.session.validated_otp && !validated_otp_too_old) || await cond_no_otp.no_otp(req)
+```
+Donc **pas d'OTP** si l'une de ces conditions est vraie :
+1. la session contient un `validated_otp` **assez récent pour ce service** ;
+2. une condition `no_otp` de la config matche : `if_IP_in` (plages IP, ex. réseau campus), `if_service` / `if_not_service` (liste de services), `if` / `if_any` (fonctions sur mesure), ou `if_not_activated_for_user_and` (**seulement** si l'utilisateur n'a activé aucune méthode OTP — vérifié auprès d'esup-otp-api, *fail closed*).
+
+« Assez récent » = `max_otp_validity_per_service` : la config peut donner, **par service**, une validité maximale plus courte de l'OTP (ex. 900 s dans l'exemple pour le gestionnaire OTP). C'est très probablement ce qui explique l'observation du 13 oct. : **ENT, prose, Moodle, MDW passés sans 2FA, mais Zimbra l'a exigée** → le mail a une validité OTP plus courte (ou n'est pas dans une liste `if_service` d'exemption). **[déduit du code, config UM non visible]**
+
+### Durées (valeurs par défaut de `conf.js` ; l'UM peut les changer)
+| Clé | Défaut | Effet |
+|---|---|---|
+| `otp_validity_seconds` | 30 min | après un OTP **sans** « se souvenir », le cookie de session prend `maxAge` = 30 min → 2FA redemandée ensuite (explique « le matin non, le soir oui ») |
+| `otp_long_term_validity_seconds` | **30 jours** | après « Oui, c'est mon appareil » → `session.long_term_otp = true` et `cookie.maxAge` = 30 jours |
+| `uid_validity_seconds` | 30 min | au-delà, la passerelle revalide l'utilisateur auprès de `/pre-otp` (silencieux si le TGC est encore là) |
+| `ticket_validity_seconds` | 10 s | durée de vie des tickets émis par la passerelle |
+| `max_otp_validity_per_service` | par service | validité OTP plus courte pour certains services |
+
+### « Enregistrer l'appareil » : ce que c'est vraiment ✅ (répond à Q5)
+- Il n'y a **pas de cookie d'appareil séparé**, ni d'empreinte (IP, User-Agent) dans ce code.
+- « Oui » → `POST /login*` avec `ticket` + `rememberMe=submit` → `session.long_term_otp = true` → **le cookie de session `connect.sid` voit son `maxAge` passer à 30 jours**. « Non » (`skip`) → `long_term_otp = false`, cookie à 30 min.
+- Le « souvenir » est donc **la session Mongo elle-même**, référencée par **`connect.sid`** (`Path=/cas`, `SameSite=None`, `Secure`) — exactement le cookie de ~30 jours observé dans le HAR.
+- `rememberMeNoAsk` (« ne plus me reposer la question ») n'existe pas dans la version publique lue : ajout UM ou version plus récente. **[incertain]**
+- Conséquence pour tonAPI : **conserver `connect.sid`** suffit pour éviter la 2FA pendant 30 jours (sauf services à validité courte comme le mail). Pas besoin de simuler un appareil.
+
+### Autres mécanismes utiles
+- **Anti-brute-force OTP** : `may_throttle` ralentit après plus de 2 essais en 2 min. Ne pas boucler sur les codes.
+- **SLO back-channel** : une appli peut déclencher une déconnexion ; la passerelle met `validated_uid` à 0 (force une revalidation) mais **garde `validated_otp`** → pas de nouvelle 2FA.
+- `GET /cas/session` : page qui affiche l'état `validated_otp` de la session (utile pour déboguer).
+- `/logout` : détruit la session si `remove_session`, puis redirige vers `/pre-otp/logout`.
+- Routes : `GET|POST /login*`, `/validate`, `/serviceValidate`, `/p3/serviceValidate`, `/proxyValidate`, `/proxy`, `/logout`, `/session`, `DELETE /api/ssoSessions`.

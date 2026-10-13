@@ -70,28 +70,31 @@ Règles critiques :
 
 ⚠️ Les noms d'action contiennent des **accents** → encoder en UTF-8 percent-encoded (`è` = `%C3%A8`, `é` = `%C3%A9`).
 
-### 4.2 Liste complète (source Passerelle `html/services/data.php`)
+### 4.2 Liste complète (source `html/services/data.php` du dépôt `SebL68/Scodoc_Notes`, lue le 2026-10-13)
 
-Niveaux : ETUDIANT < PERSONNEL < ADMINISTRATEUR < SUPERADMINISTRATEUR.
+Niveaux : ETUDIANT < PERSONNEL < ADMINISTRATEUR < SUPERADMINISTRATEUR. Tout lit `$_GET` sauf mention ; aucune méthode HTTP imposée (GET ou POST). Réponses en `application/json` sauf les images. Erreur : `{"erreur":"<message>"}` (défaut « Vous n'êtes pas un personnel habilité… », ou « Mauvaise requête. »). L'expiration de session (`{"redirect":…}`) vient de la classe `User`, pas de ce fichier.
 
-| `q` | Accès | Paramètres |
+**Accessibles à un étudiant**
+
+| `q` | Paramètres | Notes |
 |---|---|---|
-| `donnéesAuthentification` | tous | — |
-| `getStatut` | tous | `user` |
-| `semestresEtudiant` | tous (un étudiant ne peut pas passer `etudiant`) | `etudiant`? |
-| `relevéEtudiant` | tous (idem) | `semestre`, `etudiant`? |
-| `listeNotes` | tous (si config `histogramme`) | `eval` → histogramme d'une évaluation |
-| `listeDépartements` | tous | — |
-| `semestresDépartement` | tous (contrôle département) | `dep` |
-| `dataPremièreConnexion` | étudiant ou PERSONNEL+ | — |
-| `getJustifs` | tous (étudiant : seulement les siens) | `nip`? |
-| `sendJustif` | ETUDIANT | upload `file`, `date_debut`, `date_fin`, `menstruel`? |
-| `setStudentPic` / `getStudentPic` / `deleteStudentPic` | ETUDIANT+ / tous / tous | `image` / `nip`? / — |
-| `listeEtudiants`, `listeEtudiantsSemestre` (`semestre`, `absences=true`?), `listesEtudiantsDépartement` (`dep`), `modules` (`semestre`), `getAbsence`, `setAbsence`, `listeAdministrateurs` | PERSONNEL+ | voir source |
-| `setJustifie`, `listeVacataires`, `modifVacataire`, `supVacataire`, `modifAdministrateur`, `supAdministrateur`, `deletePic` | ADMINISTRATEUR+ | voir source |
-| `updateLists`, `setUpdateLists`, `getAllConfig`, `setConfig` | SUPERADMIN | voir source |
+| `donnéesAuthentification` | — | session, nom, statut, départements, config |
+| `getStatut` | `user` | |
+| `dataPremièreConnexion` | — | sortie selon le statut ; **appel principal** |
+| `semestresEtudiant` | (`etudiant` interdit à un étudiant) | liste des semestres |
+| `relevéEtudiant` | `semestre` | relevé d'un semestre donné (**semestres passés**) |
+| `listeNotes` | `eval` | histogramme d'une évaluation, si `config.histogramme` |
+| `listeDépartements` | — | |
+| `semestresDépartement` | `dep` | |
+| `getJustifs` | — (`nip` réservé au personnel) | justificatifs de l'étudiant |
+| `sendJustif` | **POST** `date_debut`, `date_fin`, `menstruel`? ; **FILES** `file` | dépôt d'un justificatif ; fichier manquant → erreur |
+| `getStudentPic` | — | image JPEG ou SVG (pas JSON) |
+| `setStudentPic` | FILES `image` | « Not ok » si `etudiant_modif_photo` désactivé |
+| `deleteStudentPic` | — | supprime sa propre photo |
+| `getReportPageMessage` | `dep` (+ cookie `composante` si multi-ScoDoc) | aucun contrôle d'accès |
+| `getAnalyticsData` | `date_from`?, `date_to`? | aucun contrôle dans le switch |
 
-(Liste tronquée dans la session d'origine après `getAllStudents…` — à compléter depuis le dépôt GitHub `SebL68/Scodoc_Notes`.)
+**Réservés au personnel / admin** (inaccessibles avec un compte étudiant) : `listeEtudiants`, `listeEtudiantsSemestre(semestre, absences?)`, `listesEtudiantsDépartement(dep)`, `modules(semestre)`, `setAbsence(…)`, `getAbsence(semestre, etudiant?)`, `listeAdministrateurs(dep)` [PERSONNEL] ; `setJustifie(…)`, `listeVacataires`, `modifVacataire`, `supVacataire`, `modifAdministrateur`, `supAdministrateur`, `deletePic(nip)`, `setReportPageMessage(dep, text)` [ADMINISTRATEUR] ; `updateLists`, `setUpdateLists`, `getAllConfig`, `setConfig(key, value)`, `getAllStudentsPic`, `cleanStudentsPic`, `cleanStudentsPicAll` [SUPERADMIN].
 
 Endpoints intéressants pour tonAPI au-delà de tafac :
 - `semestresEtudiant` + `relevéEtudiant&semestre=<id>` → relevés des **semestres passés**.

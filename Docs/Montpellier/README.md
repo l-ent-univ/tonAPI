@@ -25,6 +25,7 @@ Aucun secret ni donnée personnelle n'est reproduit.
 | [cas-umontpellier.md](cas-umontpellier.md) | **Login ENT UM** | passerelle `/cas` + Apereo CAS 7 `/pre-otp`, schéma `md5(service)`, POST du formulaire, **2FA ESUP-OTP** (push socket / TOTP), « appareil mémorisé 30 j », sessions, renouvellement, erreurs, bugs passés |
 | [ent.md](ent.md) | **Portail ENT + services UM** | architecture des domaines, uPortal/ProlongationENT (`layout.jsp`), liste des applis, planning prose → ADE Direct **GWT-RPC**, Mon Dossier Web (Vaadin), Moodle UM, Zimbra (SOAP JSON) |
 | [emploi-du-temps.md](emploi-du-temps.md) | **ADE iCal** | lien `direct_cal.jsp?data=…`, format iCal ADE, défauts du flux, parsing, annulations, cache |
+| [codes.md](codes.md) | **Codes de modules** | règle ADE `R101` ⇔ ScoDoc `R1.01` ⇔ Apogée `BAMR101`, exceptions, anatomie d'un SUMMARY ADE |
 | [lien-ade.md](lien-ade.md) | **Le lien ADE** | d'où il vient (sélection de groupes dans prose), ce qu'il contient, déterminisme et durée de vie (testé), arbre des groupes de l'IUT, politique tonAPI |
 | [scodoc.md](scodoc.md) | **Notes + absences** (IUT) | Passerelle ScoDoc, `dataPremièreConnexion`, JSON complet, absences, pièges de parsing |
 | [moodle.md](moodle.md) | **Devoirs** (IUT) | Moodle BUT, jeton mobile + repli session web, statut des rendus, doublons, perfs |
@@ -79,10 +80,12 @@ Aucun secret ni donnée personnelle n'est reproduit.
 - Moodle UM quasi vide pour l'IUT, pas d'API mobile.
 - Détail : [research/exploration-2026-10-13.md](research/exploration-2026-10-13.md).
 
+- 2FA : règle lue dans le code source d'esup-otp-cas-server ; « appareil mémorisé » = `connect.sid` 30 jours → [cas-umontpellier.md](cas-umontpellier.md).
+- Codes ADE ↔ ScoDoc ↔ Apogée : règle trouvée → [codes.md](codes.md).
+
 ## Grandes inconnues
 
 - Durée de vie : TGC, session uPortal, `PHPSESSID` ScoDoc, jeton Moodle, lien ADE `data=`.
-- Ce qui déclenche la 2FA, et le nom du cookie « appareil mémorisé ».
 - Page d'erreur « mauvais mot de passe » du CAS UM : jamais capturée en vrai.
 
 ## Projets sources

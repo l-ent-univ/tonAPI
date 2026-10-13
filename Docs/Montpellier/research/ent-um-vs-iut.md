@@ -46,7 +46,7 @@ Conséquences pour tonAPI :
 
 | Type | Côté UM (ADE / Moodle UM) | Côté IUT (ScoDoc) | Remarque |
 |---|---|---|---|
-| Module | codes ADE `[A-Z]{2,4}\d{3}[A-Z]?` (ex. `HAE102E`, `SAE103`, `A-SAE104`) | codes BUT `R1.01`, `SAÉ 1.01` (avec accent) | **pas de correspondance directe** connue ❓ |
+| Module | `R101`, `SAE103` | `R1.01`, `SAÉ 1.03` ; Apogée `BAMR101`, `BAMS13` | ✅ règle simple + exceptions → [../codes.md](../codes.md) |
 | Code Apogée | — | `ressources[*].code_apogee` dans le relevé ScoDoc | 🟡 pourrait servir de pont vers ADE |
 | Groupe | ADE : `TDB`, `MMI  1ère année BUT`, `Gr A`… | ScoDoc : `semestre.groupes[].group_name` (ex. `TP B1`) | noms différents pour le même groupe |
 | UE | — | `UE1.1`, `UE1.2`… | propre au BUT |

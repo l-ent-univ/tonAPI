@@ -24,19 +24,11 @@ Quand une question est résolue : noter le résultat dans [journal.md](journal.m
 ### Q3b. ✅ RÉSOLU — Le lien iCal change-t-il avec les groupes ?
 - Oui, et il **revient à l'identique** quand on remet la sélection. Les anciens liens restent valides. → [../lien-ade.md §5](../lien-ade.md)
 
-### Q4. Qu'est-ce qui déclenche la 2FA ESUP-OTP ?
-- **Indice (2026-10-13)** : dans une même session, l'ENT, prose, Moodle UM et MDW sont passés sans 2FA, mais **ouvrir le mail Zimbra l'a déclenchée** → la 2FA est (au moins en partie) **exigée par service**.
-- **Pourquoi** : tonAPI tourne sur un serveur (IP fixe, pas d'appareil). Il faut savoir si la 2FA reviendra à chaque login.
-- **Tests** (un par jour pour ne pas mélanger) :
-  1. Login depuis un navigateur neuf (privé) → 2FA ? 
-  2. Même navigateur après « Oui, c'est mon appareil » + « ne plus demander » → 2FA le lendemain ?
-  3. Même cookies, autre IP (4G) → 2FA ?
-  4. Même cookies, autre User-Agent → 2FA ?
-- **Noter** : quels cookies `cas.umontpellier.fr` existent après « remember » (noms, path, expiration — **pas les valeurs**).
+### Q4. ✅ RÉSOLU — Qu'est-ce qui déclenche la 2FA ESUP-OTP ?
+- **Réponse (code source d'esup-otp-cas-server)** : OTP requis sauf si la session a un `validated_otp` assez récent **pour ce service** (`max_otp_validity_per_service`), ou si une règle `no_otp` matche (IP campus, liste de services, utilisateur sans méthode OTP). Validité : 30 min par défaut, **30 jours** après « c'est mon appareil ». Le mail Zimbra a vraisemblablement une validité plus courte → 2FA redemandée. → [../cas-umontpellier.md](../cas-umontpellier.md) § « Ce que dit le code source »
 
-### Q5. Nom du cookie « appareil mémorisé 30 jours »
-- **Test** : DevTools → Application → Cookies → `cas.umontpellier.fr`, avant et après avoir cliqué « Oui » sur « Enregistrer l'appareil ».
-- **Noter** : le nouveau cookie (nom, path, `Max-Age`/`Expires`, `SameSite`).
+### Q5. ✅ RÉSOLU — Nom du cookie « appareil mémorisé 30 jours »
+- **Réponse** : c'est **`connect.sid`** lui-même (`Path=/cas`), dont le `maxAge` passe à 30 jours quand on répond « Oui ». Pas d'empreinte d'appareil, pas d'IP, pas d'UA dans le code. → garder `connect.sid`.
 
 ---
 
@@ -45,6 +37,7 @@ Quand une question est résolue : noter le résultat dans [journal.md](journal.m
 ### Q6. Durées de vie
 | Élément | Comment mesurer |
 |---|---|
+| `connect.sid` passerelle | 30 min sans « se souvenir », **30 jours** avec (code source) ; `uid_validity_seconds` 30 min → revalidation silencieuse via TGC |
 | TGC CAS UM | se connecter, puis toutes les heures ouvrir `cas.umontpellier.fr/cas/login?service=https://ent.umontpellier.fr/uPortal/Login` ; noter quand le formulaire réapparaît |
 | Session uPortal | sonder `ent.umontpellier.fr/uPortal/layout.jsp?callback=x` à intervalles ; noter le premier 302 |
 | `PHPSESSID` ScoDoc | appeler `data.php?q=dataPremi%C3%A8reConnexion` à intervalles ; noter le premier `{"redirect":…}` |
@@ -64,9 +57,8 @@ Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans
 - **Test** : connecté à l'ENT, ouvrir `https://moodle.umontpellier.fr/my/` ; lister les cours (nombre, pas les noms).
 - **Conclure** : si vide, tonAPI n'a besoin que du Moodle BUT pour l'IUT.
 
-### Q9. Correspondance des codes ADE ↔ ScoDoc
-- **Test** : exporter la liste des codes de modules ADE (SUMMARY) et la liste ScoDoc (`ressources`, `saes`, `code_apogee`) du même semestre ; chercher une règle.
-- **Conclure** : table de correspondance ou règle dans [ent-um-vs-iut.md §4](ent-um-vs-iut.md).
+### Q9. ✅ RÉSOLU — Correspondance des codes ADE ↔ ScoDoc
+- **Réponse** : `R101` ⇔ `R1.01` ⇔ `BAMR101` ; `SAE103` ⇔ `SAÉ 1.03` ⇔ `BAMS13`, avec quelques exceptions (`AR114`, `A-SAE102`, `R1.02E`). → [../codes.md](../codes.md)
 
 ---
 
@@ -82,8 +74,9 @@ Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans
 
 - Ouvrir l'URL connecté ; noter si c'est un JWT, du JSON ou une erreur, et quels claims (noms seulement).
 
-### Q12. Liste complète des actions de la Passerelle ScoDoc
-- Lire `html/services/data.php` du dépôt GitHub `SebL68/Scodoc_Notes` (version 7.2.3) et compléter [../scodoc.md §4.2](../scodoc.md).
+### Q12. ✅ RÉSOLU — Liste complète des actions de la Passerelle ScoDoc
+- **Réponse** : lue dans `html/services/data.php` et reportée dans [../scodoc.md §4.2](../scodoc.md).
 
-### Q13. Autres IUT de l'UM
+### Q13. Autres IUT de l'UM — ❓ non concluant
+- Recherche web du 2026-10-13 : aucune trace publique de ScoDoc pour IUT Montpellier-Sète ou Nîmes. À demander à un étudiant de ces IUT.
 - Repérer les hôtes ScoDoc/Moodle des autres IUT (Montpellier-Sète, Nîmes) pour généraliser le modèle « parent + surcharge ».

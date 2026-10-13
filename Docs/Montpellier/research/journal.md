@@ -54,3 +54,8 @@ Modèle :
 ## 2026-10-13 — Test du lien ADE avec changement de groupes
 - TPB1 → +TPA1 : nouveau lien (660 cours), l'ancien marche encore. −TPA1 : lien identique au départ.
 - Conclusion : lien déterministe, non révoqué ; TD = dossiers, TP = vrais groupes. → [../lien-ade.md](../lien-ade.md)
+
+## 2026-10-13 — Lecture du code source d'esup-otp-cas-server + Passerelle ScoDoc + codes
+- 2FA : règle `validated_otp` récent **par service** ou `no_otp` ; « appareil mémorisé » = `connect.sid` avec maxAge 30 j. Q4, Q5 résolues.
+- Passerelle ScoDoc : liste complète des `q` (Q12). Codes ADE↔ScoDoc↔Apogée : règle trouvée (Q9) → `codes.md`.
+- Q13 (autres IUT) : rien de public.
