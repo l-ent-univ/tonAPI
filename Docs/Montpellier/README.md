@@ -30,6 +30,10 @@ Aucun secret ni donnée personnelle n'est reproduit.
 | [scodoc.md](scodoc.md) | **Notes + absences** (IUT) | Passerelle ScoDoc, `dataPremièreConnexion`, JSON complet, absences, pièges de parsing |
 | [moodle.md](moodle.md) | **Devoirs** (IUT) | Moodle BUT, jeton mobile + repli session web, statut des rendus, doublons, perfs |
 | [cas-iut-beziers.md](cas-iut-beziers.md) | **Login IUT** (pour ScoDoc) | phpCAS `:8443`, flux en 5 étapes, problème TLS GandiCert |
+| [apis/INDEX.md](apis/INDEX.md) | **Index de tous les endpoints** | ~250 endpoints, 24 services, auth/entrée/sortie/statut, parcours minimal tonAPI en 15 appels, désaccords entre fichiers |
+| [apis/esup-stage.md](apis/esup-stage.md) | **API Stages** (ESUP-Stage 3.1.14) | session CAS + CSRF, rôles, pagination (`predicate` obligatoire), conventions/avenants/évaluations, modèles |
+| [apis/sympa-soap.md](apis/sympa-soap.md) | **API Listes** (Sympa SOAP) | 23 opérations, `casLogin`, `authenticateAndRun`, enveloppes et curl |
+| [apis/esup-pod.md](apis/esup-pod.md) | **Vidéos** (Esup-Pod 4.4) | REST admin-only, RSS/HTML publics, accès CAS aux vidéos restreintes |
 | [research/pistes-api.md](research/pistes-api.md) | **Pistes API** | annuaire public, API Web ADE (XML, compte requis), Zimbra REST, otpum, ardemat, uPortal `/api/*`, à tester connecté |
 | [research/](research/README.md) | **Recherche en cours** | UM vs IUT (même ENT, services et codes différents), questions ouvertes avec protocoles de test, journal |
 

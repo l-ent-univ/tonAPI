@@ -110,3 +110,6 @@ Modèle :
 ## 2026-10-13 (soir) — Deuxième tour des applis ENT
 - ESUP-Stage (REST `/api/`, open source), CMSWEB (Symfony, paiement carte), Sympa SOAP (WSDL public, `casLogin`), Esup-Pod (REST Basic, RSS public), WordPress `wp-json`, keep-alive uPortal `/api/ajax-success`, notification portlet en 500.
 - → [pistes-api.md §7](pistes-api.md)
+
+## 2026-10-13 (soir) — Documentation des API restantes
+- `apis/INDEX.md` (251 endpoints, 24 services, parcours minimal, 14 désaccords relevés), `apis/esup-stage.md`, `apis/sympa-soap.md`, `apis/esup-pod.md` — depuis les sources open source et le WSDL public, sans sonder les serveurs UM.
