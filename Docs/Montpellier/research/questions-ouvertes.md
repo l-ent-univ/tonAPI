@@ -90,9 +90,9 @@ Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans
 - Seul test possible : après un **changement volontaire** de mot de passe UM, vérifier si le jeton Moodle BUT stocké marche encore. À faire quand Lucas change son mot de passe.
 - `passwordchangetokendeletion` (purge des jetons), `lockoutthreshold` (verrouillage). Non lisibles via l'API. Déduire : après un changement de mot de passe volontaire, le jeton tonAPI survit-il ? Noter dans le journal.
 
-### Q18. `GET /uPortal/api/people/<userName>.json` donne-t-il l'e-mail ? — ⏳ nécessite une session ENT
-- Non testé le 2026-10-13 (session navigateur fermée). À faire à la prochaine connexion : ouvrir l'URL et noter seulement les **noms** d'attributs.
-- uPortal 4.3 filtre par permission `VIEW_USER_ATTRIBUTE`. Ouvrir l'URL connecté ; noter seulement les **noms** des attributs renvoyés.
+### Q18. ✅ RÉSOLU — `GET /uPortal/api/people/<userName>.json` donne-t-il l'e-mail ?
+- **Oui** (testé 2026-10-13, connecté) : `{"person":{"name":"<userName>","attributes":{"username":[…],"displayName":[…],"givenName":[…],"sn":[…],"mail":[…],"telephoneNumber":[…],"postalAddress":[…]}}}`. Chaque attribut est un **tableau**. `me.json` → `{"person":null}` (n'existe pas).
+- `postalAddress` = adresse de la **composante** (celle de l'IUT, `…$BP…$BEZIERS`, séparateur `$`), pas celle de l'étudiant → 3e moyen de détecter l'IUT. `telephoneNumber` était vide (`+33` seul).
 
 ### Q13. Autres IUT de l'UM — ❓ non concluant
 - Recherche web du 2026-10-13 : aucune trace publique de ScoDoc pour IUT Montpellier-Sète ou Nîmes. À demander à un étudiant de ces IUT.
