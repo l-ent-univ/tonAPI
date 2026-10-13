@@ -116,7 +116,7 @@ window.prolongation_ENT.main({
 
 ### Userinfo
 
-> **Mise à jour 2026-10-13 (exploration live)** : `/uPortal/api/v5-1/userinfo` répond **404**. Utiliser `GET /uPortal/api/session.json` → `{"person":{"displayName","userName","sessionKey","serverName","version":"4.3.1"}}`. Détails : [research/exploration-2026-10-13.md](research/exploration-2026-10-13.md).
+> **Mise à jour 2026-10-13 (exploration live)** : `/uPortal/api/v5-1/userinfo` répond **404** (endpoint uPortal 5, inexistant en 4.3 — voir la section « uPortal 4.3 vu du code source » en fin de document). Utiliser `GET /uPortal/api/session.json` → `{"person":{"displayName","userName","sessionKey","serverName","version":"4.3.1"}}`. Détails : [research/exploration-2026-10-13.md](research/exploration-2026-10-13.md).
 
 
 lent-ios demande `GET https://ent.umontpellier.fr/uPortal/api/v5-1/userinfo` (`Accept: application/jwt, application/json, */*`) et décode un JWT ou du JSON. Les claims lus sont `sub`, `preferred_username`, `name`, `given_name`, `family_name`, `email` et `supannEtuId` (`Profile/StudentProfile.swift:27-39`).
@@ -374,3 +374,138 @@ Chemins relatifs à `/Users/lucas/Documents/GitHub/lent-ios/`.
 - L'effet de `gateway=true` sans TGC sur la lecture du `sesskey` Moodle.
 - La forme exacte de la page d'erreur « mauvais mot de passe » de `/pre-otp` : un échec n'a jamais été capturé, seulement simulé dans les tests.
 - La mise en œuvre des optimisations de lenteur.
+
+---
+
+## uPortal 4.3 vu du code source (branche `rel-4-3-patches`) — lu le 2026-10-13
+
+> Explique `session.json`, `layout.json`, `/Login`, `/Logout`, la durée de session et les boucles de redirection observées sur `ent.umontpellier.fr` (uPortal 4.3.1). Dépôt : [uPortal-Project/uPortal](https://github.com/uPortal-Project/uPortal). Sous-sections U.0 à U.10.
+
+Source : clone `uPortal` branche `rel-4-3-patches` (HEAD `af6c118`). Chemins relatifs à `uportal-war/src/main/`. Tout ce qui est marqué **[lu]** vient du code ; **[déduit]** est une inférence (ESUP ProlongationENT et le client CAS Java ne sont pas dans ce dépôt). Préfixe `/uPortal` = `environment.build.uportal.context`.
+
+### U.0 Architecture des servlets et filtres (web.xml) **[lu]**
+
+`webapp/WEB-INF/web.xml` :
+- `MVCDispatcherServlet` → `/api/*` (l. 428-430) : toutes les API REST, vue JSON = `MappingJackson2JsonView` (`resources/properties/contexts/mvcContext.xml` l. 87).
+- `RenderingDispatcherServlet` → `/index.jsp`, `*.uP`, `/f/*`, `/p/*` (l. 410-415) : rendu du portail ; c'est le seul servlet sur lequel sont mappés `urlCanonicalizingFilter` (l. 294-296) et `createPortletCookieFilter` (l. 322-324).
+- `JsonRenderingDispatcherServlet` → `/layout.json` (l. 418-420).
+- `AuthenticationDispatcherServlet` → `/Login`, `/Logout` (l. 433-436).
+- `requireValidSessionFilter` sur Rendering, MVC (`/api/*`) et JsonRendering (l. 260-264) ; `requestParameterFilter` + `CAS Validate Filter` (`Cas20ProxyReceivingTicketValidationFilter`) sur `/Login` et `/CasProxyServlet` (l. 267-281) ; `remoteCookieCheckFilter` sur `/Login` (l. 327-329) ; `springSecurityFilterChain` sur `*` ; `etagFilter` sur `/api/*` (l. 317-319).
+- `session-config` : `tracking-mode=COOKIE`, **aucun `session-timeout`** : « Specify the HTTP session duration in `<tomcatHome>/conf/web.xml` » (l. 440-443). La durée est donc celle de Tomcat à l'UM (30 min par défaut Tomcat) **[déduit]**.
+
+### U.1 `GET /uPortal/api/session.json` **[lu]**
+
+`java/org/jasig/portal/rest/SessionRESTController.java` l. 73-110, méthode GET uniquement.
+- Pas de session (`getSession(false) == null`) → HTTP **404** et corps JSON vide `{}` (l. 79-81, la vue `json` est quand même rendue). En pratique, derrière `requireValidSessionFilter` (voir §6) on reçoit plutôt un 302 vers `/Login` quand la session est absente ou neuve ; le 404 n'est atteint que si le filtre laisse passer **[déduit]**.
+- Avec session : objet `person` = `userName`, `displayName` (`"Guest"` si invité, sinon `getFullName()`), `sessionKey` (null pour l'invité, l. 89), `version` (`org.jasig.portal.version`), `serverName` (hostname JVM, ou `"unknown"`), et `originalUsername` seulement en cas d'impersonation (l. 91-96).
+- Session invité : `person.userName` vaut `org.jasig.portal.security.PersonFactory.guest_user_name=guest` (`resources/properties/portal.properties` l. 534). Un client doit donc tester `userName != "guest"` et non juste le code 200.
+
+### U.2 Layout JSON **[lu]**
+
+Trois endpoints, deux formats :
+
+| URL | Contrôleur | Feuille XSL | Forme |
+|---|---|---|---|
+| `GET /uPortal/layout.json` | `json/rendering/LayoutJsonV1RedirectController.java` l. 43-47 : `redirect:/api/v1/dlm/layout.json` (302) | — | — |
+| `GET /uPortal/api/v1/dlm/layout.json` | `rest/layout/LayoutJsonV1RenderingController.java` l. 44-46, 67-79 (structure `DLMMobileColumns`, thème `JsonLayout`) | `resources/layout/theme/json/json.xsl` | `{"user","locale","layout":{"header":{"portlets":[]},"folders":[{"id","title","portlets":[]}],"footer":{"portlets":[]}}}` (l. 179-204) |
+| `GET /uPortal/api/v4-3/dlm/layout.json` | `rest/layout/LayoutJsonV43RenderingController.java` l. 48-49, 70-77 (structure `DLMTabsColumnsJS`, thème `JsonLayoutV4-3`) | `.../json/json-v4-3.xsl` | `{"user","authenticated","hostname","fragmentAdmin","locale","layout":{"globals","regions":[],"navigation":{...,"tabs":[{...,"content":[]}]},"favorites":[],"favoriteGroups":[]}}` (l. 188-213) |
+
+Portlet v1 (`json.xsl` l. 215-241) : `fname`, `title`, `url`, `description`, `iconUrl` (= paramètre `mobileIconUrl` sinon `/uPortal/media/skins/icons/mobile/default.png`). `url` est une URL de rendu **DETACHED** ciblant le nœud `@ID` (l. 219-222), d'où la forme `/uPortal/f/<tab>/p/<fname>.<nodeId>/detached/render.uP`. Il n'y a **ni `nodeId` ni `altMaxUrl`** dans ce flux.
+
+Portlet v4-3 (`json-v4-3.xsl` l. 224-246) : `_objectType:"portlet"`, `url` = `/uPortal/api/v4-3/portlet/<fname>.html` (rendu isolé, voir §3), `iconUrl`, puis **tous les attributs XML du nœud `channel`** sauf `hidden/immutable/unremovable` (donc `ID`, `fname`, `name`, `title`, `description`, `chanID`, `typeID`, …) et `parameters{}` (dont `alternativeMaximizedLink` s'il est défini comme paramètre). Le champ `authenticated` vient du paramètre XSL `AUTHENTICATED = !person.guest` (`resources/properties/contexts/renderingPipelineContext.xml` l. 192).
+
+Les champs `nodeId` / `altMaxUrl` / `faIcon` / `target` appartiennent à `rest/layout/LayoutPortlet.java` (l. 32-40, 56-66), servi par `GET /api/layoutDoc[?tab=]` (`rest/LayoutRESTController.java` l. 110-184, **@Deprecated**) et `GET /api/portlet/<fname>.json`. Dans `layoutDoc`, `url` = `alternativeMaximizedLink` (`altMaxUrl:true`) sinon l'URL de rendu **MAXIMIZED** du nœud (l. 153-167) → `/uPortal/f/<tab>/p/<fname>.<nodeId>/max/render.uP`.
+
+**ProlongationENT `layout.jsp` [déduit]** : un flux `layout.folders[].portlets[]` avec en plus `nodeId`/`altMaxUrl` n'existe pas tel quel dans uPortal ; c'est vraisemblablement la surcouche ESUP qui fusionne le format v1 (`folders/portlets`) et les données `LayoutPortlet`. Les URLs `/f/.../p/<fname>.<nodeId>/detached|max/render.uP` et `/uPortal/p/<fname>` sont, elles, du pur uPortal (§9).
+
+### U.3 Catalogue des API REST 4.3 (`/uPortal/api/...`) **[lu]**
+
+| Chemin | Contrôleur (java/org/jasig/portal/…) | Renvoie |
+|---|---|---|
+| `GET session.json` | `rest/SessionRESTController` | voir §1 |
+| `GET v4-3/dlm/layout.json`, `v1/dlm/layout.json`, `layoutDoc` | §2 | layout |
+| `GET v4-3/portlet/{fname}.html` | `rest/PortletsRESTController` l. 125-153 | HTML du portlet seul ; 404 si fname inconnu, 403 si pas `canRender` |
+| `GET portlet/{fname}.json` | idem l. 108-119 | `{"portlet": LayoutPortlet}` (403 sinon) |
+| `GET portlets.json` | idem l. 87-102 | `{"portlets":[{id,name,fname,description,type,lifecycleState,categories}]}` filtré par `canManage` → **vide pour un simple utilisateur** |
+| `GET people.json?searchTerms[]=…` | `rest/PeopleRESTController` l. 58-84 | recherche annuaire ; 401 si `person == null` (jamais en pratique, cf. §6) |
+| `GET people/{username}.json` | idem l. 86-103 | `{"person":{"name","attributes":{...}}}` ; attributs filtrés par la permission `VIEW_USER_ATTRIBUTE` (`portlets/lookup/PersonLookupHelperImpl.java` l. 359, 417, 442). Un utilisateur peut en général lire ses propres attributs (`mail`, `displayName`…) **[déduit]** ; `person` vaut `null` si rien n'est autorisé |
+| `GET v4-3/dlm/portletRegistry.json`, `portletList` | `layout/dlm/remoting/ChannelListController` l. 144, 172 | registre des portlets souscrivables |
+| `POST layout?action=…` | `layout/dlm/remoting/UpdatePreferencesServlet` l. 103, 182-1090 | modification du layout (addPortlet, moveTab, addFavorite…) |
+| `GET marketplace/entries.json`, `marketplace/entry/{fname}.json` | `rest/MarketplaceRESTController` l. 73-110 | marketplace |
+| `GET subscribableTabs.json`, `fragmentList`, `entities*.json`, `permissions/*`, `v4-3/pags/*`, `import`, `entity/*` | `rest/*` | admin / groupes |
+| `GET ajax-success` | `rest/AjaxSuccessController` l. 44 | réponse 200 vide (utilisé comme keep-alive, §6) |
+| `GET cookiecheck` | `rest/RemoteCookieCheckController` l. 39-62 | voir §4 |
+
+**`/api/v5-1/userinfo` n'existe pas en 4.3** : aucun `userinfo` dans `rest/` (grep négatif ; seules occurrences dans SpEL/portlets). C'est un endpoint uPortal 5 (`uPortal-api` 5.x) **[déduit]**. En 4.3 l'identité se lit via `session.json` (nom affiché) et `people/<userName>.json` (e-mail, selon permissions).
+
+### U.4 Login : `/uPortal/Login` **[lu]**
+
+`java/org/jasig/portal/security/mvc/LoginController.java` (l. 50-154), mais l'authentification est faite **avant**, par `spring/security/preauth/PortalPreAuthenticatedProcessingFilter.java` (chaîne Spring Security) :
+- Sur `/Login` : vide le contexte Spring Security, invalide la session existante si l'id demandé est valide (l. 250-290), crée une **nouvelle** session (l. 309) → le `JSESSIONID` change au login.
+- Lit les tokens de `resources/properties/security.properties` : `principalToken.root=userName`, `credentialToken.root=password`, `credentialToken.root.cas=ticket` (l. 4-6). Authentification locale : `POST /Login` avec `userName` + `password` (`SimpleSecurityContext`) ; CAS : paramètre `ticket`.
+- Le ticket CAS est validé par le filtre `Cas20ProxyReceivingTicketValidationFilter` (web.xml l. 89-118) avec `casServerUrlPrefix` = `${cas.protocol}://${cas.server}${cas.context}` et `serverName` = `${uportal.protocol}://${uportal.server}` ; le client CAS reconstruit l'URL `service` à partir de `serverName` + URI de la requête (`/uPortal/Login?refUrl=…`, **sans** le paramètre `ticket`) **[déduit du client CAS Jasig]**. Proxy CAS activé : `proxyCallbackUrl=…/uPortal/CasProxyServlet` (l. 100-105) ; `CasAssertionSecurityContext.getCasServiceToken()` fournit des proxy tickets aux portlets (l. 115-139).
+- `CasAssertionSecurityContext.authenticate()` (`security/provider/cas/` l. 75-113) prend l'`Assertion` du ThreadLocal, pose `uid = principal.getName()`.
+- Paramètres de `/Login` : `refUrl` (redirection finale, **acceptée seulement si même protocole/hôte/port**, l. 164-184), `uP_fname` (+ autres paramètres copiés) pour cibler un portlet (l. 103-128), `profile` (sélection de profil, filtre l. 365-379), `userName`/`password` (local), `ticket` (CAS). Sans `refUrl` ni `uP_fname` → `getDefaultUrl` = onglet par défaut (`url/PortalUrlProviderImpl.java` l. 104-107).
+- Réponse : toujours **302** vers `refUrl` ou l'URL par défaut (l. 147-153), headers `no-cache`. En cas d'échec, la session est invalidée puis recréée avec `up_authenticationError=true` (filtre l. 356-363) → on retombe en invité ; un ticket CAS invalide fait lever une exception dans le filtre CAS avant (403 **[déduit]**).
+- `GET /uPortal/Login` sans ticket **ne redirige pas vers CAS**. Le renvoi vers CAS observé vient de la canonicalisation (§8) ou de la surcouche ESUP ; l'URL CAS de référence est `org.jasig.portal.channels.CLogin.CasLoginUrl=…/cas/login?service=…/uPortal/Login` (`security.properties` l. 9). Un client doit donc appeler `https://cas…/cas/login?service=https%3A%2F%2Fent.umontpellier.fr%2FuPortal%2FLogin%3FrefUrl%3D…`, puis suivre `…/Login?refUrl=…&ticket=ST-…` **[déduit]**.
+- `remoteCookieCheckFilter` (`utils/web/RemoteCookieCheckFilter.java` l. 55-84) : sur un `GET /Login` **sans cookie `JSESSIONID`**, et UA ne matchant pas `.*Googlebot.*` (`mvcContext.xml` l. 36-42), il crée une session, mémorise l'URL et répond 302 vers `/uPortal/api/cookiecheck` ; celui-ci renvoie vers l'URL mémorisée si le cookie revient, sinon affiche la page « cookies désactivés ». Un client HTTP doit donc **avoir un cookie jar** avant le premier `/Login`.
+
+### U.5 Logout : `/uPortal/Logout` **[lu]**
+
+`security/mvc/LogoutController.java` l. 122-167 : publie l'événement de logout, `session.invalidate()` (l. 147), puis **302** vers l'URL calculée par `getRedirectionUrl` (l. 191-245) : clé `logoutRedirect.root` de `security.properties` si le contexte racine est authentifié, sinon la première clé `logoutRedirect.root.<ctx>` d'un sous-contexte authentifié, sinon `/uPortal/`. Valeur livrée : `…/cas/logout?url=…/uPortal/Login` (l. 7). L'UM observe `cas/logout?service=https://ent.umontpellier.fr/uPortal/Logout` → configuration locale différente du défaut. Aucun paramètre n'est lu sur `/Logout` (sauf cas impersonation → redirection `/Login`).
+
+### U.6 Session, expiration, keep-alive **[lu]**
+
+- `url/RequireValidSessionFilter.java` l. 41-73 : si pas de session **ou session `isNew()`** → 302 vers `/uPortal/Login?refUrl=<URI encodée>[?query]`. Appliqué à `/api/*`, `/f/*`, `/p/*`, `*.uP`, `/layout.json`. Conséquence : un premier appel **sans cookie** à `session.json` ou `layout.json` donne un **302 vers `/Login`**, pas un 401. Après ce `/Login` (qui crée une session invité), le `JSESSIONID` obtenu permet des 200 en invité (`userName:"guest"`).
+- Après expiration côté Tomcat, le cookie ne correspond plus à rien → même comportement : 302 `/Login?refUrl=…`. La redirection vers CAS n'est pas faite par uPortal 4.3 lui-même (sauf deep-link, §8).
+- Durée : pas dans `web.xml` (§0) ; `org.jasig.portal.PortalSessionManager.unauthenticatedUserSessionTimeout=0` (`portal.properties` l. 480-484) = timeout invité identique au timeout webapp ; sinon `url/GuestSessionExpirationInterceptor.java` l. 54-68 raccourcit `maxInactiveInterval` pour les invités.
+- Keep-alive : tout appel portant le `JSESSIONID` (y compris `session.json`) touche la session servlet, ce qui remet le compteur à zéro **[déduit du fonctionnement servlet]**. Le portlet « SessionTimeout » livré utilise `GET /uPortal/api/ajax-success` comme `resetSessionURL` (`portlets/sessiontimeout/SessionTimeoutViewController.java` l. 48-49, 74-83) : c'est l'endpoint de ping canonique, 200 sans contenu. Il n'y a pas d'endpoint dédié exposant le temps restant.
+
+### U.7 Cookie `org.jasig.portal.PORTLET_COOKIE` **[lu]**
+
+`portlet/container/services/IPortletCookieService.java` l. 33 (nom), `PortletCookieServiceImpl.java` l. 81-87, 330-340 : cookie persistant **365 jours**, HttpOnly, Secure si HTTPS, path `/uPortal`, posé/renouvelé par `CreatePortletCookieFilter` sur `RenderingDispatcherServlet` (toutes les 5 min max). Il identifie un enregistrement `UP_PORTAL_COOKIES` en base dans lequel uPortal stocke les cookies que les portlets (JSR-286 `addProperty(Cookie)`) souhaitent poser. Pour un client qui ne rend pas de portlets, il est inutile ; le renvoyer est inoffensif et évite une création en base à chaque rendu. Il **ne porte pas la session**.
+
+### U.8 `UrlCanonicalizingFilter` **[lu]**
+
+`url/UrlCanonicalizingFilter.java` l. 44-204, uniquement sur `RenderingDispatcherServlet` (pas sur `/api/*`), uniquement en **GET** :
+1. Calcule l'URL canonique (`UrlSyntaxProviderImpl.getCanonicalUrl` l. 842-913) : une URL cible toujours `/f/<folder>/.../<state>/<type>.uP` ; `/uPortal/` ou `/uPortal/index.jsp` → onglet par défaut `/uPortal/f/<tab>/normal/render.uP?redirectToDefault=true` (l. 866-874, paramètre ajouté seulement si `pathInfo != null`). `;jsessionid` est ignoré pour la comparaison (l. 98-100).
+2. Si l'URI demandée ≠ canonique et `redirectCount < maximumRedirects` (**5**, l. 52) : incrémente le cookie `UrlCanonicalizingFilter.REDIRECT_COUNT` (path `/uPortal`, **MaxAge 30 s, Secure, HttpOnly**, l. 180-187) et 302. Au-delà de 5, il sert la page sans rediriger et efface le cookie (l. 140-142, 171-178) ; le cookie est aussi effacé dès que l'URI est canonique.
+3. **Deep-link CAS** (l. 118-134, commentaire `mvcContext.xml` l. 50-60) : si l'utilisateur est **invité**, que l'URI demande un contenu précis différent du canonique (`doesRequestPathReferToSpecificAndDifferentContentVsCanonicalPath` l. 1249-1282 : un `/f/<x>` ou `/p/<y>` présent mais absent du layout invité) et que le bean `casRefUrlEncoder` est défini (c'est le cas : `mvcContext.xml` l. 59-60), la redirection va vers `…/cas/login?service=…/uPortal/Login%3FrefUrl%3D<URI>` (`url/CasLoginRefUrlEncoder.java` l. 50-68). C'est le mécanisme qui envoie un client non connecté vers CAS quand il demande `/uPortal/f/.../p/<fname>...`.
+4. Boucles : un client **sans cookie jar** ne renvoie jamais `REDIRECT_COUNT` ni `JSESSIONID` → `/Login` recrée une session à chaque fois, le layout invité change de canonique, et le compteur ne dépasse jamais 1 : boucle infinie 302 côté client. Le cookie est `Secure` : en HTTP clair il n'est pas renvoyé non plus. Avec cookie jar, au pire 5 redirections puis rendu.
+5. User-Agent : le filtre n'en tient pas compte, mais le choix du thème/`IUrlNodeSyntaxHelper` dépend du profil (`url/UrlNodeSyntaxHelperRegistryImpl.java` l. 80-107) ; le profil mobile est sélectionné via `org.jasig.portal.http.header.userAgent.mobile.regex.pattern` (`portal.properties` l. 581, regex `pom.xml` l. 237 : iPhone, Android, IEMobile, Windows Phone, BlackBerry, …). Un UA Android peut donc recevoir un layout et des URLs canoniques différents **[déduit]** ; utiliser un UA desktop stable.
+
+### U.9 Grammaire des URLs (`UrlSyntaxProviderImpl`) **[lu]**
+
+`url/UrlSyntaxProviderImpl.java` : préfixes `f` (dossier/onglet), `p` (portlet), suffixe `.uP` (l. 106-109) ; états `normal|max|detached|exclusive` (`UrlState`, l. 232-235, 1194-1203) ; types `render|action|resource` (l. 1041-1048). Génération (l. 964-1060) :
+- `/uPortal/f/<folder>/normal/render.uP` : page d'un onglet. `<folder>` = `externalId` de l'onglet (fname-isé) s'il existe, sinon l'ID de nœud `uNNlNsNN` (`url/SingleTabUrlNodeSyntaxHelper.java` l. 175-230).
+- `/uPortal/f/<folder>/p/<fname>.<nodeId>/max/render.uP` : portlet maximisé dans son onglet ; `<fname>.<nodeId>` construit par `getFolderNameForPortlet` (l. 322-331, séparateur `.`). En rendu `normal`, le portlet ciblé passe en paramètre `pCt=<fname>.<nodeId>` au lieu du chemin (l. 1017-1024).
+- `/uPortal/p/<fname>/max/render.uP` ou `/uPortal/p/<fname>` : sans dossier ni nodeId, l'entité est créée à la volée par fname (`getPortletForFolderName` l. 336-345) → rendu hors onglet (portlet « transient », soumis à `canRender`).
+- `detached` / `exclusive` : rendu **sans chrome** du portail (page seule), états « stateless » (l. 235) ; `detached` garde le décor minimal, `exclusive` renvoie uniquement la sortie du portlet.
+- Paramètres de contrôle (l. 78-91) : `pCm` = mode portlet (`view|edit|help|config`), `pCs` = window state, `pCt` = portlet cible, `pCa` = portlet additionnel, `pCr` = resourceId, `pCc` = cacheability, `pCp` = copie des paramètres ; `pP_<nom>` = paramètre de portlet, `pG_<nom>` = render param public, `u_<nom>` = paramètre portail. Chemins legacy : `/render.userLayoutRootNode.uP` (l. 93-95), `uP_fname`, `activeTab` (l. 96-104).
+
+### U.10 Fichiers de configuration à connaître **[lu]**
+
+- `resources/properties/security.properties` : `root=UnionSecurityContextFactory`, `root.cas=CasAssertionSecurityContextFactory`, `root.simple=SimpleSecurityContextFactory`, tokens (§4), `logoutRedirect.root` (§5), `CLogin.CasLoginUrl` (§4), `clearPassCasUrl` (ClearPass, optionnel). L'UM a au minimum modifié `logoutRedirect.root` (`service=` vers `/Logout`) et peut avoir désactivé `root.simple` **[déduit]**.
+- `web.xml` : `casServerUrlPrefix`, `serverName`, `proxyCallbackUrl` (valeurs `environment.build.*` injectées depuis `filters/<env>.properties`, p. ex. `filters/local.properties` l. 49-61 : `uportal.server`, `uportal.protocol`, `uportal.context=/uPortal`, `cas.server`, `cas.context=/cas`).
+- `portal.properties` : `org.jasig.portal.version` (l. 566 → `session.json.version`), `PersonFactory.guest_user_name=guest` (l. 534), `unauthenticatedUserSessionTimeout` (l. 484), `userAgent.mobile.regex.pattern` (l. 581), `folder.login-layout=welcome` (l. 711, externalId de l'onglet invité, d'où `/uPortal/f/welcome/normal/render.uP`).
+- `resources/properties/contexts/mvcContext.xml` : beans des filtres (l. 32-42), `casRefUrlEncoder` (l. 59-60), vue JSON (l. 87-101).
+
+### Récapitulatif des réponses HTTP selon l'état du client **[lu + déduit]**
+
+| Requête | Sans cookie | Session invité valide | Session authentifiée | Session expirée |
+|---|---|---|---|---|
+| `GET /api/session.json` | 302 `/Login?refUrl=…` (RequireValidSessionFilter) | 200 `userName:"guest"`, `sessionKey:null` | 200 `userName`, `displayName`, `sessionKey` | 302 `/Login?refUrl=…` |
+| `GET /api/v4-3/dlm/layout.json` | 302 `/Login?refUrl=…` | 200 layout invité (`authenticated:"false"`) | 200 layout utilisateur | 302 `/Login?refUrl=…` |
+| `GET /uPortal/` ou `/f/<x>/p/<y>/max/render.uP` | 302 `/Login?refUrl=…` (puis canonicalisation / CAS) | 302 canonique ou 302 CAS (deep-link, §8) | 200 ou 302 canonique | idem « sans cookie » |
+| `GET /Login` (sans ticket) | 302 `/api/cookiecheck` (RemoteCookieCheckFilter) | 302 vers `refUrl` ou onglet par défaut, nouvelle session invité | nouvelle session, 302 | nouvelle session invité, 302 |
+| `GET /Login?ticket=ST-…` | 302 `/api/cookiecheck` (le ticket est perdu) | 302 vers `refUrl`, session **authentifiée**, nouveau `JSESSIONID` | idem | idem |
+| `GET /Logout` | 302 `logoutRedirect.root` (aucune session à invalider) | 302 `/uPortal/` ou `logoutRedirect` selon contexte | invalidation + 302 CAS logout | 302 |
+
+### Recommandations pour tonAPI (synthèse) **[déduit]**
+
+1. Toujours utiliser un cookie jar et un UA desktop fixe ; ne jamais suivre plus de ~6 redirections.
+2. Login : `GET cas/login?service=<urlencode(https://ent…/uPortal/Login?refUrl=/uPortal/)>` → formulaire CAS → suivre `…/Login?refUrl=…&ticket=ST-…` (302 vers `/uPortal/f/…`). Vérifier ensuite `session.json` : `userName != "guest"`.
+3. Sonde de session : `GET /uPortal/api/session.json` (200 + `userName`) ; un 302 vers `/Login` ou `userName=="guest"` = session perdue. Keep-alive léger : `GET /uPortal/api/ajax-success`.
+4. Layout : `GET /uPortal/api/v4-3/dlm/layout.json` (le plus riche, `authenticated` inclus) ; v1 pour le format `folders/portlets`.
+5. Identité : `session.json.displayName`, puis `GET /uPortal/api/people/<userName>.json` pour `mail` si la permission le permet.
+6. Logout : `GET /uPortal/Logout` (invalide la session puis 302 vers CAS logout) ; ne pas appeler CAS logout seul.
