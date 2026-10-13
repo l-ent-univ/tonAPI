@@ -589,3 +589,14 @@ Plusieurs paquets peuvent être concaténés dans une même réponse de poll, s�
 - `GET https://otp-api.umontpellier.fr/public/login.js?v=1` → 200, ~35 Ko, ESM. **Sans `v` ou autre valeur → stub `alert('FATAL ERROR: you must upgrade esup-otp-cas / esup-otp-cas-server / esup-otp-shibboleth (or downgrade esup-otp-api)')`** : l'API vérifie la version du protocole attendue par la façade.
 - Empreinte → **esup-otp-api ≈ v2.3.0** (ESM, `last_validated`, `methodsRequiringExplicitChoice`, jQuery encore présent, pas de changements 2.4.0). Changelog : <https://github.com/EsupPortail/esup-otp-api/blob/v2.4.0/CHANGELOG.md>.
 - Changements qui concernent un client : 2.2.2 affiche la dernière méthode validée (`last_validated`) et distingue TOTP / codes de secours ; 2.3.0 lit l'IP du push dans `x-forwarded-for` et ajoute les **deep links** Esup Auth ; 2.2.3 a supprimé des routes inutilisées. Routes publiques inexistantes : `/version`, `/api`, `/package.json` (404 JSON).
+
+
+### Réinitialiser la 2FA sans se déconnecter — `/cas/session` [confirmé 2026-10-13]
+- `GET https://cas.umontpellier.fr/cas/session` → page « Ma session authentification renforcée » : « Vous avez une session authentification renforcée sur ce navigateur … session créée le JJ/MM/AAAA à HH:MM:SS » + lien **« Déconnecter la session d'authentification renforcée »** → `GET /cas/logout?remove_session&noservice`.
+- Effet observé : la session OTP de la passerelle est détruite (`remove_session`), **le mot de passe n'est pas redemandé** (TGC `/pre-otp` intact) ; la visite suivante d'un service (mail) affiche directement « Authentification renforcée » → push Esup Auth → « Est-ce votre appareil ? » → nouvelle session OTP (`/cas/session` montre la nouvelle heure de création).
+- Utile pour tester la 2FA à la demande, et pour tonAPI : « oublier cet appareil » côté serveur = ce GET.
+
+### Page 2FA observée en direct (2026-10-13)
+- Formulaire `fm1` : `ticket:hidden`, `uid_hint:hidden`, `token:text`, + une case à cocher sans `name`. Script `start({apiUrl, uid, userHash, validated_otp_too_old})`, `login.js?v=1`.
+- Texte : « Ouvrez l'application Esup Auth sur votre portable <marque modèle> pour valider l'authentification » — le **modèle de l'appareil enregistré** est affiché (vient de `methods.push.device`). Liens : « Demander une nouvelle notification », « Autre méthode de connexion », « Un problème ? ».
+- Le push part **automatiquement** au chargement (pas de clic), conformément à `…/transports/push/<hash>?auto`.

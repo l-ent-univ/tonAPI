@@ -98,3 +98,7 @@ Modèle :
 ## 2026-10-13 (soir) — Session connectée : Zimbra REST, uPortal api, ardemat-api, otpum
 - Zimbra REST OK (`/home/~/inbox.json`, `calendar?fmt=ics`), `limit` ignoré. uPortal `/api/*` : rien de plus. ardemat-api : Swagger public, `GET /api/etudiants/<ST>`, DTOs relevés ; actuator ouvert. otpum : Vaadin, routes `home`/`methods`/`recoveryVerifyView`.
 - → [pistes-api.md §6](pistes-api.md)
+
+## 2026-10-13 — Test 2FA à la demande
+- `/cas/session` + lien `logout?remove_session&noservice` détruit la session OTP sans redemander le mot de passe ; la 2FA revient au prochain service ; nouvelle session datée. Formulaire 2FA et `start({…})` relevés.
+- → [../cas-umontpellier.md](../cas-umontpellier.md) § « Réinitialiser la 2FA »
