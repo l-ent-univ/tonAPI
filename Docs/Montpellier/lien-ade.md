@@ -16,7 +16,7 @@ Donc, pour tonAPI : **passer par l'ENT une seule fois** pour lire le lien, puis 
 ## 1b. Ce qu'il y a dans `data=` (ce qu'on peut dire honnêtement)
 
 - 256 hex = **128 octets**, entropie ~6,7 bits/octet : c'est un **blob chiffré** (pas un hash, pas du base64 de texte). Seul ADE peut le relire.
-- ADE 6 propose nativement des « liens directs » dont l'URL encode, chiffrés, **les paramètres de l'export** : projet (année), ressources (groupes), type d'export. Le `,1` final est un paramètre **en clair** (probablement format/version du lien). *[connaissance générale d'ADE ; aucune doc publique trouvée pour `direct_cal.jsp`]*
+- ADE 6 propose nativement des « liens directs » dont l'URL encode, chiffrés, **les paramètres de l'export** : projet (année), ressources (groupes), type d'export. Le `,1` final est un paramètre **en clair** et **obligatoire** : sans lui ou avec `,0`/`,2`/`,3`/`,10`, le serveur répond 302 (testé). Probablement l'identifiant du format d'export ; à garder tel quel. *[connaissance générale d'ADE ; aucune doc publique trouvée pour `direct_cal.jsp`]*
 - Observation qui le confirme : entre deux sélections (TPB1 vs TPB1+TPA1), **112 octets sur 128 sont identiques**, seuls les 16 derniers changent. Entre deux liens d'années/sélections différentes, 96 octets communs. → le début encode ce qui ne change pas (compte/projet/composante), la fin la sélection.
 - On **ne cherche pas à le déchiffrer** : inutile (prose le donne) et ce serait casser la crypto d'ADE.
 

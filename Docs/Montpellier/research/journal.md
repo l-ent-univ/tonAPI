@@ -74,3 +74,9 @@ Modèle :
 - ADE : `direct_cal.jsp?data=` existe ailleurs (USMB) → fonction standard ADE 6 ; API Web `/jsp/webapi` (pyade) réservée à un compte API. → [../lien-ade.md §7](../lien-ade.md).
 - ScoDoc 9 (extraits) : versions de bulletin, objets `assiduite` / `justificatif`, métriques `count`. → [../scodoc.md §12](../scodoc.md).
 - Nouvelles questions : Q14 à Q18.
+
+## 2026-10-13 — Q14/Q15/Q16 (tests publics, sans session)
+- Q15 : seul `,1` renvoie l'iCal ; sans suffixe ou autre valeur → 302. Résolu.
+- Q14 : `login.js` servi par otp-api → version ≥ 2.1.0. Partiel.
+- Q16 : Passerelle IUT = `v7:2:3` (sw.js) → champ `file` probable. Partiel.
+- Q17, Q18 : nécessitent l'utilisateur / une session ENT.

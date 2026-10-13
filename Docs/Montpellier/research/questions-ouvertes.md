@@ -77,21 +77,21 @@ Un petit script cron sur le serveur tonAPI peut faire ces sondes et écrire dans
 ### Q12. ✅ RÉSOLU — Liste complète des actions de la Passerelle ScoDoc
 - **Réponse** : lue dans `html/services/data.php` et reportée dans [../scodoc.md §4.2](../scodoc.md).
 
-### Q14. Version d'esup-otp-api à l'UM
-- **Pourquoi** : le code lu est la 2.4.0 ; les champs `last_validated`, l'anti-spam SMS et `login.js` servi par l'API sont récents.
-- **Test** : connecté, lire la réponse de `GET otp-api.umontpellier.fr/users/<uid>/<hash>` (noter les clés seulement) et l'URL de `login.js?v=`.
-- **Conclure** : `last_validated` présent → ≥ 2.2.2 ; `login.js` chargé depuis l'API → ≥ 2.1.0.
+### Q14. 🟡 PARTIEL — Version d'esup-otp-api à l'UM
+- `https://otp-api.umontpellier.fr/public/login.js` répond 200 `application/javascript` → `login.js` servi par l'API → **≥ 2.1.0**. La présence de `last_validated` (≥ 2.2.2) n'a pas pu être vérifiée (il faut être sur la page 2FA).
 
-### Q15. Le suffixe `,1` du lien ADE
-- Aucune doc publique. Test sans risque : `curl` du lien avec `,1` retiré, puis avec `,2` ; noter si l'iCal change (format ?) ou si c'est une erreur.
+### Q15. ✅ RÉSOLU — Le suffixe `,1` du lien ADE
+- **Test 2026-10-13** (curl, sans auth) : `,1` → 200 iCal ; sans suffixe, `,0`, `,2`, `,3`, `,10` → **302** (pas d'iCal). Le `,1` est donc **obligatoire et le seul accepté** pour ce lien. Sens probable : identifiant du type d'export/format, mais rien d'autre ne marche → à traiter comme partie fixe du lien.
 
-### Q16. `sendJustif` : champ `file` ou `mon_fichier` ?
-- Le dépôt a renommé le champ multipart le 2026-10-06 ; l'IUT (7.2.3) peut avoir l'ancien code. Lire le `name` de l'`<input type=file>` sur `/absences/justifications.php` connecté. Ne pas envoyer de justificatif de test.
+### Q16. 🟡 PARTIEL — `sendJustif` : champ `file` ou `mon_fichier` ?
+- `https://wscodoc.iutbeziers.fr/sw.js` → `var version = 'v7:2:3'` : l'IUT est bien en **7.2.3** (antérieure au renommage du 2026-10-06) → champ **`file`** très probable. À confirmer en lisant le `name` de l'`<input type=file>` connecté. La page `/absences/justifications.php` répond 200 sans auth (coquille vide, le contenu vient de `data.php`).
 
-### Q17. Réglages Moodle BUT invisibles
+### Q17. Réglages Moodle BUT invisibles — ⏳ nécessite l'utilisateur
+- Seul test possible : après un **changement volontaire** de mot de passe UM, vérifier si le jeton Moodle BUT stocké marche encore. À faire quand Lucas change son mot de passe.
 - `passwordchangetokendeletion` (purge des jetons), `lockoutthreshold` (verrouillage). Non lisibles via l'API. Déduire : après un changement de mot de passe volontaire, le jeton tonAPI survit-il ? Noter dans le journal.
 
-### Q18. `GET /uPortal/api/people/<userName>.json` donne-t-il l'e-mail ?
+### Q18. `GET /uPortal/api/people/<userName>.json` donne-t-il l'e-mail ? — ⏳ nécessite une session ENT
+- Non testé le 2026-10-13 (session navigateur fermée). À faire à la prochaine connexion : ouvrir l'URL et noter seulement les **noms** d'attributs.
 - uPortal 4.3 filtre par permission `VIEW_USER_ATTRIBUTE`. Ouvrir l'URL connecté ; noter seulement les **noms** des attributs renvoyés.
 
 ### Q13. Autres IUT de l'UM — ❓ non concluant
