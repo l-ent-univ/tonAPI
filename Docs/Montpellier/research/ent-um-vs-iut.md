@@ -60,7 +60,8 @@ Idée pour tonAPI : une **table de correspondance** `code ADE ↔ code BUT ↔ c
 |---|---|
 | Adresse des salles ADE contenant « iut de béziers » (lent-ios) | ✅ |
 | Groupes ADE contenant `MMI`, `BUT` | 🟡 |
-| Applis présentes dans `layout.jsp` (un portlet IUT ?) | ❓ |
+| `postalAddress` de `/uPortal/api/people/<userName>.json` = adresse de l'IUT (`…$BEZIERS`) | ✅ |
+| Applis présentes dans `layout.jsp` (un portlet IUT ?) | ❌ aucun portlet IUT dans le layout |
 | Composante dans Mon Dossier Web (inscriptions) | ❓ (onglet jamais capturé) |
 
 Modèle lent-ios : un fichier par établissement, l'IUT hérite de l'UM (`iut-beziers.json`, `kind: establishment`, `parent: umontpellier`) et **ajoute/remplace** des services. Bonne idée à reprendre dans tonAPI :

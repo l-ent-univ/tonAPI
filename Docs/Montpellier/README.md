@@ -75,7 +75,7 @@ Aucun secret ni donnée personnelle n'est reproduit.
 ## Dernières découvertes (exploration live du 13 oct.)
 
 - Lien iCal automatique via prose `protected/ical` → [emploi-du-temps.md §9](emploi-du-temps.md).
-- Nom de l'étudiant via `/uPortal/api/session.json`.
+- Nom via `/uPortal/api/session.json` ; **prénom, nom, e-mail** via `/uPortal/api/people/<userName>.json` (confirmé).
 - 2FA redemandée **par service** (le mail l'a déclenchée).
 - Moodle UM quasi vide pour l'IUT, pas d'API mobile.
 - Détail : [research/exploration-2026-10-13.md](research/exploration-2026-10-13.md).

@@ -117,6 +117,9 @@ window.prolongation_ENT.main({
 ### Userinfo
 
 > **Mise à jour 2026-10-13 (exploration live)** : `/uPortal/api/v5-1/userinfo` répond **404** (endpoint uPortal 5, inexistant en 4.3 — voir la section « uPortal 4.3 vu du code source » en fin de document). Utiliser `GET /uPortal/api/session.json` → `{"person":{"displayName","userName","sessionKey","serverName","version":"4.3.1"}}`. Détails : [research/exploration-2026-10-13.md](research/exploration-2026-10-13.md).
+>
+> **Confirmé le 2026-10-13 (connecté)** : `GET /uPortal/api/people/<userName>.json` → `{"person":{"name":"<userName>","attributes":{"username":[…],"displayName":[…],"givenName":[…],"sn":[…],"mail":[…],"telephoneNumber":[…],"postalAddress":[…]}}}`. Chaque attribut est un **tableau**. **Donne l'e-mail étudiant** (`…@etu.umontpellier.fr`) et prénom/nom séparés. `postalAddress` = adresse de la **composante** (IUT), champs séparés par `$`. `people/me.json` → `{"person":null}`.
+> → L'identité de base (uid, prénom, nom, e-mail) se lit sans Mon Dossier Web ; MDW reste utile pour INE, n° dossier, date de naissance, inscriptions.
 
 
 lent-ios demande `GET https://ent.umontpellier.fr/uPortal/api/v5-1/userinfo` (`Accept: application/jwt, application/json, */*`) et décode un JWT ou du JSON. Les claims lus sont `sub`, `preferred_username`, `name`, `given_name`, `family_name`, `email` et `supannEtuId` (`Profile/StudentProfile.swift:27-39`).
@@ -370,7 +373,7 @@ Chemins relatifs à `/Users/lucas/Documents/GitHub/lent-ios/`.
 - Ce qui déclenche la 2FA.
 - La stabilité du jeton `data=` ADE d'une session à l'autre.
 - Le contenu de `prose-etudiant/protected/ical`.
-- `/uPortal/api/v5-1/userinfo` à Montpellier : jamais observé.
+- ~~`/uPortal/api/v5-1/userinfo` à Montpellier~~ : 404 ; remplacé par `session.json` + `people/<userName>.json` (confirmés).
 - L'effet de `gateway=true` sans TGC sur la lecture du `sesskey` Moodle.
 - La forme exacte de la page d'erreur « mauvais mot de passe » de `/pre-otp` : un échec n'a jamais été capturé, seulement simulé dans les tests.
 - La mise en œuvre des optimisations de lenteur.
@@ -428,7 +431,7 @@ Les champs `nodeId` / `altMaxUrl` / `faIcon` / `target` appartiennent à `rest/l
 | `GET portlet/{fname}.json` | idem l. 108-119 | `{"portlet": LayoutPortlet}` (403 sinon) |
 | `GET portlets.json` | idem l. 87-102 | `{"portlets":[{id,name,fname,description,type,lifecycleState,categories}]}` filtré par `canManage` → **vide pour un simple utilisateur** |
 | `GET people.json?searchTerms[]=…` | `rest/PeopleRESTController` l. 58-84 | recherche annuaire ; 401 si `person == null` (jamais en pratique, cf. §6) |
-| `GET people/{username}.json` | idem l. 86-103 | `{"person":{"name","attributes":{...}}}` ; attributs filtrés par la permission `VIEW_USER_ATTRIBUTE` (`portlets/lookup/PersonLookupHelperImpl.java` l. 359, 417, 442). Un utilisateur peut en général lire ses propres attributs (`mail`, `displayName`…) **[déduit]** ; `person` vaut `null` si rien n'est autorisé |
+| `GET people/{username}.json` | idem l. 86-103 | `{"person":{"name","attributes":{...}}}` ; attributs filtrés par la permission `VIEW_USER_ATTRIBUTE` (`portlets/lookup/PersonLookupHelperImpl.java` l. 359, 417, 442). Un utilisateur peut lire ses propres attributs (`username, displayName, givenName, sn, mail, telephoneNumber, postalAddress`) **[confirmé 2026-10-13]** ; `person` vaut `null` si rien n'est autorisé |
 | `GET v4-3/dlm/portletRegistry.json`, `portletList` | `layout/dlm/remoting/ChannelListController` l. 144, 172 | registre des portlets souscrivables |
 | `POST layout?action=…` | `layout/dlm/remoting/UpdatePreferencesServlet` l. 103, 182-1090 | modification du layout (addPortlet, moveTab, addFavorite…) |
 | `GET marketplace/entries.json`, `marketplace/entry/{fname}.json` | `rest/MarketplaceRESTController` l. 73-110 | marketplace |

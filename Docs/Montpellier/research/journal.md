@@ -80,3 +80,7 @@ Modèle :
 - Q14 : `login.js` servi par otp-api → version ≥ 2.1.0. Partiel.
 - Q16 : Passerelle IUT = `v7:2:3` (sw.js) → champ `file` probable. Partiel.
 - Q17, Q18 : nécessitent l'utilisateur / une session ENT.
+
+## 2026-10-13 — Q18 résolue (test par l'utilisateur, connecté)
+- `people/<userName>.json` → username, displayName, givenName, sn, **mail**, telephoneNumber, postalAddress (adresse de l'IUT). `me.json` → null.
+- Conclusion : identité de base sans Mon Dossier Web. → [../ent.md §4](../ent.md)
