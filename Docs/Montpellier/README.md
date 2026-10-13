@@ -30,6 +30,7 @@ Aucun secret ni donnée personnelle n'est reproduit.
 | [scodoc.md](scodoc.md) | **Notes + absences** (IUT) | Passerelle ScoDoc, `dataPremièreConnexion`, JSON complet, absences, pièges de parsing |
 | [moodle.md](moodle.md) | **Devoirs** (IUT) | Moodle BUT, jeton mobile + repli session web, statut des rendus, doublons, perfs |
 | [cas-iut-beziers.md](cas-iut-beziers.md) | **Login IUT** (pour ScoDoc) | phpCAS `:8443`, flux en 5 étapes, problème TLS GandiCert |
+| [research/pistes-api.md](research/pistes-api.md) | **Pistes API** | annuaire public, API Web ADE (XML, compte requis), Zimbra REST, otpum, ardemat, uPortal `/api/*`, à tester connecté |
 | [research/](research/README.md) | **Recherche en cours** | UM vs IUT (même ENT, services et codes différents), questions ouvertes avec protocoles de test, journal |
 
 ## Carte rapide

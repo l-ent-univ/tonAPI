@@ -90,3 +90,7 @@ Modèle :
 - Q16 : champ `file` (page publique justifications.php). Résolu.
 - Q13 : Nîmes = ScoDoc direct derrière 403 (campus/VPN) ; Montpellier-Sète = rien de public. Partiel.
 - Passerelle : `data.php` renvoie toujours `redirect` sans session ; `sw.js` donne la version.
+
+## 2026-10-13 — Sondage public des API
+- Annuaire UM public (esup-annuaire2), otpum, ardemat (Angular), securum, ip-web ; API Web ADE active mais compte requis ; Zimbra REST `/home/~/inbox.json` (401 sans cookie) ; `/uPortal/api/*` tout derrière login.
+- → [pistes-api.md](pistes-api.md)
