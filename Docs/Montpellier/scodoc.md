@@ -335,3 +335,77 @@ La fixture tafac contient `idAbs`, `idJustif`, `dateFin` → **l'IUT de Béziers
 3. Session PHP ≈ 24 min d'inactivité (probable) → prévoir le relogin CAS souvent ; c'est bon marché (5 allers-retours).
 4. `matiereComplet` → joindre sur les `id` du relevé pour nommer la matière d'une absence.
 5. Un échec « pas dans l'annuaire » est une erreur **métier**, pas un mauvais mot de passe.
+
+---
+
+## 12. L'API ScoDoc 9 derrière la Passerelle — ce que dit la doc officielle (recherche du 2026-10-13)
+
+> `scodoc.org` et `git.scodoc.org` sont **injoignables depuis l'environnement de recherche** (proxy). Ce qui suit vient des **extraits indexés** de <https://scodoc.org/ScoDoc9API/>, des pages `scodoc.org/samples/*.json`, `AssiduitesDev`, `FichiersJustificatifs`, `AssiduitesMigration` et `BUT`. Chaque point est marqué **[doc]** (extrait lu) ou **[déduit]**. À recouper avec la fixture tafac (§5), qui reste la référence *observée*.
+
+### 12.1 Accès et permissions
+
+- Jeton : `POST https://<scodoc>/ScoDoc/api/tokens` en Basic auth → `{"token": "…"}` ; ensuite `Authorization: Bearer <token>` **[doc]**. C'est ce que fait `scodoc.class.php` avec le compte technique de la Passerelle (§11.1).
+- Toutes les lectures ci-dessous exigent la permission **ScoView** ; la création de justificatif exige **AbsChange**, la lecture des raisons/fichiers **AbsJustifView**, la validation **JustifValidate** **[doc]**. Le compte technique de l'IUT a donc au moins ScoView + AbsChange (puisque `sendJustif` fonctionne) **[déduit]**.
+- « Les codes INE et NIP ne sont pas des id » : `etudid` n'est unique que par département ; la Passerelle utilise les routes `/nip/<nip>/…` **[doc]**.
+- La doc précise que « cette API est encore incomplète » : les champs peuvent évoluer d'une version 9.x à l'autre **[doc]**.
+
+### 12.2 Bulletin : `etudiant/<etudid|nip|ine|email>/<code>/formsemestre/<id>/bulletin[/<version>][/pdf[/nosig]]`
+
+- `version` ∈ `short` | `long` | `selectedevals` (**défaut**) | `butcourt` **[doc]**. `long` et `selectedevals` incluent les notes de **toutes les évaluations** ; `short` s'arrête aux moyennes de module **[doc, commentaire du code]**.
+- La Passerelle appelle `…/bulletin` **sans version** → `selectedevals` → c'est pourquoi `relevé.ressources[*].evaluations[]` est rempli (§5) **[déduit]**.
+- `/pdf` renvoie le PDF au lieu du JSON ; `/pdf/nosig` = sans signature **[doc]** (la Passerelle utilise `butcourt/pdf/nosig` pour le BUT, §11.2).
+- Un drapeau interne `force_publishing` remplit le bulletin même non publié **[doc, code]** ; côté API étudiant il n'est pas exposé, d'où `relevé.publie: false` avec `ressources` vides (§5).
+- Format « BUT » (`relevé.type: "BUT"`) : un bulletin semestriel « avec notes des ressources, des SAÉs et résultats aux UEs » ; existe en HTML, PDF et JSON **[doc]**. Les clés observées (`ressources`, `saes`, `ues`, `ues_capitalisees`, `semestre`, `options`, `appreciation`) sont celles de la fixture tafac ; la doc en ligne lie un `bulletin.json` d'exemple (~2 700 lignes) que nous n'avons pas pu lire **[non lu]**.
+- Route voisine utile : `formsemestre/<id>/programme` → liste des **UE, ressources et SAÉ** du semestre (codes, titres, coefficients) **[doc]** ; c'est le `modules()` de la Passerelle, réservé au personnel (§4.2) — pour l'étudiant, la même information est déjà dans `relevé.ues[*].ressources/saes` (coef) **[déduit]**.
+
+### 12.3 Assiduités (module « Assiduité », ScoDoc ≥ 9.6)
+
+- Le module remplace l'ancien « Absences » depuis **9.6** (migration automatique depuis 9.5) **[doc]**. `config.data_absences_scodoc = true` suppose donc un ScoDoc ≥ 9.6 à l'IUT **[déduit]**.
+- **Objet `assiduite`** (exemple `sample_assiduites_group.json`) **[doc]** :
+
+  ```jsonc
+  {
+    "assiduite_id": 1, "etudid": 1, "code_nip": "<nip>",
+    "date_debut": "2023-10-02T08:00:00+02:00", "date_fin": "2023-10-02T10:00:00+02:00",
+    "etat": "ABSENT" | "PRESENT" | "RETARD",      // en MAJUSCULES dans l'API
+    "est_just": false, "desc": "…", "entry_date": "…",
+    "moduleimpl_id": 123 | null,                   // peut être null (absence hors module)
+    "user_id": 7, "user_name": "<login ou null>", "user_nom_complet": "…",
+    "external_data": { … } | null                  // JSON libre « peu utilisé par ScoDoc, pour les clients API »
+    // + "justificatifs": [ { "justif_id": … } ] si with_justif
+  }
+  ```
+  - En base, `etat` est un entier ; l'API le sert en **texte majuscule** → la Passerelle fait `strtolower(etat)` (§11.4) **[doc + code]**.
+  - `external_data` est l'endroit où un outil tiers (ex. appel depuis l'emploi du temps) range `enseignant`, d'où `enseignant ← external_data.enseignant ?? user_name` dans la Passerelle **[déduit]**.
+- **Filtres de `assiduites/<…>/query`** **[doc]** : `etat` (liste séparée par virgules : `absent,present,retard`), `est_just` (bool), `moduleimpl_id`, `date_debut`, `date_fin`, `user_id` (auteur de la saisie), `formsemestre_id`, `with_justif` (singulier ici ; `with_justifs` sur la route de groupe). La Passerelle n'envoie que `formsemestre_id` → l'étudiant reçoit **présences, retards et absences** du semestre (c'est bien ce qu'on voit : `statut: present|retard|absent`).
+- **Comptage `assiduites/<…>/count/query`** **[doc, sample_assiduites_formsemestre_count.json]** : paramètres `etat=present,retard` (filtre), `metric=compte,heure` (sélection), `split` (sans valeur). Métriques : `compte` (nombre d'assiduités), `journee`, `demi` (chaque jour/demi-journée compté une fois), `heure`. Réponse sans `split` : `{"compte": n, "demi": n, "heure": x, "journee": n}` ; avec `split` : ventilation **par état** et, pour les absences, **justifié / non justifié** — exactement la forme de `totauxAbsences` (§5) **[déduit du sample + fixture]**. Calcul côté ScoDoc : `CountCalculator` de `app/scodoc/sco_assiduites.py`.
+- Route unitaire `assiduite/<assiduite_id>` (même objet) ; bug connu (#753) : `user_id` renvoyait un nom au lieu d'un id dans certaines versions **[doc]**.
+
+### 12.4 Justificatifs
+
+- **Objet `justificatif`** **[doc]** : `justif_id`, `etudid`, `date_debut`, `date_fin`, `etat` ∈ `valide` | `non_valide` | `attente` | `modifie`, `raison` (**vide si pas la permission AbsJustifView**), `fichier` (référence d'archive, ou null), `entry_date`, `user_id`.
+- `justificatifs/nip/<nip>/query` → liste de ces objets (c'est `getJustifs`).
+- **Création en deux temps** **[doc, FichiersJustificatifs]** :
+  1. `POST justificatif/nip/<nip>/create` avec `{"etat": "attente", "date_debut": "2022-10-27T08:00", "date_fin": "2022-10-27T12:00", "raison": "…"?}` → `{"justif_id": n}` ;
+  2. `POST justificatif/<justif_id>/import` en multipart (`file`) → le fichier est rangé dans **une archive par justificatif**.
+  3. Téléchargement : `justificatif/<justif_id>/export/<filename>` (AbsJustifView).
+  → `sendJustif` de la Passerelle (§4.2) crée en `attente` puis importe ; l'état passe à `valide`/`non_valide` quand la scolarité tranche **[déduit]**. Un justificatif `valide` couvrant une absence fait passer `est_just` à `true` sur les assiduités concernées **[doc, sample_justif_justifies.json]**.
+
+### 12.5 Autres routes utilisées par la Passerelle
+
+| Route | Retour **[doc]** |
+|---|---|
+| `formsemestres/query?nip=<nip>` | liste de formsemestres ; champs d'un formsemestre (`formsemestre/<id>`) : `formsemestre_id`, `titre`, `titre_num`, `semestre_id`, `date_debut`, `date_fin`, `etat`, `modalite`, `formation_id`, `dept_id`, `annee_scolaire`… (la Passerelle ne garde que `titre`, `formsemestre_id`, `semestre_id`, `annee_scolaire`, §5) |
+| `formsemestre/<id>/etudiants` | liste des inscrits (`sample_formsemestre_etudiants.json`) — personnel |
+| `evaluation/<id>/notes` | notes d'une évaluation (→ histogramme `listeNotes`) |
+| `etudiant/nip/<nip>` | fiche (dont `dept_id` → `getStudentDepartment`) |
+| `etudiant/nip/<nip>/photo` | JPEG |
+| `departements`, `departement/<dep>/formsemestres_courants` | |
+
+### 12.6 Conséquences pour tonAPI
+
+1. **Ne pas réimplémenter l'API ScoDoc** : elle n'est pas joignable depuis Internet et exige un compte technique. Tout passe par la Passerelle.
+2. Normaliser `etat` en minuscules **et** accepter les deux casses (la Passerelle le fait déjà, mais un futur `data_absences_scodoc` différent pourrait ne pas le faire).
+3. `moduleimpl_id` null → absence sans matière ; ne pas planter la jointure avec `relevé.*.id`.
+4. Les quatre états de justificatif (`attente`, `valide`, `non_valide`, `modifie`) sont à prévoir dans le modèle, même si la Passerelle ne les filtre pas.
+5. Quand l'IUT montera de version ScoDoc, revérifier les clés : la doc elle-même annonce une API « incomplète ».
