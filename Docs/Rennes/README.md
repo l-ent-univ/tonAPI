@@ -26,6 +26,7 @@ Aucun secret ni donnée personnelle n'est reproduit (la clé AES de l'app ADE «
 | [reimplementation.md](reimplementation.md) | **Checklist tonAPI** | ordre, socle commun, checklists, comparaison avec Montpellier |
 | [../detection-groupe.md](../detection-groupe.md) | **Détection du groupe** | lire le groupe dans ScoDoc → ressource ADE (commun aux deux universités) |
 | [apis/INDEX.md](apis/INDEX.md) | **Index des endpoints** | une ligne par endpoint, parcours minimal |
+| [apis/uportal5.md](apis/uportal5.md) · [apis/ade-portal-rest.md](apis/ade-portal-rest.md) | **Références API** | portail uPortal 5 ; planning ADE REST, en détail |
 | [research/](research/README.md) | **Recherche** | questions ouvertes avec protocoles, journal |
 
 ## Carte rapide
