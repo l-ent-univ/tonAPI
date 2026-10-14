@@ -25,6 +25,7 @@ Aucun secret ni donnée personnelle n'est reproduit.
 | [cas-umontpellier.md](cas-umontpellier.md) | **Login ENT UM** | passerelle `/cas` + Apereo CAS 7 `/pre-otp`, schéma `md5(service)`, POST du formulaire, **2FA ESUP-OTP** (push socket / TOTP), « appareil mémorisé 30 j », sessions, renouvellement, erreurs, bugs passés |
 | [ent.md](ent.md) | **Portail ENT + services UM** | architecture des domaines, uPortal/ProlongationENT (`layout.jsp`), liste des applis, planning prose → ADE Direct **GWT-RPC**, Mon Dossier Web (Vaadin), Moodle UM, Zimbra (SOAP JSON) |
 | [emploi-du-temps.md](emploi-du-temps.md) | **ADE iCal** | lien `direct_cal.jsp?data=…`, format iCal ADE, défauts du flux, parsing, annulations, cache |
+| [../detection-groupe.md](../detection-groupe.md) | **Détection du groupe** | lire le groupe dans ScoDoc, le faire correspondre au nœud ADE (commun Montpellier/Rennes) |
 | [codes.md](codes.md) | **Codes de modules** | règle ADE `R101` ⇔ ScoDoc `R1.01` ⇔ Apogée `BAMR101`, exceptions, anatomie d'un SUMMARY ADE |
 | [lien-ade.md](lien-ade.md) | **Le lien ADE** | d'où il vient (sélection de groupes dans prose), ce qu'il contient, déterminisme et durée de vie (testé), arbre des groupes de l'IUT, politique tonAPI |
 | [scodoc.md](scodoc.md) | **Notes + absences** (IUT) | Passerelle ScoDoc, `dataPremièreConnexion`, JSON complet, absences, pièges de parsing |

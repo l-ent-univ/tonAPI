@@ -24,6 +24,7 @@ Aucun secret ni donnée personnelle n'est reproduit (la clé AES de l'app ADE «
 | [moodle.md](moodle.md) | **Devoirs** | Moodle **4.4** FOAD `foad.univ-rennes.fr` via Shibboleth + WAYF + CAS ; tafac en AJAX `sesskey`, mais **l'API mobile est ouverte** (`typeoflogin 3`) → jeton `wstoken` via `launch.php` (§10) |
 | [mail-et-autres.md](mail-et-autres.md) | **Mail et le reste** | Partage RENATER (Zimbra SOAP/REST), recherches, briefing quotidien, relais de lancement, certificat, analytics |
 | [reimplementation.md](reimplementation.md) | **Checklist tonAPI** | ordre, socle commun, checklists, comparaison avec Montpellier |
+| [../detection-groupe.md](../detection-groupe.md) | **Détection du groupe** | lire le groupe dans ScoDoc → ressource ADE (commun aux deux universités) |
 | [apis/INDEX.md](apis/INDEX.md) | **Index des endpoints** | une ligne par endpoint, parcours minimal |
 | [research/](research/README.md) | **Recherche** | questions ouvertes avec protocoles, journal |
 
