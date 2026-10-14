@@ -31,6 +31,9 @@ pub struct SessionData {
     /// Jetons propres à un service (jeton Moodle, jeton de rafraîchissement ADE…), par nom.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tokens: BTreeMap<String, String>,
+    /// Connexion en attente d'un second facteur : le jeton ne donne accès à aucune donnée.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pending: bool,
     /// Secondes Unix.
     pub issued_at: i64,
     /// Secondes Unix.
@@ -65,6 +68,9 @@ pub struct StoredCookie {
     pub path: String,
     pub name: String,
     pub value: String,
+    /// Cookie réservé à l'hôte exact (pas d'attribut `Domain`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub host_only: bool,
     /// Secondes Unix ; `None` pour un cookie de session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires: Option<i64>,
@@ -164,6 +170,17 @@ impl SessionKeys {
 
     /// Déchiffre un jeton et vérifie son expiration (`now` en secondes Unix).
     pub fn open(&self, token: &str, now: i64) -> Result<SessionData, SessionError> {
+        self.open_with_grace(token, now, 0)
+    }
+
+    /// Comme [`SessionKeys::open`], mais accepte un jeton expiré depuis moins de `grace_secs`.
+    /// Sert à reprendre les cookies d'une ancienne session (appareil mémorisé par le CAS).
+    pub fn open_with_grace(
+        &self,
+        token: &str,
+        now: i64,
+        grace_secs: i64,
+    ) -> Result<SessionData, SessionError> {
         let mut parts = token.splitn(3, '.');
         let (Some(VERSION), Some(kid), Some(body)) = (parts.next(), parts.next(), parts.next())
         else {
@@ -194,7 +211,7 @@ impl SessionKeys {
             .map_err(|_| SessionError::Invalid)?;
         let data: SessionData =
             serde_json::from_slice(&plaintext).map_err(|_| SessionError::Invalid)?;
-        if data.expires_at <= now {
+        if data.expires_at + grace_secs <= now {
             return Err(SessionError::Expired);
         }
         Ok(data)
@@ -235,9 +252,11 @@ mod tests {
                 path: "/".into(),
                 name: "TGC".into(),
                 value: "secret".into(),
+                host_only: true,
                 expires: None,
             }],
             tokens: BTreeMap::new(),
+            pending: false,
             issued_at: 0,
             expires_at,
         }
@@ -269,6 +288,17 @@ mod tests {
         let keys = SessionKeys::ephemeral().unwrap();
         let token = keys.seal(&data(100)).unwrap();
         assert_eq!(keys.open(&token, 100), Err(SessionError::Expired));
+    }
+
+    #[test]
+    fn delai_de_grace() {
+        let keys = SessionKeys::ephemeral().unwrap();
+        let token = keys.seal(&data(100)).unwrap();
+        assert!(keys.open_with_grace(&token, 150, 100).is_ok());
+        assert_eq!(
+            keys.open_with_grace(&token, 250, 100),
+            Err(SessionError::Expired)
+        );
     }
 
     #[test]
