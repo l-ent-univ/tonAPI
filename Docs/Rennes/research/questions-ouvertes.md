@@ -30,7 +30,9 @@ Tout est issu du code de tafac ; rien n'a encore été observé en direct. Prior
 
 ## Priorité moyenne
 
-### R5. Export iCal ADE accessible ? — 🟡 `anonymous_cal` ❌ (vide), reste « Générer un lien »
+### R5. ✅ RÉSOLU — Pas de flux iCal sans connexion à Rennes
+- `anonymous_cal.jsp` vide ❌ ; « Générer un lien » = `portal/?encryptedUrl=…,1` qui **redirige vers le CAS** (lien authentifié, pas un iCal) ❌ ; `webapi` = compte ADE ❌. **Seule voie : portail REST + Bearer.** → [../emploi-du-temps.md §11.5-11.6](../emploi-du-temps.md)
+- (ancien)
 - **Test connecté 2026-10-14** : `anonymous_cal.jsp` renvoie un corps vide même pour des ressources qui ont des cours → désactivé/restreint. Le menu de partage de l'agenda propose « Générer un lien » : à cliquer par l'étudiant pour voir si c'est un `direct_cal.jsp?data=…` stable.
 - **Sonde 2026-10-14** : `direct_cal.jsp` existe (302 sans `data`), **`anonymous_cal.jsp` répond 200** (export anonyme actif), `webapi` exige un compte ADE. Reste : tester `anonymous_cal.jsp?resources=<ids de l'étudiant>&projectId=<id>&calType=ical&firstDate&lastDate` avec un compte Rennes. → [../emploi-du-temps.md §11](../emploi-du-temps.md)
 - Ancien texte :

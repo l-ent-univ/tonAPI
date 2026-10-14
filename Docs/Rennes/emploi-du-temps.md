@@ -633,3 +633,25 @@ Le front n'appelle **pas** `/portal/sso/accessToken` ici : le cookie de session 
 - Avec une sélection de groupes faite par l'étudiant, le front appelle **une requête `resourcesEventsPortal` par ressource sélectionnée** (pas une seule requête groupée), sur la semaine affichée (`startdate;MMJJAAAA/enddate;MMJJAAAA`), réponses de ~3 Ko chacune.
 - `anonymous_cal.jsp?resources=<id>&projectId=1&calType=ical&firstDate=…&lastDate=…` (et variantes : plusieurs ids, `nbWeeks=4`), **sans cookie** → **HTTP 200, corps vide (0 octet)**, pour des ressources qui ont pourtant des cours sur la période. → **l'export anonyme est désactivé ou restreint** pour ce projet à Rennes. ❌ Piste abandonnée.
 - Menu « Ouvrir les options de partage » de l'agenda (présent seulement quand une sélection existe) : **« Agenda », « PDF », « Générer un lien »**. « Générer un lien » est la piste iCal restante (lien d'abonnement, probablement `direct_cal.jsp?data=…` comme à Montpellier) — **non cliqué** : action à faire par l'étudiant lui-même, elle crée un lien persistant sur son compte.
+
+
+### 11.5 « Générer un lien » = lien authentifié, PAS un iCal [confirmé 2026-10-14]
+
+Le bouton « Générer un lien » du menu de partage produit une URL de la forme :
+```
+https://planning.univ-rennes.fr/portal/?encryptedUrl=<256 hex>,1
+```
+- Même gabarit que Montpellier (`<256 hex>,1`), **mais comportement opposé** : ouvrir cette URL **sans cookie** → `302 https://sso-cas.univ-rennes.fr/login?service=…/portal/?encryptedUrl=…` → page de login CAS. **Elle exige une session.** [confirmé]
+- Ce n'est donc **pas** un flux iCal : c'est un **lien profond authentifié** vers le portail, qui pré-charge une sélection de ressources (chiffrée dans `encryptedUrl`) pour un autre utilisateur **déjà connecté**. Utile pour « partager mon planning à un camarade de Rennes », inutile pour un client sans session.
+- `encryptedUrl` passé à `direct_cal.jsp` / `anonymous_cal.jsp` → `302 redirectIndex.jsp` ou corps vide. Aucun paramètre ne transforme ce jeton en iCal public. [confirmé]
+- ⚠️ **à traiter comme un secret** malgré tout : combiné à une session, il révèle la sélection.
+
+### 11.6 Conclusion : pas de flux iCal sans connexion à Rennes
+| Piste | Résultat |
+|---|---|
+| `anonymous_cal.jsp?resources=…` | corps vide (export anonyme désactivé) ❌ |
+| « Générer un lien » (`encryptedUrl`) | redirige vers le CAS ❌ |
+| `jsp/webapi` | compte ADE requis ❌ |
+| **Portail REST (`ssologin` → Bearer → `resourcesEventsPortal`)** | **seule voie** ✅ |
+
+→ Pour tonAPI, l'emploi du temps de Rennes passe **obligatoirement** par le CAS + l'API REST du portail (jeton 30 min, refresh). Contrairement à Montpellier, pas de raccourci « lien iCal à garder ». Voir [apis/ade-portal-rest.md](apis/ade-portal-rest.md).

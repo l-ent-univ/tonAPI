@@ -23,3 +23,6 @@
 - Pas de MFA au login. `ssologin` : projet 1, `resources` vide (sélection perso `PortalResourcesAllSelection`), JWT 30 min, module `VCalendar`.
 - `anonymous_cal.jsp` → vide (désactivé/restreint). Menu partage : Agenda / PDF / « Générer un lien » (non cliqué).
 - → [../emploi-du-temps.md §11.3-11.4](../emploi-du-temps.md)
+
+## 2026-10-14 — « Générer un lien » testé
+- `portal/?encryptedUrl=<hex>,1` → 302 vers le CAS : lien authentifié, pas un iCal. anonymous_cal vide. → emploi du temps Rennes = portail REST uniquement. R5 résolue.
