@@ -11,10 +11,13 @@ rust-version.workspace = true
 chrono = "0.4.45"
 chrono-tz = "0.10.4"
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 thiserror.workspace = true
 tonapi-config.workspace = true
 tonapi-core.workspace = true
+tonapi-http.workspace = true
 tonapi-session.workspace = true
+url.workspace = true
 
 [lints]
 workspace = true

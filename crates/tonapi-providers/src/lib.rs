@@ -8,17 +8,21 @@
 #![allow(clippy::unused_async)]
 
 mod demo;
+mod sso;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use tonapi_config::{
     AbsencesService, AppsService, GradesService, HomeworkService, MailService, ProfileService,
-    ResolvedUniversity, ServiceAvailability, ServiceKind, Services, Sso, TimetableService,
+    ResolvedUniversity, ServiceAvailability, ServiceKind, Services, TimetableService,
 };
 use tonapi_core::{
     AbsenceReport, App, Course, ErrorCode, EstablishmentSource, GradeReport, Homework, MailInbox,
     Problem, Profile, TimetableGroup,
 };
 use tonapi_session::{EstablishmentPick, SessionData};
+
+pub use sso::{LoginInput, LoginOutcome, MfaAction, MfaPrompt, complete_mfa, login, refresh};
+pub use tonapi_http::otp::OtpMethods;
 
 /// Ce dont un fournisseur a besoin pour une requête.
 pub struct Context<'a> {
@@ -63,30 +67,6 @@ fn not_implemented(provider: &str) -> Problem {
     Problem::new(ErrorCode::NotImplemented).detail(format!(
         "le fournisseur `{provider}` n'est pas encore pris en charge"
     ))
-}
-
-/// Connexion. Renvoie la session à chiffrer ; le mot de passe n'y figure pas.
-pub async fn login(
-    university: &ResolvedUniversity,
-    username: &str,
-    password: &str,
-    establishment: Option<&str>,
-    now: DateTime<Utc>,
-    ttl_secs: i64,
-) -> Result<SessionData, Problem> {
-    match &university.university.sso {
-        Sso::Demo => demo::check_credentials(username, password)?,
-        Sso::Cas(_) => return Err(not_implemented("cas")),
-    }
-    Ok(SessionData {
-        university: university.university.id.clone(),
-        username: username.to_owned(),
-        establishment: pick_establishment(university, establishment)?,
-        cookies: Vec::new(),
-        tokens: std::collections::BTreeMap::new(),
-        issued_at: now.timestamp(),
-        expires_at: now.timestamp() + ttl_secs,
-    })
 }
 
 /// Composante choisie par l'étudiant, sinon celle par défaut de l'université.

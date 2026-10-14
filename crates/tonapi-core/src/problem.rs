@@ -19,6 +19,8 @@ pub enum ErrorCode {
     InvalidToken,
     /// Session expirée : se reconnecter.
     SessionExpired,
+    /// L'université demande une action sur le compte (mot de passe expiré…), à faire sur son site.
+    AccountActionRequired,
     /// Université inconnue.
     UnknownUniversity,
     /// Composante inconnue pour cette université.
@@ -50,6 +52,7 @@ impl ErrorCode {
             | ErrorCode::UnknownUniversity
             | ErrorCode::UnknownEstablishment
             | ErrorCode::ServiceAbsent => 404,
+            ErrorCode::AccountActionRequired => 403,
             ErrorCode::RateLimited => 429,
             ErrorCode::Internal => 500,
             ErrorCode::NotImplemented => 501,
@@ -66,6 +69,7 @@ impl ErrorCode {
             ErrorCode::InvalidCredentials => "Identifiant ou mot de passe incorrect",
             ErrorCode::InvalidToken => "Jeton de session invalide",
             ErrorCode::SessionExpired => "Session expirée",
+            ErrorCode::AccountActionRequired => "Action requise sur le compte universitaire",
             ErrorCode::UnknownUniversity => "Université inconnue",
             ErrorCode::UnknownEstablishment => "Composante inconnue",
             ErrorCode::ServiceAbsent => "Service non proposé",
@@ -86,6 +90,7 @@ impl ErrorCode {
             ErrorCode::InvalidCredentials => "invalid_credentials",
             ErrorCode::InvalidToken => "invalid_token",
             ErrorCode::SessionExpired => "session_expired",
+            ErrorCode::AccountActionRequired => "account_action_required",
             ErrorCode::UnknownUniversity => "unknown_university",
             ErrorCode::UnknownEstablishment => "unknown_establishment",
             ErrorCode::ServiceAbsent => "service_absent",
