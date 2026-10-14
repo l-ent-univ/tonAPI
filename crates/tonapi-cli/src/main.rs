@@ -45,6 +45,18 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Affiche la spécification OpenAPI de l'API.
+    Openapi {
+        /// Fichier de sortie ; sortie standard par défaut.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Génère une clé de session `kid:base64` pour `TONAPI_SESSION_KEYS`.
+    Keygen {
+        /// Identifiant de la clé (1 à 16 caractères a-z, A-Z, 0-9, `_`).
+        #[arg(default_value = "k1")]
+        kid: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -72,6 +84,19 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::New { what, dir } => new(&what, &dir).map(|()| ExitCode::SUCCESS),
         Command::Providers { json } => {
             print_providers(json)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Openapi { out } => {
+            let text = tonapi_server::openapi().to_pretty_json()? + "\n";
+            match out {
+                Some(path) => fs::write(&path, text)
+                    .with_context(|| format!("écriture de {}", path.display()))?,
+                None => print!("{text}"),
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Keygen { kid } => {
+            println!("{}", tonapi_session::generate_key(&kid)?);
             Ok(ExitCode::SUCCESS)
         }
     }
