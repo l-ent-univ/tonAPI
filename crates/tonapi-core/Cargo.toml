@@ -1,0 +1,17 @@
+[package]
+name = "tonapi-core"
+description = "Modèles unifiés et erreurs (RFC 9457) de tonAPI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono = { version = "0.4.45", features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+utoipa = { version = "6.0.0", features = ["chrono"] }
+
+[lints]
+workspace = true
