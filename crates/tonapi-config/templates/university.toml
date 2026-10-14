@@ -1,0 +1,43 @@
+#:schema ../../schema/university.schema.json
+# Université `{id}`. Seuls `id`, `name` et `[sso]` sont obligatoires ; un service absent n'est pas proposé.
+# Remplacez chaque « <à remplir> » et chaque `a-remplir.invalid`, puis lancez `tonapi validate`.
+# Liste des fournisseurs et de leurs paramètres : `tonapi providers`.
+
+id = "{id}"
+name = "<à remplir>"
+# short-name = "UX"
+status = "beta"            # active une fois testée avec un vrai compte
+
+# [links]
+# website = "https://www.exemple.fr/"
+# password-reset = "https://compte.exemple.fr/motdepasse"
+
+[sso]
+kind = "cas"
+base-url = "https://a-remplir.invalid/cas/"   # racine du CAS, sans /login
+# flavor = "apereo"        # apereo (défaut) | esup-otp-gateway | phpcas
+# [sso.mfa]
+# api-url = "https://otp-api.exemple.fr/"
+
+# Portail (ENT), pour la liste des applications et le profil.
+# [portal]
+# kind = "uportal5"        # uportal5 | uportal4-prolongation
+# base-url = "https://ent.exemple.fr/"
+
+# [services.timetable]
+# provider = "ade-portal-rest"
+# base-url = "https://planning.exemple.fr/portal/"
+
+# [services.homework]
+# provider = "moodle-ajax"
+# base-url = "https://moodle.exemple.fr/"
+
+# [services.mail]
+# provider = "zimbra-rest"
+# base-url = "https://mail.exemple.fr/"
+
+# [services.apps]
+# provider = "portal"
+
+# [services.profile]
+# provider = "portal"

@@ -1,0 +1,1196 @@
+{
+  "$defs": {
+    "AbsencesService": {
+      "description": "Absences.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Passerelle ScoDoc des IUT.",
+          "properties": {
+            "base-url": {
+              "description": "Racine de la passerelle (ex. `https://notes.iut.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "scodoc-gateway",
+              "type": "string"
+            },
+            "sign-in": {
+              "$ref": "#/$defs/SignIn",
+              "description": "Connexion. Défaut : CAS de l'université."
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Simple lien vers le site de l'établissement.",
+          "properties": {
+            "label": {
+              "description": "Libellé du lien.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "const": "link",
+              "type": "string"
+            },
+            "url": {
+              "description": "Page à ouvrir.",
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Affiliation": {
+      "additionalProperties": false,
+      "description": "Règles de rattachement automatique.",
+      "properties": {
+        "rules": {
+          "default": [],
+          "description": "Chaque règle qui correspond ajoute son poids au score de la composante.",
+          "items": {
+            "$ref": "#/$defs/MatchRule"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AppsService": {
+      "description": "Applications du portail.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Lues dans le portail déclaré dans `[portal]`.",
+          "properties": {
+            "provider": {
+              "const": "portal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CasFlavor": {
+      "description": "Logiciel CAS, qui détermine la forme du formulaire et des redirections.",
+      "oneOf": [
+        {
+          "const": "apereo",
+          "description": "Apereo CAS 5 à 7 : formulaire avec `execution`.",
+          "type": "string"
+        },
+        {
+          "const": "esup-otp-gateway",
+          "description": "esup-otp-cas-server devant Apereo CAS : `/cas` puis `/pre-otp`, rappel `login-<md5(service)>`.",
+          "type": "string"
+        },
+        {
+          "const": "phpcas",
+          "description": "phpCAS / CAS 1-2 : formulaire avec jeton `lt`.",
+          "type": "string"
+        }
+      ]
+    },
+    "Credentials": {
+      "description": "Identifiants demandés à l'étudiant.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Ceux du compte de l'université.",
+          "properties": {
+            "kind": {
+              "const": "university",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Un autre compte, propre à la composante.",
+          "properties": {
+            "kind": {
+              "const": "separate",
+              "type": "string"
+            },
+            "label": {
+              "description": "Ce qu'on demande à l'étudiant (ex. « Identifiant IUT (prenom.nom) »).",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "label"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DocumentsService": {
+      "description": "Documents administratifs.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Mon Dossier Web (Vaadin), onglet Inscriptions.",
+          "properties": {
+            "base-url": {
+              "description": "Racine de Mon Dossier Web.",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "mon-dossier-web",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "API ardemat (attestations dématérialisées).",
+          "properties": {
+            "base-url": {
+              "description": "Racine de l'API (ex. `https://app.exemple.fr/ardemat-api/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "ardemat",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Simple lien vers le site de l'établissement.",
+          "properties": {
+            "label": {
+              "description": "Libellé du lien.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "const": "link",
+              "type": "string"
+            },
+            "url": {
+              "description": "Page à ouvrir.",
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "GradesService": {
+      "description": "Notes.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Passerelle ScoDoc des IUT.",
+          "properties": {
+            "base-url": {
+              "description": "Racine de la passerelle (ex. `https://notes.iut.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "scodoc-gateway",
+              "type": "string"
+            },
+            "sign-in": {
+              "$ref": "#/$defs/SignIn",
+              "description": "Connexion. Défaut : CAS de l'université."
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Simple lien vers le site de l'établissement.",
+          "properties": {
+            "label": {
+              "description": "Libellé du lien.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "const": "link",
+              "type": "string"
+            },
+            "url": {
+              "description": "Page à ouvrir.",
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "HomeworkService": {
+      "description": "Devoirs et échéances.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Web service Moodle (`/webservice/rest/server.php`) avec un jeton.",
+          "properties": {
+            "base-url": {
+              "description": "Racine du Moodle (ex. `https://moodle.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "moodle-webservice",
+              "type": "string"
+            },
+            "sign-in": {
+              "$ref": "#/$defs/SignIn",
+              "description": "Obtention du jeton. Défaut : CAS de l'université."
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Appels AJAX de l'interface Moodle (`/lib/ajax/service.php`) avec la session web.",
+          "properties": {
+            "base-url": {
+              "description": "Racine du Moodle.",
+              "format": "uri",
+              "type": "string"
+            },
+            "entry": {
+              "$ref": "#/$defs/MoodleEntry",
+              "default": "cas",
+              "description": "Entrée de connexion."
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "moodle-ajax",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Simple lien vers le site de l'établissement.",
+          "properties": {
+            "label": {
+              "description": "Libellé du lien.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "const": "link",
+              "type": "string"
+            },
+            "url": {
+              "description": "Page à ouvrir.",
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Links": {
+      "additionalProperties": false,
+      "description": "Liens utiles. Tous facultatifs.",
+      "properties": {
+        "account-activation": {
+          "description": "Page d'activation du compte.",
+          "format": "uri",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "account-help": {
+          "description": "Page d'aide sur le compte numérique.",
+          "format": "uri",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "password-reset": {
+          "description": "Page « mot de passe oublié ».",
+          "format": "uri",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "website": {
+          "description": "Site de l'établissement.",
+          "format": "uri",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "MailService": {
+      "description": "Messagerie.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Zimbra (`/service/soap`, `/home/~/inbox`), session `ZM_AUTH_TOKEN` obtenue par préauthentification.",
+          "properties": {
+            "base-url": {
+              "description": "Racine du webmail.",
+              "format": "uri",
+              "type": "string"
+            },
+            "entry-url": {
+              "description": "Page qui lance la connexion. Défaut : `base-url`.",
+              "format": "uri",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "zimbra-rest",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Simple lien vers le site de l'établissement.",
+          "properties": {
+            "label": {
+              "description": "Libellé du lien.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "const": "link",
+              "type": "string"
+            },
+            "url": {
+              "description": "Page à ouvrir.",
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MatchRule": {
+      "additionalProperties": false,
+      "description": "Une règle : un signal du profil et un motif. Renseigner exactement un de `contains`, `prefix`, `suffix`.\n\nLa comparaison ignore la casse, les accents et les espaces multiples ; un `?` ou `�` dans le signal\n(accent mal encodé par le serveur) correspond à n'importe quel caractère.",
+      "properties": {
+        "contains": {
+          "description": "Le signal contient ce texte.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prefix": {
+          "description": "Le signal commence par ce texte.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signal": {
+          "$ref": "#/$defs/SignalSource",
+          "description": "Signal comparé."
+        },
+        "suffix": {
+          "description": "Le signal finit par ce texte.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "weight": {
+          "default": 1,
+          "description": "Poids de la règle. Défaut : 1.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "signal"
+      ],
+      "type": "object"
+    },
+    "MoodleEntry": {
+      "description": "Entrée de connexion d'un Moodle.",
+      "oneOf": [
+        {
+          "const": "cas",
+          "description": "`/login/index.php?authCAS=CAS`.",
+          "type": "string"
+        },
+        {
+          "const": "shibboleth",
+          "description": "`/auth/shibboleth/index.php`, via la fédération SAML de l'université.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProfileService": {
+      "description": "Profil.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Lu dans le portail déclaré dans `[portal]`.",
+          "properties": {
+            "provider": {
+              "const": "portal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ServiceOptions": {
+      "additionalProperties": false,
+      "description": "Réglages communs à tous les fournisseurs distants. Tous facultatifs.",
+      "properties": {
+        "cache-ttl-secs": {
+          "description": "Durée de cache des réponses, en secondes. Défaut propre au fournisseur.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "timeout-secs": {
+          "description": "Délai maximal d'une requête, en secondes. Défaut : 20.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Services": {
+      "additionalProperties": false,
+      "description": "Services, tous facultatifs. Un service absent n'est pas proposé ; dans un fichier de composante, un\nservice absent reprend celui de l'université.",
+      "properties": {
+        "absences": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AbsencesService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Absences."
+        },
+        "apps": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AppsService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Applications du portail."
+        },
+        "documents": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentsService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Documents (certificat de scolarité, attestations)."
+        },
+        "grades": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GradesService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Notes."
+        },
+        "homework": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HomeworkService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Devoirs et échéances."
+        },
+        "mail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MailService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Messagerie."
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProfileService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Profil (nom, adresse, composante)."
+        },
+        "timetable": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimetableService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Emploi du temps."
+        }
+      },
+      "type": "object"
+    },
+    "SignIn": {
+      "description": "Manière d'ouvrir une session sur le service.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "CAS de l'université. Le service CAS se déduit de l'URL du fournisseur ; `service` le remplace.",
+          "properties": {
+            "kind": {
+              "const": "university-cas",
+              "type": "string"
+            },
+            "service": {
+              "description": "URL de service CAS, si elle diffère de celle déduite.",
+              "format": "uri",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "CAS propre à la composante.",
+          "properties": {
+            "base-url": {
+              "description": "Racine du CAS de la composante.",
+              "format": "uri",
+              "type": "string"
+            },
+            "credentials": {
+              "$ref": "#/$defs/Credentials",
+              "default": {
+                "kind": "university"
+              },
+              "description": "Identifiants demandés."
+            },
+            "flavor": {
+              "$ref": "#/$defs/CasFlavor",
+              "default": "apereo",
+              "description": "Logiciel CAS."
+            },
+            "kind": {
+              "const": "own-cas",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Identifiant et mot de passe envoyés directement au service (ex. `login/token.php` de Moodle).",
+          "properties": {
+            "credentials": {
+              "$ref": "#/$defs/Credentials",
+              "default": {
+                "kind": "university"
+              },
+              "description": "Identifiants demandés."
+            },
+            "kind": {
+              "const": "local-password",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SignalSource": {
+      "description": "Source d'un signal de rattachement.",
+      "oneOf": [
+        {
+          "const": "ade-group-path",
+          "description": "Chemin du groupe dans l'arbre ADE (ex. `IUT Lannion › BUT MMI › MMI A2`).",
+          "type": "string"
+        },
+        {
+          "const": "enrollment-component",
+          "description": "Composante d'inscription (Mon Dossier Web, ScoDoc…).",
+          "type": "string"
+        },
+        {
+          "const": "postal-address",
+          "description": "Adresse postale du profil.",
+          "type": "string"
+        },
+        {
+          "const": "room-address",
+          "description": "Adresse ou nom d'une salle de cours.",
+          "type": "string"
+        }
+      ]
+    },
+    "Status": {
+      "description": "Avancement de la prise en charge d'une université ou d'une composante.",
+      "oneOf": [
+        {
+          "const": "active",
+          "description": "Testée avec un vrai compte.",
+          "type": "string"
+        },
+        {
+          "const": "beta",
+          "description": "Configurée d'après la documentation, pas encore testée de bout en bout.",
+          "type": "string"
+        },
+        {
+          "const": "planned",
+          "description": "Annoncée, non utilisable.",
+          "type": "string"
+        }
+      ]
+    },
+    "TimetableService": {
+      "description": "Emploi du temps.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Flux iCal ADE (`direct_cal.jsp?data=…`) dont le lien est lu sur une page authentifiée.",
+          "properties": {
+            "feed-host": {
+              "description": "Hôte du serveur ADE qui sert le flux.",
+              "type": "string"
+            },
+            "link-page": {
+              "description": "Page, derrière le CAS, qui contient le lien du flux.",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "ade-ical-link",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "link-page",
+            "feed-host"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "API REST du portail ADE (`/portal/RestApi/`), après connexion CAS.",
+          "properties": {
+            "base-url": {
+              "description": "Racine du portail ADE (ex. `https://planning.exemple.fr/portal/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "ade-portal-rest",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Simple lien vers le site de l'établissement.",
+          "properties": {
+            "label": {
+              "description": "Libellé du lien.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "const": "link",
+              "type": "string"
+            },
+            "url": {
+              "description": "Page à ouvrir.",
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Tls": {
+      "additionalProperties": false,
+      "description": "Réglages TLS.",
+      "properties": {
+        "extra-ca": {
+          "default": [],
+          "description": "Certificats PEM à ajouter aux autorités reconnues, relatifs au dossier de l'université.\nSert aux serveurs qui n'envoient pas leur certificat intermédiaire.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Fichier `universities/<université>/establishments/<id>.toml` : une composante (IUT, UFR, faculté)\ndont les étudiants n'ont pas tout à fait les mêmes services que le reste de l'université.\n\nSeuls `id` et `name` sont obligatoires.",
+  "properties": {
+    "affiliation": {
+      "$ref": "#/$defs/Affiliation",
+      "default": {
+        "rules": []
+      },
+      "description": "Règles de rattachement automatique. Sans règle, l'étudiant choisit lui-même."
+    },
+    "default": {
+      "default": false,
+      "description": "Composante choisie quand aucune règle de rattachement ne correspond. Une seule par université.",
+      "type": "boolean"
+    },
+    "id": {
+      "description": "Identifiant stable, identique au nom du fichier sans `.toml` (`a-z`, `0-9`, `-`).",
+      "type": "string"
+    },
+    "links": {
+      "$ref": "#/$defs/Links",
+      "default": {},
+      "description": "Liens propres à la composante."
+    },
+    "name": {
+      "description": "Nom complet affiché à l'étudiant.",
+      "type": "string"
+    },
+    "schema-version": {
+      "default": 1,
+      "description": "Version du format. Vaut 1.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "services": {
+      "$ref": "#/$defs/Services",
+      "default": {},
+      "description": "Services qui remplacent ceux de l'université pour les étudiants de la composante."
+    },
+    "short-name": {
+      "description": "Nom court.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "$ref": "#/$defs/Status",
+      "default": "active",
+      "description": "Avancement de la prise en charge."
+    },
+    "tls": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Tls"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Réglages TLS propres aux serveurs de la composante."
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "EstablishmentFile",
+  "type": "object"
+}

@@ -1,0 +1,33 @@
+#:schema ../../../schema/establishment.schema.json
+# Composante `{id}` de l'université `{university}`. Seuls `id` et `name` sont obligatoires.
+# Les services déclarés ici remplacent ceux de l'université pour les étudiants de la composante ;
+# les autres sont repris tels quels. Liste des fournisseurs : `tonapi providers`.
+# Remplacez chaque « <à remplir> », puis lancez `tonapi validate`.
+
+id = "{id}"
+name = "<à remplir>"
+status = "beta"
+
+# Rattachement automatique. Sans règle, l'étudiant choisit lui-même sa composante.
+# signal : ade-group-path | enrollment-component | postal-address | room-address
+# motif  : contains | prefix | suffix (casse et accents ignorés)
+# [[affiliation.rules]]
+# signal = "ade-group-path"
+# contains = "iut de exemple"
+
+# Notes et absences par la passerelle ScoDoc de l'IUT.
+# [services.grades]
+# provider = "scodoc-gateway"
+# base-url = "https://notes.iut.exemple.fr/"
+#
+# [services.absences]
+# provider = "scodoc-gateway"
+# base-url = "https://notes.iut.exemple.fr/"
+
+# Si la composante a son propre CAS et ses propres identifiants, ajoutez à chaque service ScoDoc :
+# sign-in = { kind = "own-cas", base-url = "https://cas.iut.exemple.fr/", flavor = "phpcas", credentials = { kind = "separate", label = "Identifiant IUT" } }
+
+# Moodle propre à la composante.
+# [services.homework]
+# provider = "moodle-webservice"
+# base-url = "https://moodle.iut.exemple.fr/"
