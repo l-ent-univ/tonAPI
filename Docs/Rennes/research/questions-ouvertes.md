@@ -29,7 +29,9 @@ Tout est issu du code de tafac ; rien n'a encore été observé en direct. Prior
 
 ## Priorité moyenne
 
-### R5. Export iCal ADE (`direct_cal.jsp`) accessible aux étudiants ?
+### R5. Export iCal ADE accessible ? — 🟡 les deux JSP existent
+- **Sonde 2026-10-14** : `direct_cal.jsp` existe (302 sans `data`), **`anonymous_cal.jsp` répond 200** (export anonyme actif), `webapi` exige un compte ADE. Reste : tester `anonymous_cal.jsp?resources=<ids de l'étudiant>&projectId=<id>&calType=ical&firstDate&lastDate` avec un compte Rennes. → [../emploi-du-temps.md §11](../emploi-du-temps.md)
+- Ancien texte :
 - Dans le portail planning, chercher un bouton d'export / abonnement. Si oui → voie plus simple que le REST (cf. Montpellier `lien-ade.md`).
 
 ### R6. Hôtes Shibboleth réels (WAYF, IdP) pour Moodle et Partage
@@ -45,8 +47,8 @@ Tout est issu du code de tafac ; rien n'a encore été observé en direct. Prior
 - Moodle **4.4**, thème `kairos`, **`enablemobilewebservice: 1`**, **`typeoflogin: 3`** (SSO), IdP Shibboleth. → API mobile utilisable via `launch.php` (jeton `wstoken`), pas via `token.php`. → [../moodle.md §10](../moodle.md)
 - **Reste (R9b)** : tester le flux `launch.php` → `moodlemobile://token=…` avec un compte Rennes.
 
-### R10. API Web ADE `jsp/webapi` sur `planning.univ-rennes.fr`
-- Probablement réservée à un compte API (cf. Montpellier). Ne pas deviner d'identifiants.
+### R10. ✅ API Web ADE `jsp/webapi` sur `planning.univ-rennes.fr`
+- Active, `InvalidLogin` sans identifiants → **compte ADE requis**, comme Montpellier. Ne pas deviner d'identifiants.
 
 ### R12. `deviceFingerprint` et POST avec query
 - Champ présent le 14 oct., absent le 29 sept. ; le CAS accepte-t-il le POST sur l'URL avec query (comme Montpellier) ?

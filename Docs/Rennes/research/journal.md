@@ -13,3 +13,8 @@
 
 ## 2026-10-14 — Moodle FOAD, sonde publique
 - Moodle 4.4 (`upgrade.txt`), thème kairos, API mobile **activée**, `typeoflogin: 3` (SSO Shibboleth). tafac utilise l'AJAX alors que l'API REST officielle est possible via `launch.php`. → [../moodle.md §10](../moodle.md)
+
+## 2026-10-14 — ADE Rennes, sonde publique
+- Portail : service CAS `…/portal/`, `configuration/sso` public (CAS + loginUrl/logoutUrl), `sso/accessToken` sans session → `{"token":"","errMsg":"No session allowed!"}` en 200, reste de `RestApi` en 401.
+- ADE classique : `direct_cal.jsp` présent, **`anonymous_cal.jsp` actif (200)**, `webapi` = compte requis, `/direct/` derrière CAS.
+- Piste : iCal anonyme avec `projectId` + `resources` lus une fois dans `ssologin`. → [../emploi-du-temps.md §11](../emploi-du-temps.md)

@@ -488,7 +488,7 @@ Tous ces caches serveur sont des `Map` en mémoire : perdus au redémarrage, non
 | **B1 portail REST** | JSON propre, dates avec offset, filtre serveur par ressources et dates, une requête pour N jours, refresh token, c'est ce que tafac utilise en production depuis 09/2026 | dépend du TGC CAS pour le 1er jeton ; forme de `authData.resources` et sens de `level;=8` non documentés | **À faire en premier** [code pour le flux ; incertain pour la stabilité] |
 | B2 GWT-RPC | marche sans portail | protocole binaire-texte fragile (hashes changeant à chaque build ADE, parsing par motifs `0,7,7,7,0` et positions en pixels), 11 appels d'init, `eval` | **Repli seulement**, idéalement jamais |
 | A API Campus | JSON simple, `nbDays` | exige les **clés AES de l'app mobile** et l'imitation de ses en-têtes (rétro-ingénierie, risque juridique et de rupture à chaque version d'app) ; plus utilisée par tafac à Rennes | **Ne pas utiliser** |
-| iCal `direct_cal.jsp` | aucun code dans tafac | — | à explorer à part (comme pour Montpellier) [incertain] |
+| iCal `anonymous_cal.jsp` / `direct_cal.jsp` | aucun code dans tafac | aucune après lecture de `projectId` + `resources` | **les deux JSP existent** (sonde §11) ; `anonymous_cal` = iCal sans auth si les ressources sont autorisées — à tester [incertain] |
 
 ### 9.2 Séquence minimale « mes cours des N prochains jours » (B1)
 
@@ -548,3 +548,37 @@ Tous ces caches serveur sont des `Map` en mémoire : perdus au redémarrage, non
 - `src/upcomingClasses.js`, `src/entApi.js`, `src/components/WidgetNextClass.jsx` — côté navigateur
 - `universities/univ-rennes/server.js`, `shared.js`, `client.js` — configuration Rennes
 - `test-ade.js` — ébauche vide
+
+
+---
+
+## 11. Sonde publique de l'ADE de Rennes (2026-10-14, sans identifiants) [confirmé]
+
+| Requête | Réponse | Ce que ça dit |
+|---|---|---|
+| `GET /portal/` | `302 → https://sso-cas.univ-rennes.fr/login?service=https%3A%2F%2Fplanning.univ-rennes.fr%2Fportal%2F` | le service CAS du portail est **`https://planning.univ-rennes.fr/portal/`** (confirme le repli de tafac) |
+| `POST /portal/RestApi/configuration/sso` body `{"id":"ade-portal"}` | `200 {"data":{"webSSO":true,"protocol":"CAS","casConfig":{"loginUrl":"https://sso-cas.univ-rennes.fr/login","logoutUrl":"https://sso-cas.univ-rennes.fr/logout"}}}` | endpoint **public**, valeurs réelles = celles de la fixture tafac + `casConfig` |
+| `POST /portal/sso/accessToken` body `{}` (sans cookie) | `200 {"token": "", "errMsg": "No session allowed!"}` | **signal d'échec à détecter** : HTTP 200 avec `token` vide → déclencher la chaîne CAS puis réessayer (c'est le repli de tafac) |
+| `GET /portal/RestApi/configuration`, `/RestApi/version`, `/RestApi/portal/version`, `/RestApi/configuration/portal` | `401` | tout le reste de `RestApi` exige le Bearer |
+| `GET /portal/config.json`, `/portal/assets/config.json` | `302` (vers le CAS) | front protégé |
+| `GET /direct/` | `302 → CAS` (service `…/direct/`) | Direct Planning (GWT) existe toujours, derrière CAS |
+| `GET /jsp/custom/modules/plannings/direct_cal.jsp` (sans `data`) | `302 → /jsp/standard/redirectIndex.jsp` | **l'export « lien direct » existe** ; il lui faut un `data=` (généré côté ADE, cf. Montpellier `lien-ade.md`) |
+| `GET /jsp/custom/modules/plannings/anonymous_cal.jsp` (sans paramètres) | `200`, corps vide, pose `JSESSIONID` (`Path=/jsp`) | **l'export anonyme est actif** |
+| `GET /jsp/webapi?function=connect` | `200` XML `<error type="2" name="com.adesoft.errors.InvalidLogin…">` | API Web ADE active, **compte ADE requis** (comme Montpellier) — ne pas deviner d'identifiants |
+
+### 11.1 Ce que ça ouvre : l'export iCal **anonyme** d'ADE
+`anonymous_cal.jsp` est la fonction standard d'ADE qui sert un iCal **sans authentification** à partir d'identifiants de ressources en clair :
+```
+GET https://planning.univ-rennes.fr/jsp/custom/modules/plannings/anonymous_cal.jsp
+    ?resources=<id1,id2,…>&projectId=<projectId>&calType=ical&firstDate=YYYY-MM-DD&lastDate=YYYY-MM-DD
+```
+- `projectId` et les `resources` de l'étudiant sont **déjà renvoyés** par `RestApi/portal/ssologin` (`authData.projectId`, `authData.resources`, §3.1). [code]
+- Si l'appel répond `BEGIN:VCALENDAR`, tonAPI peut : **1 seule fois** faire CAS → `sso/accessToken` → `ssologin` pour lire `projectId` + `resources`, puis **ne plus jamais** avoir besoin du CAS : un simple GET iCal, comme le lien `direct_cal.jsp` de Montpellier.
+- Paramètres de dates : `firstDate`/`lastDate` au format `YYYY-MM-DD` (convention ADE 6, à vérifier ; le portail REST, lui, utilise `MMJJAAAA`).
+- **[incertain]** : non testé avec de vrais identifiants de ressources (pas de compte Rennes, et on n'énumère pas des ids au hasard). Certaines universités restreignent `anonymous_cal` à certains projets ou ressources ; la réponse vide à vide est compatible avec les deux.
+
+### 11.2 À tester avec un compte Rennes (≈ 5 min)
+1. Se connecter au portail planning ; dans les requêtes réseau, lire `ssologin` → noter `projectId` et la **liste** `resources` (noms de clés, pas de valeurs dans la doc).
+2. Ouvrir `anonymous_cal.jsp?resources=<ses ids>&projectId=<id>&calType=ical&firstDate=<aujourd'hui>&lastDate=<+14 j>` dans un onglet **privé non connecté**.
+3. `BEGIN:VCALENDAR` → ✅ voie la plus simple ; HTML / vide → l'export anonyme est restreint, rester sur le portail REST.
+4. Chercher aussi dans le portail un bouton « exporter / s'abonner » qui donnerait un `direct_cal.jsp?data=…` (cf. Montpellier).
