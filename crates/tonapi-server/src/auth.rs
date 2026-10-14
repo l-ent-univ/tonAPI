@@ -4,7 +4,7 @@ use axum::extract::FromRequestParts;
 use axum::http::header;
 use axum::http::request::Parts;
 use chrono::Utc;
-use tonapi_core::ErrorCode;
+use tonapi_core::{ErrorCode, Problem};
 use tonapi_session::{SessionData, SessionError};
 
 use crate::AppState;
@@ -36,6 +36,9 @@ fn open(parts: &Parts, state: &AppState) -> Result<AuthSession, ApiError> {
         .map(str::trim)
         .ok_or(ErrorCode::InvalidToken)?;
     match state.keys.open(token, Utc::now().timestamp()) {
+        Ok(data) if data.pending => Err(Problem::new(ErrorCode::InvalidToken)
+            .detail("connexion non terminée : valider le second facteur")
+            .into()),
         Ok(data) => Ok(AuthSession(data)),
         Err(SessionError::Expired) => Err(ErrorCode::SessionExpired.into()),
         Err(_) => Err(ErrorCode::InvalidToken.into()),

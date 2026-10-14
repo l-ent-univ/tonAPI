@@ -2,6 +2,7 @@
 
 mod auth;
 mod error;
+mod limit;
 mod reload;
 mod respond;
 mod routes;
@@ -42,6 +43,7 @@ pub struct AppState {
     pub registry: Arc<ArcSwap<Registry>>,
     pub keys: Arc<SessionKeys>,
     pub settings: Arc<Settings>,
+    login_limiter: Arc<limit::LoginLimiter>,
 }
 
 impl AppState {
@@ -51,6 +53,7 @@ impl AppState {
             registry: Arc::new(ArcSwap::from_pointee(registry)),
             keys: Arc::new(keys),
             settings: Arc::new(settings),
+            login_limiter: Arc::default(),
         }
     }
 }

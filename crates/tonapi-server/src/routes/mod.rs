@@ -19,6 +19,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(universities::list))
         .routes(routes!(universities::detail))
         .routes(routes!(session::login))
+        .routes(routes!(session::mfa))
         .routes(routes!(session::refresh))
         .routes(routes!(session::logout))
         .routes(routes!(me::me))

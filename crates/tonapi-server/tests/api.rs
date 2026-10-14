@@ -175,11 +175,6 @@ async fn erreurs_de_connexion() {
     .await;
     assert_eq!(r.status, StatusCode::BAD_REQUEST);
     assert_eq!(r.body["code"], "invalid_request");
-
-    // Le CAS arrive à l'étape suivante : réponse explicite, pas d'erreur 500.
-    let r = login(&app, "umontpellier", json!({})).await;
-    assert_eq!(r.status, StatusCode::NOT_IMPLEMENTED);
-    assert_eq!(r.body["code"], "not_implemented");
 }
 
 #[tokio::test]
@@ -307,4 +302,73 @@ async fn specification_et_documentation() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn trop_d_echecs_bloquent_le_compte() {
+    let app = server();
+    let wrong = json!({ "university": "demo", "username": "demo", "password": "faux" });
+    for _ in 0..5 {
+        let r = call(&app, "POST", "/v1/auth/login", None, Some(wrong.clone())).await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    }
+    let r = login(&app, "demo", json!({})).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(r.body["code"], "rate_limited");
+    assert_eq!(r.headers[header::RETRY_AFTER], "900");
+}
+
+#[tokio::test]
+async fn second_facteur_controle_ses_entrees() {
+    let app = server();
+    let token = login(&app, "demo", json!({})).await.body["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Un jeton de session complet n'attend pas de second facteur.
+    let r = call(
+        &app,
+        "POST",
+        "/v1/auth/mfa",
+        None,
+        Some(json!({ "pending": token, "method": "push" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    let r = call(
+        &app,
+        "POST",
+        "/v1/auth/mfa",
+        None,
+        Some(json!({ "pending": "v1.dev.abc", "method": "code", "code": "123456" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(r.body["code"], "invalid_token");
+
+    let r = call(
+        &app,
+        "POST",
+        "/v1/auth/mfa",
+        None,
+        Some(json!({ "method": "sms" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn ancien_jeton_accepte_a_la_connexion() {
+    let app = server();
+    let old = login(&app, "demo", json!({})).await.body["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let r = login(&app, "demo", json!({ "previousToken": old })).await;
+    assert_eq!(r.status, StatusCode::OK);
+    // Un jeton illisible est ignoré, pas une erreur.
+    let r = login(&app, "demo", json!({ "previousToken": "n'importe quoi" })).await;
+    assert_eq!(r.status, StatusCode::OK);
 }
