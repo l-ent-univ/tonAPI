@@ -1,0 +1,27 @@
+[package]
+name = "tonapi-http"
+description = "Client HTTP de tonAPI : cookies, redirections, connexion CAS et second facteur esup-otp."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono = "0.4.45"
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "charset", "http2"] }
+scraper = "0.27.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { version = "1.53.3", features = ["time"] }
+tonapi-config.workspace = true
+tonapi-session.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+axum = "0.8.9"
+tokio = { version = "1.53.3", features = ["full", "macros"] }
