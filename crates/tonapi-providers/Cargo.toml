@@ -1,0 +1,20 @@
+[package]
+name = "tonapi-providers"
+description = "Fournisseurs de données de tonAPI : un module par logiciel."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono = "0.4.45"
+chrono-tz = "0.10.4"
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tonapi-config.workspace = true
+tonapi-core.workspace = true
+tonapi-session.workspace = true
+
+[lints]
+workspace = true
