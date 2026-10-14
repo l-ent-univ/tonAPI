@@ -1,0 +1,5 @@
+id = "regle-vide"
+name = "Règle sans motif"
+
+[[affiliation.rules]]
+signal = "ade-group-path"

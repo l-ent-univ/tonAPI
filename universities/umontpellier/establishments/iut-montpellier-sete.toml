@@ -1,0 +1,18 @@
+#:schema ../../../schema/establishment.schema.json
+# IUT de Montpellier-Sète. Pas de ScoDoc public : les étudiants passent par Mon Dossier Web.
+# Docs/Montpellier/research/questions-ouvertes.md
+
+id = "iut-montpellier-sete"
+name = "IUT de Montpellier-Sète"
+status = "planned"
+
+# [déduit] libellé de composante dans Mon Dossier Web, non observé.
+[[affiliation.rules]]
+signal = "enrollment-component"
+contains = "Montpellier-Sète"
+weight = 2
+
+[services.grades]
+provider = "link"
+url = "https://app.umontpellier.fr/mdw/"
+label = "Mon Dossier Web"

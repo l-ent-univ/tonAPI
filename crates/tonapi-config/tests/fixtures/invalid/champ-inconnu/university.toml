@@ -1,0 +1,6 @@
+id = "champ-inconnu"
+name = "Champ inconnu"
+bse-url = "https://exemple.fr/"
+
+[sso]
+kind = "demo"

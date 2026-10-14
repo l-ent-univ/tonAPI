@@ -1,0 +1,6 @@
+id = "http"
+name = "URL en clair"
+
+[sso]
+kind = "cas"
+base-url = "http://cas.exemple.fr/"

@@ -1,0 +1,6 @@
+#:schema ../../../schema/establishment.schema.json
+# Facultés et écoles de l'UM : services de l'université, sans remplacement.
+
+id = "fac"
+name = "Faculté ou école de l'Université de Montpellier"
+default = true

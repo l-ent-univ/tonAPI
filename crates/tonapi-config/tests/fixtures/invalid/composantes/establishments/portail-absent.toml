@@ -1,0 +1,5 @@
+id = "portail-absent"
+name = "Applications sans portail"
+
+[services.apps]
+provider = "portal"

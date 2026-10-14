@@ -1,0 +1,10 @@
+id = "fournisseur-inconnu"
+name = "Faute de frappe"
+
+[sso]
+kind = "cas"
+base-url = "https://cas.exemple.fr/"
+
+[services.grades]
+provider = "scodoc"
+base-url = "https://notes.exemple.fr/"

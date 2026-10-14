@@ -1,0 +1,19 @@
+#:schema ../../schema/university.schema.json
+# Université de démonstration : identifiants `demo` / `demo`, données fictives, aucun appel réseau.
+
+id = "demo"
+name = "Université de démonstration"
+short-name = "Démo"
+
+[sso]
+kind = "demo"
+
+[services]
+timetable = { provider = "demo" }
+grades = { provider = "demo" }
+absences = { provider = "demo" }
+homework = { provider = "demo" }
+mail = { provider = "demo" }
+apps = { provider = "demo" }
+profile = { provider = "demo" }
+documents = { provider = "demo" }

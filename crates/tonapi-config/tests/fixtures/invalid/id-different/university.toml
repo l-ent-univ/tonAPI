@@ -1,0 +1,5 @@
+id = "autre-nom"
+name = "Identifiant différent du dossier"
+
+[sso]
+kind = "demo"

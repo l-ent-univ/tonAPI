@@ -1,0 +1,46 @@
+#:schema ../../../schema/establishment.schema.json
+# IUT de Béziers. Sources : Docs/Montpellier/scodoc.md, cas-iut-beziers.md, moodle.md, lien-ade.md.
+
+id = "iut-beziers"
+name = "IUT de Béziers"
+short-name = "IUTB"
+status = "beta"
+
+# Arbre ADE : racine `Iutb` (ex. `Iutb.MMI 1ère année BUT.TDB.`).
+[[affiliation.rules]]
+signal = "ade-group-path"
+prefix = "Iutb"
+weight = 3
+
+# Mon Dossier Web, onglet Inscriptions.
+[[affiliation.rules]]
+signal = "enrollment-component"
+contains = "I.U.T. de Béziers"
+weight = 3
+
+# Adresse du profil uPortal, champs séparés par `$`.
+[[affiliation.rules]]
+signal = "postal-address"
+suffix = "$BEZIERS"
+
+[[affiliation.rules]]
+signal = "room-address"
+contains = "iut de béziers"
+
+# Passerelle ScoDoc derrière le CAS de l'IUT (phpCAS, identifiant prenom.nom, pas celui de l'UM).
+# TODO étape 4 : tls.extra-ca avec l'intermédiaire GandiCert, que cas.iutbeziers.fr n'envoie pas.
+[services.grades]
+provider = "scodoc-gateway"
+base-url = "https://wscodoc.iutbeziers.fr/"
+sign-in = { kind = "own-cas", base-url = "https://cas.iutbeziers.fr:8443/", flavor = "phpcas", credentials = { kind = "separate", label = "Identifiant IUT (prenom.nom)" } }
+
+[services.absences]
+provider = "scodoc-gateway"
+base-url = "https://wscodoc.iutbeziers.fr/"
+sign-in = { kind = "own-cas", base-url = "https://cas.iutbeziers.fr:8443/", flavor = "phpcas", credentials = { kind = "separate", label = "Identifiant IUT (prenom.nom)" } }
+
+# Moodle BUT : connexion locale avec les identifiants UM, jeton login/token.php.
+[services.homework]
+provider = "moodle-webservice"
+base-url = "https://moodle-but.iutbeziers.fr/moodle/"
+sign-in = { kind = "local-password" }

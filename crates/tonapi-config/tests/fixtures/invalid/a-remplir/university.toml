@@ -1,0 +1,6 @@
+id = "a-remplir"
+name = "<à remplir>"
+
+[sso]
+kind = "cas"
+base-url = "https://a-remplir.invalid/cas/"

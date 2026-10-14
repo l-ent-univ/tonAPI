@@ -1,0 +1,60 @@
+#:schema ../../schema/university.schema.json
+# Université de Rennes. Sources : Docs/Rennes/.
+
+id = "univ-rennes"
+name = "Université de Rennes"
+short-name = "UR"
+status = "beta"
+
+[links]
+website = "https://www.univ-rennes.fr/"
+account-help = "https://sesame.univ-rennes.fr/comptes/"
+account-activation = "https://sesame.univ-rennes1.fr/motdepasse/public/activate"
+password-reset = "https://docinfo.univ-rennes1.fr/documentation/compte-jai-oublie-mon-mot-de-passe"
+
+# Apereo CAS 7. Second facteur esup-otp pour certains comptes seulement. Docs/Rennes/cas-rennes.md
+[sso]
+kind = "cas"
+base-url = "https://sso-cas.univ-rennes.fr/"
+
+[sso.mfa]
+api-url = "https://mfa-api.univ-rennes.fr/"
+
+# Moodle et Partage passent par la fédération RENATER : SP → WAYF → IdP → CAS.
+[sso.saml]
+wayf-url = "https://wayf.univ-rennes.fr/"
+idp-entity-id = "urn:mace:cru.fr:federation:univ-rennes1.fr"
+allowed-hosts = ["univ-rennes.fr", "univ-rennes1.fr", "renater.fr"]
+
+# uPortal 5 servi à la racine. Docs/Rennes/apis/uportal5.md
+[portal]
+kind = "uportal5"
+base-url = "https://services-numeriques.univ-rennes.fr/"
+
+# Pas de flux iCal public : API REST du portail ADE. Docs/Rennes/apis/ade-portal-rest.md
+[services.timetable]
+provider = "ade-portal-rest"
+base-url = "https://planning.univ-rennes.fr/portal/"
+
+# Moodle 4.4 (foad), connexion Shibboleth, AJAX avec sesskey. Docs/Rennes/moodle.md
+[services.homework]
+provider = "moodle-ajax"
+base-url = "https://foad.univ-rennes.fr/"
+entry = "shibboleth"
+
+# RENATER Partage (Zimbra). Docs/Rennes/mail-et-autres.md
+[services.mail]
+provider = "zimbra-rest"
+base-url = "https://partage.univ-rennes1.fr/"
+entry-url = "https://partage.univ-rennes.fr/"
+
+[services.apps]
+provider = "portal"
+
+[services.profile]
+provider = "portal"
+
+# Certificat de scolarité, onglet Inscriptions. Docs/Rennes/ent.md
+[services.documents]
+provider = "mon-dossier-web"
+base-url = "https://mdw.univ-rennes.fr/"

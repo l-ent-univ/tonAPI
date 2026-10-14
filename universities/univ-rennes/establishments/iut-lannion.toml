@@ -1,0 +1,22 @@
+#:schema ../../../schema/establishment.schema.json
+# IUT de Lannion. Sources : Docs/Rennes/scodoc.md, emploi-du-temps.md.
+
+id = "iut-lannion"
+name = "IUT de Lannion"
+status = "beta"
+
+# Arbre ADE : `IUT Lannion › BUT MMI › MMI A2 › …`.
+[[affiliation.rules]]
+signal = "ade-group-path"
+contains = "IUT Lannion"
+weight = 3
+
+# Passerelle ScoDoc derrière le CAS de l'université.
+[services.grades]
+provider = "scodoc-gateway"
+base-url = "https://notes9.iutlan.univ-rennes1.fr/"
+
+# [incertain] champs d'absences supposés identiques à Béziers.
+[services.absences]
+provider = "scodoc-gateway"
+base-url = "https://notes9.iutlan.univ-rennes1.fr/"

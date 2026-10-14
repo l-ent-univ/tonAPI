@@ -1,0 +1,9 @@
+id = "parametre-manquant"
+name = "Paramètre manquant"
+
+[sso]
+kind = "cas"
+base-url = "https://cas.exemple.fr/"
+
+[services.timetable]
+provider = "ade-portal-rest"

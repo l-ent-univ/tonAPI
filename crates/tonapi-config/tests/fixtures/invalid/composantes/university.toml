@@ -1,0 +1,6 @@
+# Université valide : seules certaines composantes sont refusées.
+id = "composantes"
+name = "Composantes invalides"
+
+[sso]
+kind = "demo"

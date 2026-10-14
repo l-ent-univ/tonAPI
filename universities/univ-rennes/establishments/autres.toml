@@ -1,0 +1,6 @@
+#:schema ../../../schema/establishment.schema.json
+# Autres composantes de l'Université de Rennes : services de l'université, sans remplacement.
+
+id = "autres"
+name = "Autre composante de l'Université de Rennes"
+default = true
