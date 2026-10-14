@@ -10,3 +10,6 @@
 - CAS Apereo 7.x (thème `rennes`), un seul `/login`, formulaire `username/password/execution/_eventId/geolocation/deviceFingerprint`.
 - ENT : uPortal 5 à la racine, `layout.json` invité (booléens en chaînes), `userinfo` JWT 5 min `guest`.
 - MFA : esup-otp-api (`mfa-api.univ-rennes.fr`) présente. → R1 en partie résolue.
+
+## 2026-10-14 — Moodle FOAD, sonde publique
+- Moodle 4.4 (`upgrade.txt`), thème kairos, API mobile **activée**, `typeoflogin: 3` (SSO Shibboleth). tafac utilise l'AJAX alors que l'API REST officielle est possible via `launch.php`. → [../moodle.md §10](../moodle.md)

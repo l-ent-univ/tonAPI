@@ -240,3 +240,48 @@ Vérifié par l'auteur avec un vrai compte (commit `48283b3`) : 6 échéances, s
 - `universities/univ-rennes/shared.js:54-57, 71-73`, `universities/univ-rennes/server.js:17, 25-34`
 - `tests/sessionCookie.test.js:44-60`
 - Commits : `7e51756`, `48283b3`, `4540818`
+
+
+---
+
+## 10. Sonde publique du 2026-10-14 : l'API mobile **est ouverte** à Rennes [confirmé]
+
+Requêtes sans identifiants (`lib/ajax/service-nologin.php?info=tool_mobile_get_public_config`, `login/token.php?appsitecheck=1`, fichiers publics `upgrade.txt`, page de login).
+
+| Paramètre | Rennes (FOAD) | Montpellier UM | IUT Béziers (BUT) |
+|---|---|---|---|
+| Version | **Moodle 4.4** (`lib/upgrade.txt`, `theme/upgrade.txt`, `question/upgrade.txt` → `=== 4.4 ===` ; `UPGRADING.md` pas encore utilisé → < 4.5) | 4.5+ | ~3.11 / 4.x |
+| Thème | `kairos` | `boost` | `moove` |
+| `enablewebservices` | 1 | 1 | 1 |
+| **`enablemobilewebservice`** | **1** | 0 | 1 |
+| **`typeoflogin`** | **3** (SSO dans un navigateur intégré) | 1 | 1 (formulaire dans l'app) |
+| Fournisseur d'identité | « Se connecter » → `https://foad.univ-rennes.fr/auth/shibboleth/index.php` | CAS UM | aucun (login local) |
+| Formulaire local `login/index.php` | présent (`username`, `password`, `logintoken`) — comptes locaux / invités, **pas** les étudiants | — | utilisé |
+| `appsitecheck` | `{"appsitecheck":"ok"}` | — | ok |
+| `server.php` sans jeton | `invalidtoken` « Jeton non valide (introuvable) » | idem | idem |
+| `launch.php` sans session | `303 → /login/index.php` | — | — |
+
+### 10.1 Ce que ça change
+- **tafac passe par l'AJAX web (`sesskey`)**, mais Rennes autorise **l'API mobile officielle**. On peut donc obtenir un **jeton `wstoken`** et utiliser toute l'API REST (`mod_assign_get_assignments`, `mod_assign_get_submission_status`, `core_course_get_contents`, `gradereport_user_get_grade_items`…), comme au Moodle BUT de Béziers, au lieu de l'AJAX limité.
+- `login/token.php` (mot de passe) **ne marchera pas** : les étudiants sont en Shibboleth (`typeoflogin: 3`), et `authenticate_user_login` ne peut pas vérifier un mot de passe Shibboleth (même logique que le CAS à Montpellier, voir `../Montpellier/moodle.md §8`). [déduit du code Moodle]
+
+### 10.2 Le flux SSO mobile officiel (`typeoflogin = 3`) [code Moodle, non testé à Rennes]
+```
+1. GET https://foad.univ-rennes.fr/admin/tool/mobile/launch.php
+       ?service=moodle_mobile_app&passport=<nombre aléatoire>&urlscheme=<schéma>
+   → sans session Moodle : 303 /login/index.php → bouton Shibboleth → WAYF/IdP → CAS Rennes (TGC réutilisable)
+   → avec session Moodle : launch.php génère le jeton
+2. Redirection finale vers  <schéma>://token=<base64( md5(wwwroot . passport) ":::" token [":::" privatetoken] )>
+3. Décoder le base64, vérifier que la 1re partie = md5("https://foad.univ-rennes.fr" . passport), garder <token>.
+4. POST https://foad.univ-rennes.fr/webservice/rest/server.php  wstoken=<token>&wsfunction=…&moodlewsrestformat=json
+```
+- Côté serveur (tonAPI) : faire la chaîne Shibboleth/CAS avec le cookie jar (déjà documentée dans [cas-rennes.md](cas-rennes.md) pour tafac), puis appeler `launch.php` et **ne pas suivre** la dernière redirection : lire le `Location: <schéma>://token=…`. `urlscheme` peut être n'importe quel schéma accepté (`moodlemobile` par défaut).
+- `launch.php` exige `moodle/webservice:createmobiletoken` (accordé aux utilisateurs authentifiés par défaut) et, selon la config, peut demander une confirmation si le `passport` est réutilisé.
+- Jeton : réutilisé s'il existe, durée `$CFG->tokenduration` (12 semaines par défaut), pas d'expiration par inactivité (voir `../Montpellier/moodle.md §7.2`).
+- Alternative sans navigateur : `tool_mobile_get_autologin_key` ne sert qu'**après** avoir un jeton (sens inverse).
+
+### 10.3 À tester avec un compte Rennes
+- [ ] Le flux `launch.php` aboutit-il au `Location: moodlemobile://token=…` après la chaîne Shibboleth ?
+- [ ] Liste des fonctions autorisées : `core_webservice_get_site_info` → `functions[]`.
+- [ ] `mod_assign_get_submission_status` donne-t-il le vrai statut (au lieu de l'approximation par l'absence d'`action` de tafac) ?
+- [ ] La MFA se déclenche-t-elle dans cette chaîne ?

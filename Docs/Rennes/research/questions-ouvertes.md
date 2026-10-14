@@ -41,10 +41,9 @@ Tout est issu du code de tafac ; rien n'a encore été observé en direct. Prior
 ### R8. Sens de `level;=8` et des `field;…` dans `resourcesEventsPortal`
 - Varier `level` sur une semaine connue ; comparer le nombre d'événements.
 
-### R9. Moodle FOAD : `tool_mobile_get_public_config`
-- Requête publique sans login (`lib/ajax/service-nologin.php`) → `enablemobilewebservice`, `typeoflogin`, version.
-
-## Priorité basse
+### R9. ✅ RÉSOLU (public) — Moodle FOAD : `tool_mobile_get_public_config`
+- Moodle **4.4**, thème `kairos`, **`enablemobilewebservice: 1`**, **`typeoflogin: 3`** (SSO), IdP Shibboleth. → API mobile utilisable via `launch.php` (jeton `wstoken`), pas via `token.php`. → [../moodle.md §10](../moodle.md)
+- **Reste (R9b)** : tester le flux `launch.php` → `moodlemobile://token=…` avec un compte Rennes.
 
 ### R10. API Web ADE `jsp/webapi` sur `planning.univ-rennes.fr`
 - Probablement réservée à un compte API (cf. Montpellier). Ne pas deviner d'identifiants.

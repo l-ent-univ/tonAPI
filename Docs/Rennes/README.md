@@ -21,7 +21,7 @@ Aucun secret ni donnée personnelle n'est reproduit (la clé AES de l'app ADE «
 | [ent.md](ent.md) | **Portail ENT** | **uPortal 5** à la racine de `services-numeriques.univ-rennes.fr` : `layout.json`, `layoutDoc`, marketplace, favoris, `userinfo` (JWT), catalogue (~32 applis), certificat de scolarité (MDW Vaadin), icônes |
 | [emploi-du-temps.md](emploi-du-temps.md) | **Emploi du temps** | **API REST du portail ADE** `planning.univ-rennes.fr/portal/` (Bearer + refresh) — la voie active ; GWT-RPC Direct Planning et API mobile « Campus » documentés mais inutilisés |
 | [scodoc.md](scodoc.md) | **Notes** (IUT de Lannion) | Passerelle ScoDoc `notes9.iutlan.univ-rennes1.fr`, **même login que l'ENT** (TGC réutilisé), pièges de parsing |
-| [moodle.md](moodle.md) | **Devoirs** | Moodle FOAD `foad.univ-rennes.fr` via Shibboleth + WAYF + CAS, AJAX `sesskey`, pas de jeton mobile |
+| [moodle.md](moodle.md) | **Devoirs** | Moodle **4.4** FOAD `foad.univ-rennes.fr` via Shibboleth + WAYF + CAS ; tafac en AJAX `sesskey`, mais **l'API mobile est ouverte** (`typeoflogin 3`) → jeton `wstoken` via `launch.php` (§10) |
 | [mail-et-autres.md](mail-et-autres.md) | **Mail et le reste** | Partage RENATER (Zimbra SOAP/REST), recherches, briefing quotidien, relais de lancement, certificat, analytics |
 | [reimplementation.md](reimplementation.md) | **Checklist tonAPI** | ordre, socle commun, checklists, comparaison avec Montpellier |
 | [apis/INDEX.md](apis/INDEX.md) | **Index des endpoints** | une ligne par endpoint, parcours minimal |
