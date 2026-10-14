@@ -18,3 +18,8 @@
 - Portail : service CAS `…/portal/`, `configuration/sso` public (CAS + loginUrl/logoutUrl), `sso/accessToken` sans session → `{"token":"","errMsg":"No session allowed!"}` en 200, reste de `RestApi` en 401.
 - ADE classique : `direct_cal.jsp` présent, **`anonymous_cal.jsp` actif (200)**, `webapi` = compte requis, `/direct/` derrière CAS.
 - Piste : iCal anonyme avec `projectId` + `resources` lus une fois dans `ssologin`. → [../emploi-du-temps.md §11](../emploi-du-temps.md)
+
+## 2026-10-14 — Session connectée au portail ADE (compte Rennes)
+- Pas de MFA au login. `ssologin` : projet 1, `resources` vide (sélection perso `PortalResourcesAllSelection`), JWT 30 min, module `VCalendar`.
+- `anonymous_cal.jsp` → vide (désactivé/restreint). Menu partage : Agenda / PDF / « Générer un lien » (non cliqué).
+- → [../emploi-du-temps.md §11.3-11.4](../emploi-du-temps.md)

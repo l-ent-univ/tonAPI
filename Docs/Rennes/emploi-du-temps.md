@@ -582,3 +582,54 @@ GET https://planning.univ-rennes.fr/jsp/custom/modules/plannings/anonymous_cal.j
 2. Ouvrir `anonymous_cal.jsp?resources=<ses ids>&projectId=<id>&calType=ical&firstDate=<aujourd'hui>&lastDate=<+14 j>` dans un onglet **privé non connecté**.
 3. `BEGIN:VCALENDAR` → ✅ voie la plus simple ; HTML / vide → l'export anonyme est restreint, rester sur le portail REST.
 4. Chercher aussi dans le portail un bouton « exporter / s'abonner » qui donnerait un `direct_cal.jsp?data=…` (cf. Montpellier).
+
+
+### 11.3 Session connectée du 2026-10-14 (compte étudiant Rennes, aucune valeur recopiée) [confirmé]
+
+**Séquence réelle du front `/portal/` après le CAS** (Angular) :
+```
+GET  /portal/RestApi/configuration/keywords/fr/KeywordsPortal   (+ /Keywords)
+POST /portal/RestApi/configuration/sso
+POST /portal/RestApi/portal/ssologin                             → jetons + authData
+GET  /portal/RestApi/portal/projects
+GET  /portal/RestApi/portal/settings/
+GET  /portal/RestApi/authentication/connecteduser/?level=10
+PUT  /portal/RestApi/portal/configuration/locale/fr              → 204
+GET  /portal/RestApi/tapir/projects/1/mybooking/configuration/disconnect/false
+GET  /portal/RestApi/portal/projects/1/user/properties/name/PortalResourcesAllSelection
+GET  /portal/RestApi/portal/projects/1/calendar/
+GET  /portal/RestApi/portal/projects/1/characteristics/
+GET  /portal/RestApi/portal/projects/1/sites
+```
+Le front n'appelle **pas** `/portal/sso/accessToken` ici : le cookie de session `/portal` (posé par le retour CAS) suffit à `ssologin`.
+
+**Forme de `ssologin`** :
+```jsonc
+{"data":{
+  "protocol":"CAS",
+  "principal":{"name":"<login CAS>"},
+  "token":"<JWT>",                      // = authData.accessToken
+  "projectId":0,                        // ⚠️ 0 ici ; le vrai projet est dans authData.projectId
+  "authData":{
+    "accessToken":"<JWT>", "refreshToken":"<uuid>",
+    "isAuthenticated":true, "profile":"etudiant", "user":"etudiant", "userId":0,
+    "projectId":1,
+    "resources":[],                      // ⚠️ vide : rien de pré-attribué à l'étudiant
+    "projectsResources":[{"projectId":1,"resources":[]}],
+    "restrictedMode":false,
+    "modules":["…", "VCalendar", "api", "webServices", "plannings", "links", "…"],
+    "jsonAvailableCategories":{"nbCategories":8,"categories":["type.students","type.teacher","type.classroom","type.resource","type.Category5","type.Category6","type.Category7","type.Category8"]}
+  }}}
+```
+- **Projet ADE de l'année = `1`** (`authData.projectId`), pas le `projectId` de premier niveau (0).
+- **JWT** : RS256, `iss: AdeRestApi`, `aud: AdeJsonApi`, `sub: etudiant` (profil, pas l'utilisateur), claim `identifier` (identifiant de session ADE) ; **durée 1 800 s (30 min)**, `nbf = iat − 120 s`. Le `refreshToken` est un UUID.
+- **`resources` est vide** : l'ADE de Rennes **n'attribue pas** les groupes à l'étudiant. Ce qu'il voit vient de sa **sélection personnelle**, stockée comme propriété utilisateur `PortalResourcesAllSelection` (`GET …/projects/1/user/properties/name/PortalResourcesAllSelection` → `{"data":""}` si rien n'est choisi). Pour un compte sans sélection, l'agenda est vide et le bouton de partage ne propose rien.
+- Les modules incluent **`VCalendar`** (export iCal) et **`api`/`webServices`** côté serveur.
+- **Conséquence pour tafac/tonAPI** : `authData.resources` ne suffit pas ; il faut lire `PortalResourcesAllSelection` (ou demander à l'étudiant de choisir son groupe dans l'arbre `GET …/resourcestree`). C'est ce qui nourrit aussi `anonymous_cal.jsp`.
+
+
+### 11.4 Test de l'export anonyme et menu de partage (2026-10-14) [confirmé]
+
+- Avec une sélection de groupes faite par l'étudiant, le front appelle **une requête `resourcesEventsPortal` par ressource sélectionnée** (pas une seule requête groupée), sur la semaine affichée (`startdate;MMJJAAAA/enddate;MMJJAAAA`), réponses de ~3 Ko chacune.
+- `anonymous_cal.jsp?resources=<id>&projectId=1&calType=ical&firstDate=…&lastDate=…` (et variantes : plusieurs ids, `nbWeeks=4`), **sans cookie** → **HTTP 200, corps vide (0 octet)**, pour des ressources qui ont pourtant des cours sur la période. → **l'export anonyme est désactivé ou restreint** pour ce projet à Rennes. ❌ Piste abandonnée.
+- Menu « Ouvrir les options de partage » de l'agenda (présent seulement quand une sélection existe) : **« Agenda », « PDF », « Générer un lien »**. « Générer un lien » est la piste iCal restante (lien d'abonnement, probablement `direct_cal.jsp?data=…` comme à Montpellier) — **non cliqué** : action à faire par l'étudiant lui-même, elle crée un lien persistant sur son compte.

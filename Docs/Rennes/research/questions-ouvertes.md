@@ -7,6 +7,7 @@ Tout est issu du code de tafac ; rien n'a encore été observé en direct. Prior
 ## Priorité haute
 
 ### R1. Quand la MFA de Rennes se déclenche-t-elle ?
+- **2026-10-14** : connexion au portail planning **sans** MFA demandée (compte étudiant).
 - **Acquis [confirmé]** : la MFA existe (CSP du CAS autorise `mfa-api.univ-rennes.fr`, esup-otp-api avec `login.js?v=1`, appli « ESUP OTP Manager »). tafac n'en gère aucune.
 - **Reste** : opt-in ou obligatoire ? par service ? « appareil de confiance » ? forme de la page.
 - **Test** : connexion ENT dans le navigateur intégré, puis ouvrir Moodle, Partage, ScoDoc. Noter si une page MFA apparaît, sur quel service, et sa forme (champs, méthode : ESUP-OTP ?).
@@ -29,7 +30,8 @@ Tout est issu du code de tafac ; rien n'a encore été observé en direct. Prior
 
 ## Priorité moyenne
 
-### R5. Export iCal ADE accessible ? — 🟡 les deux JSP existent
+### R5. Export iCal ADE accessible ? — 🟡 `anonymous_cal` ❌ (vide), reste « Générer un lien »
+- **Test connecté 2026-10-14** : `anonymous_cal.jsp` renvoie un corps vide même pour des ressources qui ont des cours → désactivé/restreint. Le menu de partage de l'agenda propose « Générer un lien » : à cliquer par l'étudiant pour voir si c'est un `direct_cal.jsp?data=…` stable.
 - **Sonde 2026-10-14** : `direct_cal.jsp` existe (302 sans `data`), **`anonymous_cal.jsp` répond 200** (export anonyme actif), `webapi` exige un compte ADE. Reste : tester `anonymous_cal.jsp?resources=<ids de l'étudiant>&projectId=<id>&calType=ical&firstDate&lastDate` avec un compte Rennes. → [../emploi-du-temps.md §11](../emploi-du-temps.md)
 - Ancien texte :
 - Dans le portail planning, chercher un bouton d'export / abonnement. Si oui → voie plus simple que le REST (cf. Montpellier `lien-ade.md`).
