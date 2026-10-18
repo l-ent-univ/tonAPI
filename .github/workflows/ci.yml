@@ -24,3 +24,5 @@ jobs:
         run: cargo run -q -p tonapi-cli -- validate universities
       - name: JSON Schema à jour
         run: cargo run -q -p tonapi-cli -- schema --check
+      - name: Rapports sans donnée personnelle
+        run: cargo run -q -p tonapi-cli -- report check reports/*.md

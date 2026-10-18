@@ -1,5 +1,7 @@
 # Prompt réutilisable — analyser l'ENT et les services d'un établissement
 
+> **Pour simplement ajouter un établissement à tonAPI**, utilise plutôt [prompts/ajouter-un-etablissement.md](../prompts/ajouter-un-etablissement.md) (15 min, rapport court). Ce prompt-ci produit une documentation technique complète, comme `Docs/Montpellier/`.
+
 Copie le bloc ci-dessous dans une nouvelle session Claude Code, ouverte dans le dépôt `tonAPI`, et remplace les `<…>`.
 Référence de ce qui est attendu : `Docs/Montpellier/` (12 fichiers + `research/`).
 

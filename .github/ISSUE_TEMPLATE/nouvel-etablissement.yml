@@ -1,0 +1,54 @@
+name: Nouvel établissement
+description: Ajouter une université, un IUT ou une faculté à tonAPI
+title: "Ajout : <établissement>"
+labels: ["établissement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci ! Le plus simple : suivre [le guide](https://github.com/l-ent-univ/tonAPI/blob/main/Docs/ajouter-un-etablissement.md) avec Claude, puis joindre ici les fichiers produits.
+        **Ne colle jamais** de mot de passe, cookie, capture d'écran avec ton nom, ni fichier HAR.
+  - type: input
+    id: etablissement
+    attributes:
+      label: Université ou école
+      placeholder: Université de Bordeaux
+    validations:
+      required: true
+  - type: input
+    id: composante
+    attributes:
+      label: Composante (IUT, faculté, département)
+      placeholder: IUT de Bordeaux
+  - type: input
+    id: ent
+    attributes:
+      label: Adresse de l'ENT (si tu en as un)
+      placeholder: https://ent.u-bordeaux.fr
+  - type: checkboxes
+    id: services
+    attributes:
+      label: Services que tu utilises
+      options:
+        - label: Emploi du temps
+        - label: Notes
+        - label: Absences
+        - label: Devoirs (Moodle…)
+        - label: Mail
+  - type: textarea
+    id: details
+    attributes:
+      label: Comment tu accèdes à chaque service
+      description: Adresse du site, ou le chemin (« dans l'ENT, Scolarité puis Notes »).
+  - type: textarea
+    id: fichiers
+    attributes:
+      label: Fichiers produits par Claude
+      description: Glisse ici `reports/<id>.md` et le fichier `.toml`, si tu les as.
+  - type: checkboxes
+    id: confidentialite
+    attributes:
+      label: Confidentialité
+      options:
+        - label: Je n'ai joint aucune donnée personnelle (nom, identifiant, notes, mot de passe).
+          required: true
