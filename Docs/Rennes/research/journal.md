@@ -26,3 +26,8 @@
 
 ## 2026-10-14 — « Générer un lien » testé
 - `portal/?encryptedUrl=<hex>,1` → 302 vers le CAS : lien authentifié, pas un iCal. anonymous_cal vide. → emploi du temps Rennes = portail REST uniquement. R5 résolue.
+
+## 2026-10-18 — Entrée de l'ENT changée (sonde publique)
+- `GET /` et `GET /Login` → page invitée `/f/login/normal/render.uP` (« Identifiez-vous », 200), plus de redirection automatique vers le CAS (≠ [../cas-rennes.md §2.1](../cas-rennes.md)).
+- Le bouton « Connexion » mène à `sso-cas.univ-rennes.fr/login?service=https://services-numeriques.univ-rennes.fr/Login`. Formulaire CAS inchangé (`username`, `password`, `execution`, `_eventId`, `geolocation`, `deviceFingerprint`).
+- tonAPI entre désormais par le CAS avec `service=<portail>/Login` (`crates/tonapi-providers/src/sso.rs`, `entry_url`).

@@ -88,12 +88,27 @@ fn cas_server(university: &ResolvedUniversity) -> Option<CasServer> {
 }
 
 /// Page protégée qui lance la connexion : le portail s'il y en a un, sinon le CAS seul.
+///
+/// On part du CAS avec le service `<portail>/Login`, comme le bouton « Connexion » : la racine d'un
+/// uPortal peut afficher une page invitée au lieu de rediriger vers le CAS (Rennes, octobre 2026).
 fn entry_url(university: &ResolvedUniversity, cas: &CasServer) -> Url {
-    match &university.university.portal {
+    let service = match &university.university.portal {
         PortalConfig::Uportal4Prolongation { base_url } | PortalConfig::Uportal5 { base_url } => {
-            base_url.clone()
+            base_url.join("Login").ok()
         }
-        PortalConfig::None => cas.login_url(None),
+        PortalConfig::None => None,
+    };
+    cas.login_url(service.as_ref())
+}
+
+/// Une connexion qui n'a laissé aucun cookie au CAS n'est jamais passée par lui.
+fn reached_cas(browser: &Browser, cas: &CasServer) -> Result<(), Problem> {
+    let host = cas.base.host_str().unwrap_or_default();
+    if browser.jar.has_cookies_for(host) {
+        Ok(())
+    } else {
+        Err(Problem::new(ErrorCode::UpstreamChanged)
+            .detail("la connexion n'est pas passée par le CAS : vérifier l'adresse du portail"))
     }
 }
 
@@ -182,12 +197,15 @@ pub async fn login(
         .await
         .map_err(cas_problem)?
     {
-        Outcome::SignedIn(_) => Ok(LoginOutcome::SignedIn(signed_in(
-            session,
-            &browser,
-            input.now,
-            input.ttl_secs,
-        ))),
+        Outcome::SignedIn(_) => {
+            reached_cas(&browser, &cas)?;
+            Ok(LoginOutcome::SignedIn(signed_in(
+                session,
+                &browser,
+                input.now,
+                input.ttl_secs,
+            )))
+        }
         Outcome::SecondFactor(challenge) => {
             prompt(session, &mut browser, &challenge, None, input.now).await
         }

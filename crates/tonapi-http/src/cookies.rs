@@ -37,6 +37,12 @@ impl CookieJar {
             .any(|c| c.name == name && domain_matches(c, host))
     }
 
+    /// Vrai si au moins un cookie est posé pour `host`.
+    #[must_use]
+    pub fn has_cookies_for(&self, host: &str) -> bool {
+        self.cookies.iter().any(|c| domain_matches(c, host))
+    }
+
     /// Oublie les cookies envoyés à `host`.
     pub fn remove_host(&mut self, host: &str) {
         self.cookies.retain(|c| !domain_matches(c, host));
