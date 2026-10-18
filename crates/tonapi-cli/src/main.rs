@@ -4,6 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+mod report;
+
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use tonapi_config::{
@@ -51,11 +53,25 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Rapports d'établissement (`reports/*.md`) écrits avec le prompt d'ajout.
+    Report {
+        #[command(subcommand)]
+        what: ReportCommand,
+    },
     /// Génère une clé de session `kid:base64` pour `TONAPI_SESSION_KEYS`.
     Keygen {
         /// Identifiant de la clé (1 à 16 caractères a-z, A-Z, 0-9, `_`).
         #[arg(default_value = "k1")]
         kid: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ReportCommand {
+    /// Vérifie que des rapports ne contiennent aucune donnée personnelle ; code 1 sinon.
+    Check {
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
     },
 }
 
@@ -95,6 +111,13 @@ fn run(cli: Cli) -> Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
+        Command::Report {
+            what: ReportCommand::Check { files },
+        } => Ok(if report::check(&files)? {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        }),
         Command::Keygen { kid } => {
             println!("{}", tonapi_session::generate_key(&kid)?);
             Ok(ExitCode::SUCCESS)
