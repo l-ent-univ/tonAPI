@@ -284,6 +284,7 @@ async fn specification_et_documentation() {
     assert!(r.body["openapi"].as_str().unwrap().starts_with("3."));
     for path in [
         "/v1/auth/login",
+        "/v1/auth/service-login",
         "/v1/me",
         "/v1/timetable",
         "/v1/grades",
@@ -371,4 +372,55 @@ async fn ancien_jeton_accepte_a_la_connexion() {
     // Un jeton illisible est ignoré, pas une erreur.
     let r = login(&app, "demo", json!({ "previousToken": "n'importe quoi" })).await;
     assert_eq!(r.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn connexion_a_un_service_controle_ses_entrees() {
+    let app = server();
+    let body = json!({ "service": "grades", "username": "camille.demo", "password": "x" });
+
+    // Le jeton de session est obligatoire.
+    let r = call(
+        &app,
+        "POST",
+        "/v1/auth/service-login",
+        None,
+        Some(body.clone()),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+
+    let token = login(&app, "demo", json!({})).await.body["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Service sans compte propre, inconnu, ou champ manquant : 400, sans jeton renvoyé.
+    for body in [
+        body.clone(),
+        json!({ "service": "mail", "username": "u", "password": "p" }),
+        json!({ "service": "grades", "username": "u" }),
+    ] {
+        let r = call(
+            &app,
+            "POST",
+            "/v1/auth/service-login",
+            Some(&token),
+            Some(body),
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
+        assert_eq!(r.body["code"], "invalid_request");
+        assert!(r.headers.get("tonapi-session").is_none());
+    }
+    // Les identifiants envoyés n'apparaissent pas dans l'erreur.
+    let r = call(
+        &app,
+        "POST",
+        "/v1/auth/service-login",
+        Some(&token),
+        Some(body),
+    )
+    .await;
+    assert!(!r.body.to_string().contains("camille.demo"));
 }

@@ -15,10 +15,11 @@ use chrono::{TimeZone, Utc};
 use serde_json::{Value, json};
 use tonapi_config::{
     CasFlavor, CasSso, Credentials, HomeworkService, Links, MoodleEntry, PortalConfig,
-    ResolvedUniversity, SamlConfig, ServiceOptions, Services, SignIn, Sso, Status, UniversityFile,
+    ResolvedUniversity, SamlConfig, ServiceKind, ServiceOptions, Services, SignIn, Sso, Status,
+    UniversityFile,
 };
 use tonapi_core::{ErrorCode, Homework, Problem};
-use tonapi_providers::{Context, Fetched, NetSettings, homework};
+use tonapi_providers::{Context, Fetched, NetSettings, homework, service_login};
 use tonapi_session::{SessionData, StoredCookie};
 use url::Url;
 
@@ -57,6 +58,8 @@ struct Mock {
     ajax: Vec<(String, Value)>,
     /// `(URI, corps)` de chaque appel `server.php`.
     ws: Vec<(String, String)>,
+    /// Appels à `login/token.php`.
+    token_posts: u32,
     wayf_posts: Vec<String>,
     /// Moodle répond par une page d'invité, comme un CAS `gateway=true` sans TGC.
     guest_landing: bool,
@@ -270,6 +273,23 @@ async fn handle(
                 return json_body(StatusCode::OK, INVALID_SESSKEY);
             }
             ajax_reply(&s, &sesskey, &args)
+        }
+        (Method::POST, "/moodle/login/token.php") => {
+            s.token_posts += 1;
+            let good = body.contains("username=camille.demo")
+                && body.contains("password=mot-de-passe-de-test")
+                && body.contains("service=moodle_mobile_app");
+            if good {
+                json_body(
+                    StatusCode::OK,
+                    format!(r#"{{"token":"{WS_TOKEN}","privatetoken":"prive"}}"#),
+                )
+            } else {
+                json_body(
+                    StatusCode::OK,
+                    r#"{"error":"Identifiants incorrects","errorcode":"invalidlogin"}"#,
+                )
+            }
         }
         (Method::POST, "/moodle/webservice/rest/server.php") => {
             s.ws.push((uri.to_string(), body.clone()));
@@ -636,6 +656,60 @@ async fn webservice_utilise_le_jeton_de_la_session() {
     assert!(body.contains("wsfunction=core_calendar_get_action_events_by_timesort"));
     assert!(body.contains("moodlewsrestformat=json"));
     assert!(body.contains("limitnum=50"));
+}
+
+#[tokio::test]
+async fn connexion_au_service_puis_devoirs_avec_le_seul_jeton() {
+    let (state, base) = start(|_| {}).await;
+    let university = university_with(&base, webservice(&base, LOCAL), None);
+    let mut session = session(false);
+    {
+        let mut ctx = Context {
+            university: &university,
+            session: &mut session,
+            now: Utc::now(),
+            net: NetSettings { https_only: false },
+        };
+        service_login(
+            &mut ctx,
+            ServiceKind::Homework,
+            "camille.demo",
+            "mot-de-passe-de-test",
+        )
+        .await
+        .unwrap();
+    }
+    let slot = format!("moodle.token.127.0.0.1:{}", base.port().unwrap());
+    assert_eq!(
+        session.tokens.get(&slot).map(String::as_str),
+        Some(WS_TOKEN)
+    );
+    // Ni le mot de passe ni le jeton privé ne sont gardés.
+    let stored = format!("{:?}{:?}", session.tokens, session.cookies);
+    assert!(!stored.contains("mot-de-passe") && !stored.contains("prive"));
+
+    let fetched = get_homework(&university, &mut session).await.unwrap();
+    assert_eq!(titles(&fetched), ["Projet BUT"]);
+    assert_eq!(state.lock().unwrap().token_posts, 1);
+}
+
+#[tokio::test]
+async fn connexion_au_service_refusee_sans_jeton() {
+    let (state, base) = start(|_| {}).await;
+    let university = university_with(&base, webservice(&base, LOCAL), None);
+    let mut session = session(false);
+    let mut ctx = Context {
+        university: &university,
+        session: &mut session,
+        now: Utc::now(),
+        net: NetSettings { https_only: false },
+    };
+    let problem = service_login(&mut ctx, ServiceKind::Homework, "camille.demo", "faux")
+        .await
+        .unwrap_err();
+    assert_eq!(problem.code, ErrorCode::InvalidCredentials);
+    assert!(session.tokens.is_empty());
+    assert_eq!(state.lock().unwrap().token_posts, 1);
 }
 
 #[tokio::test]

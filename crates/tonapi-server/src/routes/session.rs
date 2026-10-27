@@ -9,9 +9,9 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize};
-use tonapi_config::ResolvedUniversity;
+use tonapi_config::{ResolvedUniversity, ServiceAvailability, ServiceKind};
 use tonapi_core::{ErrorCode, EstablishmentChoice, Problem};
-use tonapi_providers::{LoginInput, LoginOutcome, MfaAction};
+use tonapi_providers::{Context, LoginInput, LoginOutcome, MfaAction};
 use tonapi_session::SessionData;
 use utoipa::ToSchema;
 
@@ -98,6 +98,39 @@ pub struct MfaRequest {
     code: Option<String>,
     /// Faire mémoriser l'appareil par l'université (30 jours sans second facteur). Défaut : oui.
     remember_device: Option<bool>,
+}
+
+/// Service dont le compte est distinct du compte universitaire.
+#[derive(Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SeparateService {
+    /// Notes ; la même connexion sert aux absences quand elles viennent du même ScoDoc.
+    Grades,
+    Absences,
+    /// Devoirs (Moodle en connexion locale).
+    Homework,
+}
+
+impl SeparateService {
+    fn kind(self) -> ServiceKind {
+        match self {
+            SeparateService::Grades => ServiceKind::Grades,
+            SeparateService::Absences => ServiceKind::Absences,
+            SeparateService::Homework => ServiceKind::Homework,
+        }
+    }
+}
+
+/// Identifiants propres à un service. Le mot de passe sert une fois puis est oublié : seuls les
+/// cookies ou le jeton du service restent dans la session.
+#[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ServiceLoginRequest {
+    service: SeparateService,
+    #[schema(example = "camille.demo")]
+    username: String,
+    #[schema(format = Password)]
+    password: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -286,6 +319,79 @@ pub async fn mfa(
     outcome_response(&state, university, outcome)
 }
 
+/// Clé du limiteur pour un compte de service : distincte de celle du compte universitaire, et
+/// commune aux services servis par le même fournisseur (notes et absences ScoDoc).
+fn service_limit_key(university: &str, provider: &str, username: &str) -> String {
+    format!(
+        "service:{university}:{provider}:{}",
+        username.to_lowercase()
+    )
+}
+
+/// Connexion à un service qui a son propre compte, après une réponse `service_login_required`
+/// (ScoDoc derrière le CAS d'une composante, Moodle en connexion locale).
+#[utoipa::path(
+    post,
+    path = "/v1/auth/service-login",
+    tag = "session",
+    security(("session" = [])),
+    request_body = ServiceLoginRequest,
+    responses(
+        (status = 200, description = "Connecté au service : remplacer le jeton de session par celui-ci", body = TokenResponse),
+        (status = 400, description = "`invalid_request` : ce service n'a pas de connexion séparée", body = Problem, content_type = "application/problem+json"),
+        (status = 401, description = "`invalid_credentials` ; `invalid_token`, `session_expired` pour le jeton de session", body = Problem, content_type = "application/problem+json"),
+        (status = 403, description = "`account_action_required` : mot de passe expiré…", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`service_absent`", body = Problem, content_type = "application/problem+json"),
+        (status = 429, description = "`rate_limited` : trop d'échecs pour ce compte", body = Problem, content_type = "application/problem+json"),
+        (status = 501, description = "`not_implemented` : connexion de ce type pas encore prise en charge", body = Problem, content_type = "application/problem+json"),
+        (status = 502, description = "`service_unavailable`, `upstream_changed`", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn service_login(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+    payload: Result<Json<ServiceLoginRequest>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let Json(request) = payload.map_err(|e| invalid(e.body_text()))?;
+    let kind = request.service.kind();
+    let registry = state.registry.load_full();
+    let university = university(&registry, &session.university)?;
+    let provider = university
+        .services_for(session.establishment.as_ref().map(|e| e.id.as_str()))
+        .availability()
+        .into_iter()
+        .find_map(|(k, availability)| match availability {
+            ServiceAvailability::Api { provider } if k == kind => Some(provider),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let limit_key = service_limit_key(&session.university, &provider, &request.username);
+    state.login_limiter.check(&limit_key)?;
+
+    let mut updated = session;
+    let mut ctx = Context {
+        university,
+        session: &mut updated,
+        now: Utc::now(),
+        net: tonapi_providers::NetSettings::default(),
+    };
+    let result =
+        tonapi_providers::service_login(&mut ctx, kind, &request.username, &request.password).await;
+    if let Err(problem) = result {
+        if problem.code == ErrorCode::InvalidCredentials {
+            state.login_limiter.record_failure(&limit_key);
+        }
+        return Err(problem.into());
+    }
+    let mut response = Json(TokenResponse {
+        token: seal(&state, &updated)?,
+        expires_at: timestamp(updated.expires_at),
+    })
+    .into_response();
+    no_store(&mut response);
+    Ok(response)
+}
+
 /// Prolonge la session (repasse par le SSO de l'université, sans mot de passe).
 #[utoipa::path(
     post,
@@ -333,4 +439,17 @@ pub async fn refresh(
 )]
 pub async fn logout(AuthSession(_session): AuthSession) -> StatusCode {
     StatusCode::NO_CONTENT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::service_limit_key;
+
+    #[test]
+    fn la_cle_du_limiteur_est_propre_au_service() {
+        let key = service_limit_key("umontpellier", "scodoc-gateway", "Camille.Demo");
+        assert_eq!(key, "service:umontpellier:scodoc-gateway:camille.demo");
+        // Jamais la même clé que la connexion universitaire (`<université>:<identifiant>`).
+        assert_ne!(key, "umontpellier:camille.demo");
+    }
 }

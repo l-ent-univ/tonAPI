@@ -36,8 +36,10 @@ et des fixtures synthétiques construites d'après `Docs/` : aucun n'a encore é
 compte. Limites connues : les groupes d'un lien iCal ADE et le webmail Zimbra derrière SAML
 (Rennes) renvoient `not_implemented` ; `options.timeout-secs` n'est lu que par ScoDoc.
 
-`service_login` branche la connexion propre à ScoDoc (`own-cas`) et à Moodle (`local-password`),
-mais aucune route du serveur ne l'appelle encore : ces deux cas restent inaccessibles par l'API.
+`POST /v1/auth/service-login` ouvre un service qui a son propre compte, après une réponse
+`service_login_required` : ScoDoc derrière le CAS d'une composante (`own-cas`) et Moodle en
+connexion locale (`local-password`). Le mot de passe sert une fois ; seuls les cookies ou le jeton
+du service rejoignent la session, et les échecs passent par le limiteur de connexion.
 
 Les documents administratifs ont des variantes dans la configuration, mais aucune route dédiée
 n'est enregistrée dans `crates/tonapi-server/src/routes/mod.rs`. Ne promets pas leur consultation
@@ -64,7 +66,7 @@ doit demander le moins de code possible.
 | Famille | Routes présentes |
 |---|---|
 | Catalogue et état | `GET /v1/universities`, `GET /v1/universities/{id}`, `GET /healthz` |
-| Authentification | `POST /v1/auth/login`, `/v1/auth/mfa`, `/v1/auth/refresh`, `/v1/auth/logout` |
+| Authentification | `POST /v1/auth/login`, `/v1/auth/mfa`, `/v1/auth/service-login`, `/v1/auth/refresh`, `/v1/auth/logout` |
 | Étudiant | `GET /v1/me`, `PUT /v1/me/establishment` |
 | Données | `GET /v1/timetable`, `/v1/timetable/groups`, `/v1/grades`, `/v1/absences`, `/v1/homework`, `/v1/mail/inbox`, `/v1/apps` |
 | Documentation | `GET /openapi.json`, `GET /docs` |

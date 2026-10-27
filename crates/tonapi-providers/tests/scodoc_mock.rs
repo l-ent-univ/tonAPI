@@ -7,9 +7,9 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use serde_json::{Value, json};
-use tonapi_config::{ResolvedUniversity, UniversityFile};
+use tonapi_config::{ResolvedUniversity, ServiceKind, UniversityFile};
 use tonapi_core::ErrorCode;
-use tonapi_providers::{Context, NetSettings, absences, grades};
+use tonapi_providers::{Context, NetSettings, absences, grades, service_login};
 use tonapi_session::{SessionData, StoredCookie};
 
 use support::Server;
@@ -249,4 +249,43 @@ async fn connexion_locale_non_prise_en_charge() {
     let mut ctx = context(&university, &mut session);
     let error = grades(&mut ctx).await.unwrap_err();
     assert_eq!(error.code, ErrorCode::NotImplemented);
+}
+
+#[tokio::test]
+async fn connexion_au_service_puis_notes_et_absences() {
+    let server = support::start(PAYLOAD).await;
+    let university = university(&server, &own_cas(&server));
+    let mut session = session(Vec::new());
+    let mut ctx = context(&university, &mut session);
+
+    service_login(
+        &mut ctx,
+        ServiceKind::Grades,
+        support::USERNAME,
+        support::PASSWORD,
+    )
+    .await
+    .unwrap();
+    let key = format!("scodoc.{}", server.authority());
+    assert!(!ctx.session.tokens[&key].contains(support::PASSWORD));
+
+    // La connexion faite pour les notes sert aussi aux absences.
+    grades(&mut ctx).await.unwrap();
+    absences(&mut ctx).await.unwrap();
+    assert_eq!(server.state().password_posts, 1);
+}
+
+#[tokio::test]
+async fn connexion_au_service_mauvais_mot_de_passe() {
+    let server = support::start(PAYLOAD).await;
+    let university = university(&server, &own_cas(&server));
+    let mut session = session(Vec::new());
+    let mut ctx = context(&university, &mut session);
+
+    let error = service_login(&mut ctx, ServiceKind::Absences, support::USERNAME, "faux")
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidCredentials);
+    assert!(ctx.session.tokens.is_empty());
+    assert_eq!(server.state().password_posts, 1);
 }
