@@ -52,6 +52,8 @@ struct Portal {
     data_override: Option<(StatusCode, &'static str)>,
     /// Statut forcé pour `people/<id>.json`.
     people_status: Option<StatusCode>,
+    /// `api/v5-1/userinfo` n'existe pas (404), comme sur certains uPortal.
+    no_userinfo: bool,
     hits: Arc<Mutex<Hits>>,
 }
 
@@ -63,6 +65,7 @@ impl Portal {
             never_authenticated: false,
             data_override: None,
             people_status: None,
+            no_userinfo: false,
             hits: Arc::default(),
         }
     }
@@ -125,6 +128,9 @@ async fn portal_handler(State(p): State<Portal>, uri: Uri, headers: HeaderMap) -
     }
     if let Some((status, body)) = p.data_override {
         return reply(status, body);
+    }
+    if p.no_userinfo && rel == "api/v5-1/userinfo" {
+        return reply(StatusCode::NOT_FOUND, "<html>404</html>");
     }
     let authenticated = has_cookie(&headers, "JSESSIONID=auth");
     let guest = has_cookie(&headers, "JSESSIONID=guest");
@@ -316,6 +322,32 @@ async fn uportal4_applications_puis_session_reutilisee() {
     assert_eq!(again.data.len(), 5);
     let hits = portal.hits.lock().unwrap();
     assert_eq!((hits.login, hits.data), (1, 3));
+}
+
+#[tokio::test]
+async fn uportal5_sans_userinfo_profil_depuis_session_json_et_people() {
+    let mut portal = Portal::new("/");
+    portal.no_userinfo = true;
+    let root = spawn_portal(&portal).await;
+    let university = university(&uportal5(&root), &no_cas());
+    let mut session = session(Vec::new());
+
+    let profile = profile(&mut context(&university, &mut session))
+        .await
+        .unwrap()
+        .data;
+    assert_eq!(profile.username, "e00000000000");
+    assert_eq!(profile.last_name.as_deref(), Some("Demo"));
+    assert_eq!(
+        profile.email.as_deref(),
+        Some("camille.demo@etu.exemple.test")
+    );
+    let hits = portal.hits.lock().unwrap();
+    assert!(hits.paths.contains(&"api/v5-1/userinfo".to_owned()));
+    assert_eq!(
+        hits.paths.last().map(String::as_str),
+        Some("api/people/e00000000000.json")
+    );
 }
 
 #[tokio::test]

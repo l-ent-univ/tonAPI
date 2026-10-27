@@ -5,7 +5,7 @@
 //! | Variante | Applications | Profil |
 //! |---|---|---|
 //! | `uportal4-prolongation` | `layout.jsp` (JSONP d'ESUP ProlongationENT) | `api/session.json` puis `api/people/<id>.json` |
-//! | `uportal5` | `api/v4-3/dlm/layout.json` | `api/v5-1/userinfo` (JWT) |
+//! | `uportal5` | `api/v4-3/dlm/layout.json` | `api/v5-1/userinfo` (JWT), sinon comme uPortal 4 |
 //!
 //! Le portail ne signale pas toujours une session perdue par une erreur : il redirige vers
 //! `/Login`, ou répond 200 avec un compte invité (`guest`, `authenticated: "false"`). Les deux cas
@@ -164,35 +164,44 @@ async fn apps_once(net: &mut Net, portal: &Portal) -> Result<Vec<App>, Problem> 
 
 async fn profile_once(net: &mut Net, portal: &Portal) -> Result<Profile, Problem> {
     match portal.variant {
-        Variant::Prolongation => {
-            let url = route(&portal.base, "api/session.json")?;
-            let body = get(net, url, "application/json", &portal.base).await?;
-            let session = parse_session(&body)?;
-            // Le prénom, le nom et l'e-mail dépendent d'une permission du portail : un refus, une
-            // erreur ou un portail muet laissent le profil réduit à l'identifiant et au nom
-            // affiché. Seule une redirection vers `/Login` est une session perdue.
-            let mut people = None;
-            if let Some(url) = people_url(&portal.base, &session.username) {
-                match fetch(net, url, "application/json", &portal.base).await {
-                    Ok((status, _)) if status.is_redirection() => return Err(lost()),
-                    Ok((status, body)) if status.is_success() => people = Some(body),
-                    Ok(_) | Err(_) => {}
-                }
-            }
-            Ok(parse_profile_v4(&session, people.as_deref()))
-        }
+        Variant::Prolongation => profile_people(net, portal).await,
         Variant::Uportal5 => {
             let url = route(&portal.base, "api/v5-1/userinfo")?;
-            let body = get(
+            let (status, body) = fetch(
                 net,
                 url,
                 "application/jwt, application/json, */*",
                 &portal.base,
             )
             .await?;
+            // Certains uPortal servent le layout v4-3 sans `userinfo` (404) mais gardent
+            // `session.json` et `people` : on les lit à la place. [vu] Paul-Valéry, 27/10/2026.
+            if status == StatusCode::NOT_FOUND {
+                return profile_people(net, portal).await;
+            }
+            check_status(status)?;
             parse_userinfo(&body, &portal.account)
         }
     }
+}
+
+/// Profil par `api/session.json` puis `api/people/<identifiant>.json`.
+async fn profile_people(net: &mut Net, portal: &Portal) -> Result<Profile, Problem> {
+    let url = route(&portal.base, "api/session.json")?;
+    let body = get(net, url, "application/json", &portal.base).await?;
+    let session = parse_session(&body)?;
+    // Le prénom, le nom et l'e-mail dépendent d'une permission du portail : un refus, une
+    // erreur ou un portail muet laissent le profil réduit à l'identifiant et au nom
+    // affiché. Seule une redirection vers `/Login` est une session perdue.
+    let mut people = None;
+    if let Some(url) = people_url(&portal.base, &session.username) {
+        match fetch(net, url, "application/json", &portal.base).await {
+            Ok((status, _)) if status.is_redirection() => return Err(lost()),
+            Ok((status, body)) if status.is_success() => people = Some(body),
+            Ok(_) | Err(_) => {}
+        }
+    }
+    Ok(parse_profile_v4(&session, people.as_deref()))
 }
 
 fn route(base: &Url, path: &str) -> Result<Url, Problem> {
