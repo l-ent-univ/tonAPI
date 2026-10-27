@@ -329,6 +329,12 @@ provider_ids!(TimetableService {
 pub enum GradesService {
     /// Passerelle ScoDoc des IUT.
     ScodocGateway(ScoDocGateway),
+    /// Application de scolarité avec `api/etudiants/notes` (voir [`StudentRecord::EtudiantsApi`]).
+    EtudiantsApi {
+        /// Racine de l'application (ex. `https://scolarite.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+    },
     /// Simple lien vers le site de l'établissement.
     Link(LinkService),
     /// Service non proposé.
@@ -339,6 +345,7 @@ pub enum GradesService {
 
 provider_ids!(GradesService {
     Self::ScodocGateway(_) => "scodoc-gateway",
+    Self::EtudiantsApi { .. } => "etudiants-api",
     Self::Link(_) => "link",
     Self::None => "none",
     Self::Demo => "demo",

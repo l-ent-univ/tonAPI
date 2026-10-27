@@ -345,6 +345,26 @@
         },
         {
           "additionalProperties": false,
+          "description": "Application de scolarité avec `api/etudiants/notes` (voir [`StudentRecord::EtudiantsApi`]).",
+          "properties": {
+            "base-url": {
+              "description": "Racine de l'application (ex. `https://scolarite.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "provider": {
+              "const": "etudiants-api",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "Simple lien vers le site de l'établissement.",
           "properties": {
             "label": {

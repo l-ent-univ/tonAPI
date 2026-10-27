@@ -10,12 +10,12 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Response, StatusCode, Uri, header};
 use chrono::{TimeZone, Utc};
 use tonapi_config::{ResolvedUniversity, UniversityFile};
-use tonapi_providers::{Context, NetSettings, profile};
+use tonapi_providers::{Context, NetSettings, grades, profile};
 use tonapi_session::{SessionData, StoredCookie};
 
 const SESSION: &str = include_str!("fixtures/uportal/session_v4.json");
 const PEOPLE: &str = include_str!("fixtures/uportal/people_v4.json");
-const NOTES: &str = r#"{"numero":"21000000","nom":"DEMO","prenom":"Camille","etapes":[{"libelle":"Licence 1 Arts","codEtape":"XX1","semestres":{}}],"epreuves":{}}"#;
+const NOTES: &str = r#"{"numero":"21000000","nom":"DEMO","prenom":"Camille","etapes":[{"libelle":"Licence 1 Arts","codEtape":"XX1","semestres":{"S1":{"intitule":"Semestre 1","classifiedElementPedagogiques":[{"codElement":"UE1","libElement":"Fondamentaux","niveauElement":1,"noteEpreuve1":"12,5","note":"13,25","resultat":"ADM"}]}}}],"epreuves":{}}"#;
 
 #[derive(Default)]
 struct Mock {
@@ -118,10 +118,13 @@ fn university(base: &str) -> ResolvedUniversity {
         "name": "Université de test",
         "sso": { "kind": "cas", "base-url": format!("{base}/cas/") },
         "portal": { "kind": "uportal4-prolongation", "base-url": format!("{base}/uPortal/") },
-        "services": { "profile": {
-            "provider": "portal",
-            "record": { "kind": "etudiants-api", "base-url": format!("{base}/scolarite/") }
-        } },
+        "services": {
+            "profile": {
+                "provider": "portal",
+                "record": { "kind": "etudiants-api", "base-url": format!("{base}/scolarite/") }
+            },
+            "grades": { "provider": "etudiants-api", "base-url": format!("{base}/scolarite/") }
+        },
     }))
     .unwrap();
     ResolvedUniversity {
@@ -188,4 +191,28 @@ async fn dossier_indisponible_le_profil_du_portail_reste() {
     assert_eq!(p.last_name.as_deref(), Some("Demo"));
     assert_eq!(p.student_number, None);
     assert_eq!(p.program, None);
+}
+
+#[tokio::test]
+async fn notes_par_le_cas() {
+    let (_state, base) = start(false).await;
+    let uni = university(&base);
+    let fetched = grades(&mut context(&uni, &mut session())).await.unwrap();
+    assert_eq!(fetched.provider, "etudiants-api");
+    let semester = &fetched.data.semesters[0];
+    assert_eq!(semester.name, "Semestre 1");
+    assert_eq!(
+        semester.modules[0].average.as_ref().map(|g| g.value),
+        Some(13.25)
+    );
+}
+
+#[tokio::test]
+async fn notes_application_indisponible() {
+    let (_state, base) = start(true).await;
+    let uni = university(&base);
+    let problem = grades(&mut context(&uni, &mut session()))
+        .await
+        .unwrap_err();
+    assert_eq!(problem.code, tonapi_core::ErrorCode::ServiceUnavailable);
 }

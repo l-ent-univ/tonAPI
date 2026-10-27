@@ -271,6 +271,10 @@ pub async fn grades(ctx: &mut Context<'_>) -> Result<Fetched<GradeReport>, Probl
     let services = ctx.services();
     match &services.grades {
         Some(GradesService::Demo) => Ok(fetched(demo::grades(), "demo")),
+        Some(GradesService::EtudiantsApi { base_url }) => Ok(fetched(
+            etudiants_api::fetch_grades(ctx, base_url).await?,
+            "etudiants-api",
+        )),
         Some(GradesService::ScodocGateway(config)) => scodoc::fetch_grades(ctx, config)
             .await
             .map(|data| fetched(data, "scodoc-gateway")),
