@@ -12,6 +12,7 @@ mod ade_myplanning;
 mod ade_rest;
 mod bluemind;
 mod demo;
+mod etudiants_api;
 mod moodle;
 #[allow(dead_code)] // utilisé par les fournisseurs réseau au fur et à mesure de leur ajout
 mod net;
@@ -25,7 +26,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use tonapi_config::{
     AbsencesService, AppsService, GradesService, HomeworkService, MailService, PortalConfig,
     ProfileService, ResolvedUniversity, ServiceAvailability, ServiceKind, Services, Signal,
-    TimetableService,
+    StudentRecord, TimetableService,
 };
 use tonapi_core::{
     AbsenceReport, App, Course, ErrorCode, EstablishmentSource, GradeReport, Homework, MailInbox,
@@ -191,11 +192,21 @@ pub async fn profile(ctx: &mut Context<'_>) -> Result<Fetched<Profile>, Problem>
     let services = ctx.services();
     match &services.profile {
         Some(ProfileService::Demo) => Ok(fetched(demo::profile(&ctx.session.username), "demo")),
-        Some(ProfileService::Portal) if tiles(ctx) => Ok(fetched(
-            tiles_portal::fetch_profile(ctx).await?,
-            "tiles-portal",
-        )),
-        Some(ProfileService::Portal) => Ok(fetched(uportal::fetch_profile(ctx).await?, "portal")),
+        Some(ProfileService::Portal { record }) => {
+            let (mut profile, provider) = if tiles(ctx) {
+                (tiles_portal::fetch_profile(ctx).await?, "tiles-portal")
+            } else {
+                (uportal::fetch_profile(ctx).await?, "portal")
+            };
+            // Le dossier complète le profil ; s'il est indisponible, le profil du portail reste.
+            if let Some(StudentRecord::EtudiantsApi { base_url }) = record
+                && let Ok(found) = etudiants_api::fetch_record(ctx, base_url).await
+            {
+                profile.student_number = found.student_number.or(profile.student_number);
+                profile.program = found.program.or(profile.program);
+            }
+            Ok(fetched(profile, provider))
+        }
         Some(ProfileService::None) | None => Err(absent(&services, ServiceKind::Profile)),
     }
 }

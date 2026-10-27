@@ -492,18 +492,35 @@ impl Provider for AppsService {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "provider", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ProfileService {
-    /// Lu dans le portail déclaré dans `[portal]`.
-    Portal,
+    /// Lu dans le portail déclaré dans `[portal]`, éventuellement complété par un dossier
+    /// étudiant (numéro, formation).
+    Portal {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        record: Option<StudentRecord>,
+    },
     /// Service non proposé.
     None,
     /// Données fictives de l'université de démonstration.
     Demo,
 }
 
+/// Source qui complète le profil du portail.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum StudentRecord {
+    /// Application de scolarité avec `api/etudiants/notes` (JSON : `numero`, `etapes[].libelle`),
+    /// derrière le CAS de l'université. Logiciel non identifié (vu à Paul-Valéry, octobre 2026).
+    EtudiantsApi {
+        /// Racine de l'application (ex. `https://scolarite.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+    },
+}
+
 impl Provider for ProfileService {
     fn provider_id(&self) -> &'static str {
         match self {
-            ProfileService::Portal => "portal",
+            ProfileService::Portal { .. } => "portal",
             ProfileService::None => "none",
             ProfileService::Demo => "demo",
         }

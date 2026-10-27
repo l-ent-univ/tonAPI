@@ -26,7 +26,7 @@ pub use schema::{establishment_schema, university_schema};
 pub use services::{
     AbsencesService, AppsService, Credentials, DocumentsService, GradesService, HomeworkService,
     LinkService, MailService, MoodleEntry, ProfileService, ScoDocGateway, ServiceAvailability,
-    ServiceKind, ServiceOptions, Services, SignIn, TimetableService,
+    ServiceKind, ServiceOptions, Services, SignIn, StudentRecord, TimetableService,
 };
 pub use templates::{PLACEHOLDER, PLACEHOLDER_HOST, establishment_template, university_template};
 pub use university::{

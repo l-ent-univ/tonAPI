@@ -157,7 +157,7 @@ impl<'a> Checker<'a> {
                 "`provider = \"portal\"` demande un `[portal]` dans university.toml",
             );
         }
-        if services.profile == Some(ProfileService::Portal) {
+        if matches!(services.profile, Some(ProfileService::Portal { .. })) {
             self.push(
                 Some("services.profile"),
                 Some("[services.profile]"),
