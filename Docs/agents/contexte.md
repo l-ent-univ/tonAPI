@@ -30,11 +30,19 @@ intégrations. Aucun chiffre d'utilisateurs ou de partenariat n'est établi par 
 | Données de démonstration | Fournisseur `demo` pour les services exposés | Les données sont fictives |
 
 Les fournisseurs distants `ade-ical-link`, `ade-portal-rest`, `scodoc-gateway`, `moodle-ajax`,
-`moodle-webservice`, `zimbra-rest` et `portal` (uPortal 4 et 5) sont branchés dans
-`crates/tonapi-providers/src/lib.rs`. Ils sont testés uniquement contre des faux serveurs locaux
-et des fixtures synthétiques construites d'après `Docs/` : aucun n'a encore été essayé avec un vrai
-compte. Limites connues : les groupes d'un lien iCal ADE et le webmail Zimbra derrière SAML
+`moodle-webservice`, `zimbra-rest` et `portal` (uPortal 4 et 5, et `tiles-portal`) sont branchés
+dans `crates/tonapi-providers/src/lib.rs` et testés contre des faux serveurs locaux.
+
+Essai réel le 27/10/2026 avec un compte étudiant de l'IUT de Béziers (Université de Montpellier),
+par la console `console/` : connexion CAS avec second facteur puis appareil mémorisé, détection
+de la composante (`umCodeComposante`), emploi du temps (prose Vaadin puis flux ADE), notes et
+absences ScoDoc (CAS de l'IUT, certificat GandiCert), Moodle BUT, mail Zimbra, profil et
+applications du nouvel ENT. Rennes, Lannion et les autres composantes de Montpellier n'ont pas été
+essayés. Limites connues : les groupes d'un lien iCal ADE et le webmail Zimbra derrière SAML
 (Rennes) renvoient `not_implemented` ; `options.timeout-secs` n'est lu que par ScoDoc.
+
+Le rattachement automatique compare les attributs CAS du portail (`tiles-portal`) aux règles de
+chaque composante après la connexion ; sans correspondance unique, la composante par défaut reste.
 
 `POST /v1/auth/service-login` ouvre un service qui a son propre compte, après une réponse
 `service_login_required` : ScoDoc derrière le CAS d'une composante (`own-cas`) et Moodle en

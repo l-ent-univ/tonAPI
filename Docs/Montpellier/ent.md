@@ -7,6 +7,16 @@
 
 > Connexion : [cas-umontpellier.md](cas-umontpellier.md). Checklist : [reimplementation.md](reimplementation.md).
 
+> **Mise à jour du 27/10/2026 [vu]** : `ent.umontpellier.fr` n'est plus uPortal (`/uPortal/`
+> répond 404). Le nouvel ENT est une application web avec son propre client CAS : entrée
+> `/cas/login?next=/`, service `https://ent.umontpellier.fr/cas/callback`, cookies
+> `ent_frontend_session*`. Routes JSON : `/api/config` (publique), `/api/cas-attributes`
+> (`{attributes: {uid, displayName, givenName, sn, mail, supannEtuId, umCodeComposante,
+> supannEntiteAffectation, …}, authenticated, isAdmin}`), `/api/tiles` (`{tiles: [{id, fname,
+> title, description, url, category, target, ruleConditions…}], total, version}`). Code de
+> composante de l'IUT de Béziers : `BE2`. Les sections uPortal ci-dessous sont historiques.
+> Fournisseur : `portal.kind = "tiles-portal"`.
+
 ## Résumé pour qui doit reconstruire un client (ex. tonAPI)
 
 1. **Il n'y a pas d'API officielle.** Tout se fait en se comportant comme un navigateur :

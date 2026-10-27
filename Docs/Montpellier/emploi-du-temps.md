@@ -198,6 +198,15 @@ Texte affiché : « Lien d'agenda au format iCal […] Attention ce lien iCal n'
 - **Un seul GET suffit**, pas besoin d'exécuter Vaadin ni d'appel UIDL. Le lien apparaît en clair (pas d'échappement `\/`).
 - Extraction : regex `https://proseconsult\.umontpellier\.fr/jsp/custom/modules/plannings/direct_cal\.jsp\?data=([0-9a-f]+),1`.
 
+> **Mise à jour du 27/10/2026 [vu]** : après la mise à jour de prose, un `GET` de la page ne
+> contient plus le lien tant que la vue n'a pas été affichée dans la session. Le lien arrive en
+> réponse à une navigation Vaadin : `POST /prose-etudiant/?v-r=uidl&v-uiId=<n>` avec
+> `{"csrfToken": <Vaadin-Security-Key de l'état initial>, "rpc": [{"type": "navigation",
+> "location": "protected/ical", "state": {"href": …}, "link": 1}], "syncId", "clientId"}`.
+> Naviguer directement vers la vue déjà affichée ne suffit pas : il faut passer par une autre vue
+> (`protected/resume`) puis revenir. Format du lien inchangé. Implémenté dans
+> `crates/tonapi-providers/src/ade_ical.rs` (`VaadinPage`).
+
 ### 9.3 Propriétés vérifiées
 | Propriété | Résultat |
 |---|---|
