@@ -29,10 +29,15 @@ intégrations. Aucun chiffre d'utilisateurs ou de partenariat n'est établi par 
 | Session et SSO | Session chiffrée, parcours CAS, gestion de défis OTP, tests locaux | Les variantes des déploiements réels restent à valider |
 | Données de démonstration | Fournisseur `demo` pour les services exposés | Les données sont fictives |
 
-À cette date, `crates/tonapi-providers/src/lib.rs` renvoie encore `not_implemented` pour les
-fournisseurs distants ADE, ScoDoc, Moodle, Zimbra et le profil/applications du portail. Ils sont
-déclarés dans le format de configuration mais leurs fonctions de récupération ne sont pas
-branchées. `service_login` est également un point d'extension non réalisé.
+Les fournisseurs distants `ade-ical-link`, `ade-portal-rest`, `scodoc-gateway`, `moodle-ajax`,
+`moodle-webservice`, `zimbra-rest` et `portal` (uPortal 4 et 5) sont branchés dans
+`crates/tonapi-providers/src/lib.rs`. Ils sont testés uniquement contre des faux serveurs locaux
+et des fixtures synthétiques construites d'après `Docs/` : aucun n'a encore été essayé avec un vrai
+compte. Limites connues : les groupes d'un lien iCal ADE et le webmail Zimbra derrière SAML
+(Rennes) renvoient `not_implemented` ; `options.timeout-secs` n'est lu que par ScoDoc.
+
+`service_login` branche la connexion propre à ScoDoc (`own-cas`) et à Moodle (`local-password`),
+mais aucune route du serveur ne l'appelle encore : ces deux cas restent inaccessibles par l'API.
 
 Les documents administratifs ont des variantes dans la configuration, mais aucune route dédiée
 n'est enregistrée dans `crates/tonapi-server/src/routes/mod.rs`. Ne promets pas leur consultation
