@@ -29,7 +29,7 @@ intégrations. Aucun chiffre d'utilisateurs ou de partenariat n'est établi par 
 | Session et SSO | Session chiffrée, parcours CAS, gestion de défis OTP, tests locaux | Les variantes des déploiements réels restent à valider |
 | Données de démonstration | Fournisseur `demo` pour les services exposés | Les données sont fictives |
 
-Les fournisseurs distants `ade-ical-link`, `ade-portal-rest`, `ade-myplanning`, `scodoc-gateway`, `moodle-ajax`,
+Les fournisseurs distants `ade-ical-link`, `ade-portal-rest`, `ade-myplanning`, `scodoc-gateway`, `moodle-ajax`, `bluemind`,
 `moodle-webservice`, `zimbra-rest` et `portal` (uPortal 4 et 5, et `tiles-portal`) sont branchés
 dans `crates/tonapi-providers/src/lib.rs` et testés contre des faux serveurs locaux.
 
@@ -38,7 +38,8 @@ par la console `console/` : connexion CAS avec second facteur puis appareil mém
 de la composante (`umCodeComposante`), emploi du temps (prose Vaadin puis flux ADE), notes et
 absences ScoDoc (CAS de l'IUT, certificat GandiCert), Moodle BUT, mail Zimbra, profil et
 applications du nouvel ENT. Même jour, Université Paul-Valéry (`univ-montp3`) : connexion CAS,
-emploi du temps ADE MyPlanning (GWT-RPC puis `anonymous_cal.jsp`), applications uPortal et Moodle.
+emploi du temps ADE MyPlanning (GWT-RPC puis `anonymous_cal.jsp`), mail BlueMind, profil et
+applications uPortal, Moodle.
 Rennes, Lannion et les autres composantes de Montpellier n'ont pas été essayés. Limites connues : les groupes d'un lien iCal ADE et le webmail Zimbra derrière SAML
 (Rennes) renvoient `not_implemented` ; `options.timeout-secs` n'est lu que par ScoDoc.
 
