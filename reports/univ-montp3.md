@@ -19,14 +19,15 @@ Provenance : **vu**, **code**, **déduit**, **inconnu**. Indiquer une référenc
 
 | Service | Logiciel et hôte | Connexion | Preuve et provenance | État dans tonAPI |
 |---|---|---|---|---|
-| Emploi du temps | ADE 6.15 MyPlanning (GWT), `mon-planning.univ-montp3.fr/direct/myplanning.jsp` | CAS | **vu** : portlet `etuADE` → MyPlanning ; appels GWT `login`, `loadProject`, `getResourceIds` ; flux public `anonymous_cal.jsp`, 27/10 | testé (`ade-myplanning`) |
+| Emploi du temps | ADE 6.15 MyPlanning (GWT), `mon-planning.univ-montp3.fr/direct/myplanning.jsp` | CAS | **vu** : portlet `etuADE` → MyPlanning ; appels GWT `login`, `loadProject`, `getResourceIds` ; flux public `anonymous_cal.jsp` ; groupes par `searchDataById` puis `getChildren`, 27/10 | testé (`ade-myplanning`), groupes testés (14 ressources nommées) |
 | Notes | application Angular, `scolarite.univ-montp3.fr` | CAS | **vu** : `GET /api/etudiants/notes` (JSON `{etapes: [{libelle, codEtape, semestres: {}…}], epreuves: {}…}`), 27/10 ; **code** (client public) : `semestres.<clé> = {intitule, classifiedElementPedagogiques: [{codElement, libElement, niveauElement, noteEpreuve1, noteEpreuve2, note, resultat}]}` | testé sans note (0 semestre) ; format des notes non vérifié sur données réelles |
+| Examens | même application, `GET /api/etudiants/calendrier` | CAS | **vu** : `epreuves` vide sur ce compte, 27/10 ; **code** (client public) : `période → [{libPeriode, dateEpreuve, heureDebutEpreuve, dureeEpreuve, codEpreuve, libEpreuve, salleEpreuve, batEpreuve, infoEpreuve, elementPedagogiques}]` | testé sans épreuve ; formats des dates et durées non vérifiés |
 | Absences | aucun relevé observé ; portlet « Déclaration d'absence » (`app.univ-montp3.fr/ent/html/jade.html`) | — | **vu** : portlet `epJade` | absent |
 | Devoirs | Moodle, `moodle.univ-montp3.fr` | CAS (`login/index.php?authCAS=CAS`) | **vu** : retour sur `/my/` avec `sesskey`, `lib/ajax/service.php` | testé (12 éléments) |
 | Mail | BlueMind 5.7.5, `mail.etu.univ-montp3.fr` → `mail.etu.umpv.fr/webapp/mail/` | CAS | **vu** : `webapp/session-infos.js`, `api/mail_folders/…/_all`, `api/mail_items/<dossier>/_sorted`, `_mgetById`, 27/10 | testé (`bluemind`) |
-| Applications | uPortal, `monupv.univ-montp3.fr/uPortal/` | CAS | **vu** : `GET api/v4-3/dlm/layout.json` 200 (47 portlets dont éléments techniques) | testé (32 éléments) |
+| Applications | uPortal, `monupv.univ-montp3.fr/uPortal/` | CAS | **vu** : `GET api/v4-3/dlm/layout.json` 200 (47 portlets dont éléments techniques) ; lien réel de chaque portlet dans `api/v4-3/portlet/<fname>.html` (iframe) | testé (32 éléments, 31 avec lien direct) |
 | Profil | uPortal, complété par l'application de scolarité | CAS | **vu** : `api/v5-1/userinfo` 404 ; `api/session.json` et `api/people/<id>.json` 200 (`displayName`, `givenName`, `sn`, `mail`, `postalAddress`) ; `scolarite…/api/etudiants/notes` (`numero`, `etapes[].libelle`) | testé (nom, prénom, e-mail, numéro étudiant, formation) |
-| Documents | portlet « Certificat de scolarité », `app.univ-montp3.fr/ent/Certificat` | CAS | **vu** : portlet `etuCertifScola` | lien |
+| Documents | application de scolarité (`/api/etudiants/attestations`, `…/annuelle`, `…/reussites`) ; certificat par le portlet `etuCertifScola` (`app.univ-montp3.fr/ent/Certificat`) | CAS | **vu** : listes vides sur ce compte, 27/10 ; **code** : fichier `<liste>/<annee>_<type>_<session>` ou `reussites/<clé>` | testé (certificat en lien) ; téléchargement d'une attestation jamais essayé en réel |
 
 Ne pas confondre une page consultée dans l'ENT avec une fonction utilisable dans tonAPI.
 Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout.
@@ -63,13 +64,19 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
     → `text/calendar`, sans authentification ;
   - en-têtes `X-GWT-Permutation` et `X-GWT-Module-Base` ; signatures (`policy`) lues dans
     `gwtdirectplanning/<permutation>.cache.html` (`'…ServiceProxy','<32 hex>'`).
+  - groupes : `ConfigurationServiceProxy` `method25searchDataById` (`FilterType` 3, liste des
+    numéros) → arbre des dossiers menant aux ressources (numéros seulement, format texte
+    `{"id""dossier"…}` dans une chaîne GWT) ; `DirectPlanningServiceProxy` `method4getChildren`
+    (nœud tel que renvoyé, configuration champs `COLOR` et `NAME`) → enfants nommés, suivis d'une
+    valeur finale `"false"` ; apostrophe écrite `\x27` par GWT ;
   - L'interface « standard » `jsp/standard/` demande un compte ADE local : inutilisable.
 - **Application de scolarité** (Angular, DSIN) : derrière le CAS (`/login/cas?ticket`, puis
   `/?continue`) ; le numéro et la formation servent au profil (`record.kind = "etudiants-api"`).
   `GET /api/getUsers`, `/api/etudiants/notes`,
   `/api/parametres/annee_note`, `/api/parametres/info_not_note` (JSON). Routes relevées dans le
-  code client : `/api/etudiants/attestations/…`, `/api/scolarite`. Format des semestres **inconnu**
-  (objet vide sur ce compte).
+  code client : `/api/etudiants/calendrier`, `/api/etudiants/attestations/…`, `/api/scolarite`.
+  Formats des semestres, épreuves et attestations relevés dans le code client, jamais vus remplis
+  (objets vides sur ce compte).
 - **BlueMind 5.7.5**, implémenté (`bluemind`) — **vu** le 27/10/2026 : `webapp/session-infos.js`
   (`sid`, `userId`, `domain`), en-tête `X-BM-ApiKey` ; `GET api/mail_folders/<domaine_>/user.<id>/_all`,
   `POST api/mail_items/<dossier>/_sorted` (`{"fields":[{"column":"internal_date","dir":"Desc"}],
@@ -84,7 +91,7 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
 | Configuration | `tonapi validate universities` | succès : 4 universités, 0 problème |
 | Détection automatique de données sensibles | `tonapi report check` sur ce rapport et le TOML | succès |
 | Relecture de confidentialité | rapport et TOML relus : hôtes, chemins, noms de champs et de cookies seulement | effectuée |
-| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), mail 20 messages, profil complet (dont numéro étudiant et formation), notes 200 sans semestre (aucune note saisie), documents en lien | effectué pour ce compte |
+| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), mail 20 messages, profil complet (dont numéro étudiant et formation), notes 200 sans semestre (aucune note saisie) ; second essai le même jour : groupes 14, examens 200 sans épreuve, documents 1 (certificat en lien), applications 31/32 en lien direct | effectué pour ce compte |
 
 ## Inconnues et limites
 

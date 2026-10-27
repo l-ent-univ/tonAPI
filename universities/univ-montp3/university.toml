@@ -35,6 +35,11 @@ project-id = 1
 provider = "etudiants-api"
 base-url = "https://scolarite.univ-montp3.fr/"
 
+# Calendrier des épreuves : même application que les notes (`api/etudiants/calendrier`).
+[services.exams]
+provider = "etudiants-api"
+base-url = "https://scolarite.univ-montp3.fr/"
+
 # [vu] Moodle : entrée `login/index.php?authCAS=CAS`, retour sur /my/ avec `sesskey`.
 [services.homework]
 provider = "moodle-ajax"
@@ -58,7 +63,9 @@ provider = "portal"
 record = { kind = "etudiants-api", base-url = "https://scolarite.univ-montp3.fr/" }
 
 # [vu] portlet « Certificat de scolarité ».
+# Attestations semestrielles, annuelles et de réussite de l'application de scolarité ; le
+# certificat de scolarité reste une page de l'ENT (portlet `etuCertifScola`).
 [services.documents]
-provider = "link"
-url = "https://app.univ-montp3.fr/ent/Certificat"
-label = "Certificat de scolarité"
+provider = "etudiants-api"
+base-url = "https://scolarite.univ-montp3.fr/"
+certificate-url = "https://app.univ-montp3.fr/ent/Certificat"
