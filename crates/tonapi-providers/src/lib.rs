@@ -1,8 +1,8 @@
 //! Fournisseurs de données. Chaque fonction choisit le fournisseur configuré pour le service de
 //! l'étudiant (université + composante) et convertit sa réponse vers les modèles de `tonapi-core`.
 //!
-//! Un service absent donne `service_absent` (avec le lien quand il y en a un) ; un fournisseur déclaré
-//! mais pas encore écrit donne `not_implemented`.
+//! Un service absent donne `service_absent` (avec le lien quand il y en a un) ; une fonction qu'un
+//! fournisseur ne peut pas assurer (groupes d'un lien iCal, par exemple) donne `not_implemented`.
 
 // Les fournisseurs réseau sont asynchrones ; `demo` ne l'est pas mais partage la même signature.
 #![allow(clippy::unused_async)]
@@ -15,6 +15,7 @@ mod moodle;
 mod net;
 mod scodoc;
 mod sso;
+mod uportal;
 mod zimbra;
 
 use chrono::{DateTime, NaiveDate, Utc};
@@ -72,12 +73,6 @@ fn absent(services: &Services, kind: ServiceKind) -> Problem {
     }
 }
 
-fn not_implemented(provider: &str) -> Problem {
-    Problem::new(ErrorCode::NotImplemented).detail(format!(
-        "le fournisseur `{provider}` n'est pas encore pris en charge"
-    ))
-}
-
 /// Composante choisie par l'étudiant, sinon celle par défaut de l'université.
 pub fn pick_establishment(
     university: &ResolvedUniversity,
@@ -111,7 +106,7 @@ pub async fn profile(ctx: &mut Context<'_>) -> Result<Fetched<Profile>, Problem>
     let services = ctx.services();
     match &services.profile {
         Some(ProfileService::Demo) => Ok(fetched(demo::profile(&ctx.session.username), "demo")),
-        Some(ProfileService::Portal) => Err(not_implemented("portal")),
+        Some(ProfileService::Portal) => Ok(fetched(uportal::fetch_profile(ctx).await?, "portal")),
         Some(ProfileService::None) | None => Err(absent(&services, ServiceKind::Profile)),
     }
 }
@@ -227,7 +222,7 @@ pub async fn apps(ctx: &mut Context<'_>) -> Result<Fetched<Vec<App>>, Problem> {
     let services = ctx.services();
     match &services.apps {
         Some(AppsService::Demo) => Ok(fetched(demo::apps(), "demo")),
-        Some(AppsService::Portal) => Err(not_implemented("portal")),
+        Some(AppsService::Portal) => Ok(fetched(uportal::fetch_apps(ctx).await?, "portal")),
         Some(AppsService::None) | None => Err(absent(&services, ServiceKind::Apps)),
     }
 }

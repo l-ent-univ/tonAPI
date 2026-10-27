@@ -1,0 +1,32 @@
+{
+  "user": "guest",
+  "authenticated": "false",
+  "hostname": "services.exemple.test",
+  "fragmentAdmin": "false",
+  "locale": "fr-FR",
+  "layout": {
+    "globals": {"userLayoutRoot": "root", "hasFavorites": "false"},
+    "regions": [],
+    "navigation": {
+      "allowAddTab": "false",
+      "tabs": [
+        {
+          "ID": "u1l1s1",
+          "name": "Identifiez-vous",
+          "externalId": "login",
+          "content": [
+            {
+              "_objectType": "folder",
+              "name": "Column",
+              "content": [
+                {"_objectType": "portlet", "fname": "portal-landing", "title": "Connexion", "url": "/api/v4-3/portlet/portal-landing.html"}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "favorites": [],
+    "favoriteGroups": []
+  }
+}

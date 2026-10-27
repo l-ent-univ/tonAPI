@@ -1,0 +1,111 @@
+{
+  "user": "e00000000000",
+  "authenticated": "true",
+  "hostname": "services.exemple.test",
+  "fragmentAdmin": "false",
+  "locale": "fr-FR",
+  "layout": {
+    "globals": {"userLayoutRoot": "root", "hasFavorites": "true", "activeTabGroup": "DEFAULT_TABGROUP", "tabsInTabGroup": "2"},
+    "regions": [
+      {"name": "header-left", "content": [{"_objectType": "portlet", "fname": "portal-brand", "title": "Marque"}]}
+    ],
+    "navigation": {
+      "allowAddTab": "false",
+      "tabs": [
+        {
+          "ID": "u1l1s10",
+          "name": "Services",
+          "externalId": "services",
+          "hidden": "false",
+          "content": [
+            {
+              "_objectType": "folder",
+              "ID": "u1l1s11",
+              "name": "Favoris",
+              "content": [
+                {
+                  "_objectType": "portlet",
+                  "ID": "u1l1n20",
+                  "fname": "webapp-courrier",
+                  "title": "Courrier",
+                  "name": "Messagerie",
+                  "description": "Boîte aux lettres",
+                  "url": "/api/v4-3/portlet/webapp-courrier.html",
+                  "iconUrl": "/images/icons/courrier.svg",
+                  "parameters": {"alternativeMaximizedLink": "https://courrier.exemple.test/"}
+                }
+              ]
+            },
+            {
+              "_objectType": "folder",
+              "ID": "u1l1s12",
+              "name": "Scolarité",
+              "content": [
+                {
+                  "_objectType": "portlet",
+                  "ID": "u1l1n21",
+                  "fname": "webapp-planning",
+                  "title": "Mon emploi du temps",
+                  "name": "Planning",
+                  "description": "Planning des cours",
+                  "url": "/api/v4-3/portlet/webapp-planning.html",
+                  "iconUrl": "https://planning.exemple.test/icone.png",
+                  "parameters": {"alternativeMaximizedLink": "https://planning.exemple.test/portal/"}
+                },
+                {
+                  "_objectType": "portlet",
+                  "ID": "u1l1n20",
+                  "fname": "webapp-courrier",
+                  "title": "Courrier",
+                  "url": "/api/v4-3/portlet/webapp-courrier.html",
+                  "parameters": {"alternativeMaximizedLink": "https://courrier.exemple.test/"}
+                },
+                {
+                  "_objectType": "portlet",
+                  "ID": "u1l1n22",
+                  "fname": "webapp-dossier",
+                  "title": "Dossier étudiant",
+                  "url": "/api/v4-3/portlet/webapp-dossier.html",
+                  "iconUrl": "",
+                  "parameters": {"url": "/mdw/"}
+                },
+                {
+                  "_objectType": "portlet",
+                  "ID": "u1l1n23",
+                  "fname": "webapp-cache",
+                  "title": "Application masquée",
+                  "hidden": "true",
+                  "url": "/api/v4-3/portlet/webapp-cache.html",
+                  "parameters": {}
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ID": "u1l1s13",
+          "name": "Aide",
+          "externalId": "aide",
+          "content": [
+            {
+              "_objectType": "folder",
+              "ID": "u1l1s14",
+              "name": "Column",
+              "content": [
+                {
+                  "_objectType": "portlet",
+                  "ID": "u1l1n24",
+                  "fname": "webapp-assistance",
+                  "title": "Assistance",
+                  "url": "/api/v4-3/portlet/webapp-assistance.html"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "favorites": [],
+    "favoriteGroups": []
+  }
+}

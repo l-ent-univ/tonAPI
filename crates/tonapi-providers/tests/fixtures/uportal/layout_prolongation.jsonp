@@ -1,0 +1,64 @@
+window.prolongation_ENT.main({
+  "user": "e00000000000",
+  "locale": "fr-FR",
+  "layout": {
+    "header": {"portlets": []},
+    "footer": {"portlets": []},
+    "folders": [
+      {
+        "id": "u1l1s1",
+        "title": "Accueil",
+        "portlets": [
+          {
+            "fname": "compte-demo",
+            "title": "Compte informatique",
+            "url": "/uPortal/f/u1l1s1/p/compte-demo.u1l1n1/detached/render.uP?pCm=view",
+            "description": "Mot de passe, redirection du courrier",
+            "iconUrl": "https://apps.exemple.test/compte/protected/authenticated"
+          },
+          {
+            "fname": "moodle-demo",
+            "title": "Moodle",
+            "url": "/uPortal/f/u1l1s1/p/moodle-demo.u1l1n2/detached/render.uP?pCm=view",
+            "description": "",
+            "iconUrl": "https://moodle.exemple.test/login/index.php?authCAS=CAS"
+          },
+          {
+            "fname": "bibliotheque",
+            "title": "Bibliothèques",
+            "url": "/uPortal/f/u1l1s1/p/bibliotheque.u1l1n3/detached/render.uP?pCm=view",
+            "description": "Catalogue et réservations",
+            "iconUrl": "/uPortal/media/skins/icons/mobile/bibliotheque.png"
+          }
+        ]
+      },
+      {
+        "id": "u1l1s2",
+        "title": "Scolarité",
+        "portlets": [
+          {
+            "fname": "moodle-demo",
+            "title": "Moodle",
+            "url": "/uPortal/f/u1l1s2/p/moodle-demo.u1l1n9/detached/render.uP?pCm=view",
+            "iconUrl": "https://moodle.exemple.test/login/index.php?authCAS=CAS"
+          },
+          {
+            "fname": "planning-demo",
+            "title": "Planning",
+            "url": "/uPortal/f/u1l1s2/p/planning-demo.u1l1n4/detached/render.uP?pCm=view",
+            "description": "Emploi du temps",
+            "iconUrl": ""
+          },
+          {
+            "title": "Entrée sans identifiant",
+            "url": "/uPortal/f/u1l1s2/p/inconnu/detached/render.uP"
+          },
+          {
+            "fname": "sans-titre",
+            "url": "/uPortal/f/u1l1s2/p/sans-titre.u1l1n5/detached/render.uP?pCm=view"
+          }
+        ]
+      }
+    ]
+  }
+})
