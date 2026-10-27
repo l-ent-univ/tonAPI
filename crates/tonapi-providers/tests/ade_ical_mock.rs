@@ -39,7 +39,13 @@ struct Mock {
     feed: Feed,
     page_hits: u32,
     feed_hits: u32,
+    /// Prose récent : la page n'a pas le lien, il arrive après une navigation Vaadin.
+    vaadin: bool,
+    /// Emplacements des navigations Vaadin reçues.
+    navigations: Vec<String>,
 }
+
+const VAADIN_KEY: &str = "cle-vaadin-de-test";
 
 type Shared = Arc<Mutex<Mock>>;
 
@@ -81,9 +87,43 @@ const LOGIN_PAGE: &str = r#"<html><body><form method="post" id="fm1" action="log
     <input type="hidden" name="execution" value="E1"><input type="hidden" name="_eventId" value="submit">
     </form></body></html>"#;
 
-async fn handle(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Response<Body> {
+async fn handle(
+    State(state): State<Shared>,
+    uri: Uri,
+    headers: HeaderMap,
+    body: String,
+) -> Response<Body> {
     let mut s = state.lock().unwrap();
     match uri.path() {
+        "/prose/" if query(&uri, "v-r").as_deref() == Some("uidl") => {
+            let request: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+            if request["csrfToken"] != VAADIN_KEY || query(&uri, "v-uiId").as_deref() != Some("1") {
+                return reply(StatusCode::FORBIDDEN, "text/plain", None, String::new());
+            }
+            let location = request["rpc"][0]["location"]
+                .as_str()
+                .unwrap_or("")
+                .to_owned();
+            // Le lien n'est envoyé qu'en revenant sur la vue depuis une autre.
+            let back = location == "ical" && s.navigations.iter().any(|l| l != "ical");
+            s.navigations.push(location);
+            let sync = s.navigations.len();
+            let changes = if back {
+                format!(
+                    r#"[{{"node":3,"type":"put","key":"text","feat":7,"value":"{}{FEED_PATH}?data={}"}}]"#,
+                    s.base,
+                    fresh_data()
+                )
+            } else {
+                "[]".to_owned()
+            };
+            reply(
+                StatusCode::OK,
+                "application/json; charset=UTF-8",
+                None,
+                format!(r#"for(;;);[{{"syncId":{sync},"clientId":{sync},"changes":{changes}}}]"#),
+            )
+        }
         "/cas/login" => {
             let has_tgc = headers
                 .get(header::COOKIE)
@@ -100,7 +140,13 @@ async fn handle(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Re
                 return redirect(&format!("{}/cas/login?service={}", s.base, enc(&service)));
             }
             s.page_hits += 1;
-            let page = PAGE.replace("https://ade.example.test", &s.base);
+            let page = if s.vaadin {
+                format!(
+                    r#"<html><head><title>IcalView</title></head><body><script>var uidl = {{"syncId":0,"clientId":0,"changes":[],"Vaadin-Security-Key":"{VAADIN_KEY}"}}; var config = {{"v-uiId":1}}; window.Vaadin.Flow.initApplication("prose", config);</script></body></html>"#
+                )
+            } else {
+                PAGE.replace("https://ade.example.test", &s.base)
+            };
             reply(
                 StatusCode::OK,
                 "text/html;charset=utf-8",
@@ -138,6 +184,10 @@ async fn handle(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Re
 }
 
 async fn start(feed: Feed) -> (Shared, String) {
+    start_with(feed, false).await
+}
+
+async fn start_with(feed: Feed, vaadin: bool) -> (Shared, String) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let base = format!("http://{addr}");
@@ -146,6 +196,8 @@ async fn start(feed: Feed) -> (Shared, String) {
         feed,
         page_hits: 0,
         feed_hits: 0,
+        vaadin,
+        navigations: Vec::new(),
     }));
     let app = Router::new().fallback(handle).with_state(state.clone());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -252,6 +304,23 @@ async fn lit_le_lien_sur_la_page_puis_le_garde() {
     let again = week(&uni, &mut session).await.unwrap();
     assert_eq!(again, courses);
     assert_eq!(hits(&state), (1, 2));
+}
+
+#[tokio::test]
+async fn lien_envoye_par_une_navigation_vaadin() {
+    let (state, base) = start_with(Feed::Normal, true).await;
+    let uni = university(&base, None);
+    let mut session = session(true);
+
+    let courses = week(&uni, &mut session).await.unwrap();
+    assert_eq!(courses.len(), 4);
+    assert_eq!(hits(&state), (1, 1));
+    // Aller-retour par une autre vue, avec la clé de la page.
+    assert_eq!(
+        state.lock().unwrap().navigations,
+        ["protected/resume", "ical"]
+    );
+    assert!(session.tokens.contains_key(TOKEN_KEY));
 }
 
 #[tokio::test]
