@@ -11,15 +11,16 @@ Provenance : **vu**, **code**, **déduit**, **inconnu**. Indiquer une référenc
 - Services utilisables avec tonAPI et preuves : connexion CAS, emploi du temps (ADE MyPlanning),
   mail (BlueMind), profil et applications du portail, devoirs Moodle, essayés le 27/10/2026 avec
   un compte étudiant par la console (voir Vérifications).
-- Fournisseurs encore à implémenter : application de scolarité (notes), configurée en lien.
-- Prochaine action : observer les notes sur un compte qui en a, pour écrire le fournisseur.
+- Notes : fournisseur `etudiants-api` branché d'après le code client ; à vérifier sur un compte
+  qui a des notes (types et format des valeurs **inconnus**).
+- Prochaine action : vérifier les notes sur un compte qui en a.
 
 ## Services
 
 | Service | Logiciel et hôte | Connexion | Preuve et provenance | État dans tonAPI |
 |---|---|---|---|---|
 | Emploi du temps | ADE 6.15 MyPlanning (GWT), `mon-planning.univ-montp3.fr/direct/myplanning.jsp` | CAS | **vu** : portlet `etuADE` → MyPlanning ; appels GWT `login`, `loadProject`, `getResourceIds` ; flux public `anonymous_cal.jsp`, 27/10 | testé (`ade-myplanning`) |
-| Notes | application Angular, `scolarite.univ-montp3.fr` | CAS | **vu** : `GET /api/etudiants/notes` (JSON `{etapes: [{libelle, codEtape, semestres: {}…}], epreuves: {}, attestations: {}…}`), 27/10 ; aucune note sur ce compte | lien |
+| Notes | application Angular, `scolarite.univ-montp3.fr` | CAS | **vu** : `GET /api/etudiants/notes` (JSON `{etapes: [{libelle, codEtape, semestres: {}…}], epreuves: {}…}`), 27/10 ; **code** (client public) : `semestres.<clé> = {intitule, classifiedElementPedagogiques: [{codElement, libElement, niveauElement, noteEpreuve1, noteEpreuve2, note, resultat}]}` | testé sans note (0 semestre) ; format des notes non vérifié sur données réelles |
 | Absences | aucun relevé observé ; portlet « Déclaration d'absence » (`app.univ-montp3.fr/ent/html/jade.html`) | — | **vu** : portlet `epJade` | absent |
 | Devoirs | Moodle, `moodle.univ-montp3.fr` | CAS (`login/index.php?authCAS=CAS`) | **vu** : retour sur `/my/` avec `sesskey`, `lib/ajax/service.php` | testé (12 éléments) |
 | Mail | BlueMind 5.7.5, `mail.etu.univ-montp3.fr` → `mail.etu.umpv.fr/webapp/mail/` | CAS | **vu** : `webapp/session-infos.js`, `api/mail_folders/…/_all`, `api/mail_items/<dossier>/_sorted`, `_mgetById`, 27/10 | testé (`bluemind`) |
@@ -83,7 +84,7 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
 | Configuration | `tonapi validate universities` | succès : 4 universités, 0 problème |
 | Détection automatique de données sensibles | `tonapi report check` sur ce rapport et le TOML | succès |
 | Relecture de confidentialité | rapport et TOML relus : hôtes, chemins, noms de champs et de cookies seulement | effectuée |
-| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), mail 20 messages, profil complet (dont numéro étudiant et formation), notes et documents en lien | effectué pour ce compte |
+| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), mail 20 messages, profil complet (dont numéro étudiant et formation), notes 200 sans semestre (aucune note saisie), documents en lien | effectué pour ce compte |
 
 ## Inconnues et limites
 

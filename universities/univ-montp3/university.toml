@@ -29,11 +29,11 @@ provider = "ade-myplanning"
 base-url = "https://mon-planning.univ-montp3.fr/"
 project-id = 1
 
-# [vu] application de scolarité (Angular, `api/etudiants/notes`) : aucun fournisseur tonAPI.
+# [vu] application de scolarité (Angular) derrière le CAS, `api/etudiants/notes`. Format des
+# semestres lu dans le client public [code] ; aucun relevé réel observé (compte sans note).
 [services.grades]
-provider = "link"
-url = "https://scolarite.univ-montp3.fr/"
-label = "Notes et attestations"
+provider = "etudiants-api"
+base-url = "https://scolarite.univ-montp3.fr/"
 
 # [vu] Moodle : entrée `login/index.php?authCAS=CAS`, retour sur /my/ avec `sesskey`.
 [services.homework]
