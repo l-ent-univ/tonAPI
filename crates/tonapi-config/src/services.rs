@@ -290,6 +290,18 @@ pub enum TimetableService {
         #[serde(default, skip_serializing_if = "ServiceOptions::is_default")]
         options: ServiceOptions,
     },
+    /// ADE « MyPlanning » (`/direct/myplanning.jsp`, interface GWT) : les ressources de
+    /// l'étudiant sont lues après connexion CAS, puis le flux vient de `anonymous_cal.jsp`.
+    AdeMyplanning {
+        /// Racine du serveur ADE (ex. `https://planning.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+        /// Projet ADE. Défaut : 1.
+        #[serde(rename = "project-id", default = "default_project")]
+        project_id: u32,
+        #[serde(default, skip_serializing_if = "ServiceOptions::is_default")]
+        options: ServiceOptions,
+    },
     /// Simple lien vers le site de l'établissement.
     Link(LinkService),
     /// Service non proposé.
@@ -298,9 +310,14 @@ pub enum TimetableService {
     Demo,
 }
 
+fn default_project() -> u32 {
+    1
+}
+
 provider_ids!(TimetableService {
     Self::AdeIcalLink { .. } => "ade-ical-link",
     Self::AdePortalRest { .. } => "ade-portal-rest",
+    Self::AdeMyplanning { .. } => "ade-myplanning",
     Self::Link(_) => "link",
     Self::None => "none",
     Self::Demo => "demo",

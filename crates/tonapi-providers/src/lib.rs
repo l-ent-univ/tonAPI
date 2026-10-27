@@ -8,6 +8,7 @@
 #![allow(clippy::unused_async)]
 
 mod ade_ical;
+mod ade_myplanning;
 mod ade_rest;
 mod demo;
 mod moodle;
@@ -218,6 +219,15 @@ pub async fn timetable(
             let courses = ade_rest::fetch_timetable(ctx, base_url, from, to).await?;
             Ok(fetched(courses, "ade-portal-rest"))
         }
+        Some(TimetableService::AdeMyplanning {
+            base_url,
+            project_id,
+            ..
+        }) => {
+            let courses =
+                ade_myplanning::fetch_timetable(ctx, base_url, *project_id, from, to).await?;
+            Ok(fetched(courses, "ade-myplanning"))
+        }
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
             Err(absent(&services, ServiceKind::Timetable))
         }
@@ -234,6 +244,10 @@ pub async fn timetable_groups(
         Some(TimetableService::AdePortalRest { base_url, .. }) => {
             let groups = ade_rest::fetch_groups(ctx, base_url).await?;
             Ok(fetched(groups, "ade-portal-rest"))
+        }
+        Some(TimetableService::AdeMyplanning { .. }) => {
+            Err(Problem::new(ErrorCode::NotImplemented)
+                .detail("le fournisseur `ade-myplanning` ne liste pas encore les groupes"))
         }
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
             Err(absent(&services, ServiceKind::Timetable))

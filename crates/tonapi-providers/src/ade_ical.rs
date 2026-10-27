@@ -79,7 +79,7 @@ pub(crate) fn groups_unsupported() -> Problem {
     ))
 }
 
-fn university_tz(ctx: &Context<'_>) -> Result<Tz, Problem> {
+pub(crate) fn university_tz(ctx: &Context<'_>) -> Result<Tz, Problem> {
     ctx.university
         .university
         .timezone
@@ -348,7 +348,7 @@ async fn download(net: &mut Net, link: &Url) -> Result<Feed, Problem> {
     }
 }
 
-fn is_calendar(body: &str) -> bool {
+pub(crate) fn is_calendar(body: &str) -> bool {
     body.trim_start_matches('\u{feff}')
         .trim_start()
         .get(..15)

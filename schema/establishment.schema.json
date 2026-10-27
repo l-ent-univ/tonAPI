@@ -1051,6 +1051,36 @@
         },
         {
           "additionalProperties": false,
+          "description": "ADE « MyPlanning » (`/direct/myplanning.jsp`, interface GWT) : les ressources de\nl'étudiant sont lues après connexion CAS, puis le flux vient de `anonymous_cal.jsp`.",
+          "properties": {
+            "base-url": {
+              "description": "Racine du serveur ADE (ex. `https://planning.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "project-id": {
+              "default": 1,
+              "description": "Projet ADE. Défaut : 1.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provider": {
+              "const": "ade-myplanning",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "Simple lien vers le site de l'établissement.",
           "properties": {
             "label": {
