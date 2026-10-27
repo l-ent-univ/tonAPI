@@ -10,6 +10,7 @@
 mod ade_ical;
 mod ade_rest;
 mod demo;
+mod moodle;
 #[allow(dead_code)] // utilisé par les fournisseurs réseau au fur et à mesure de leur ajout
 mod net;
 mod scodoc;
@@ -187,8 +188,16 @@ pub async fn homework(ctx: &mut Context<'_>) -> Result<Fetched<Vec<Homework>>, P
     let services = ctx.services();
     match &services.homework {
         Some(HomeworkService::Demo) => Ok(fetched(demo::homework(ctx.now), "demo")),
-        Some(HomeworkService::MoodleWebservice { .. }) => Err(not_implemented("moodle-webservice")),
-        Some(HomeworkService::MoodleAjax { .. }) => Err(not_implemented("moodle-ajax")),
+        Some(HomeworkService::MoodleWebservice {
+            base_url, sign_in, ..
+        }) => moodle::fetch_webservice(ctx, base_url, sign_in)
+            .await
+            .map(|data| fetched(data, "moodle-webservice")),
+        Some(HomeworkService::MoodleAjax {
+            base_url, entry, ..
+        }) => moodle::fetch_ajax(ctx, base_url, *entry)
+            .await
+            .map(|data| fetched(data, "moodle-ajax")),
         Some(HomeworkService::Link(_) | HomeworkService::None) | None => {
             Err(absent(&services, ServiceKind::Homework))
         }
@@ -225,10 +234,18 @@ pub async fn service_login(
     password: &str,
 ) -> Result<(), Problem> {
     let services = ctx.services();
-    match (kind, &services.grades, &services.absences) {
-        (ServiceKind::Grades, Some(GradesService::ScodocGateway(config)), _)
-        | (ServiceKind::Absences, _, Some(AbsencesService::ScodocGateway(config))) => {
+    match (
+        kind,
+        &services.grades,
+        &services.absences,
+        &services.homework,
+    ) {
+        (ServiceKind::Grades, Some(GradesService::ScodocGateway(config)), _, _)
+        | (ServiceKind::Absences, _, Some(AbsencesService::ScodocGateway(config)), _) => {
             return scodoc::sign_in(ctx, config, username, password).await;
+        }
+        (ServiceKind::Homework, _, _, Some(config @ HomeworkService::MoodleWebservice { .. })) => {
+            return moodle::sign_in(ctx, config, username, password).await;
         }
         _ => {}
     }

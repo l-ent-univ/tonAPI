@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "id": 3001,
+      "name": "Projet BUT doit être rendu",
+      "activityname": "Projet BUT",
+      "modulename": "assign",
+      "instance": 41,
+      "timestart": 1792663200,
+      "timesort": 1792663200,
+      "course": { "id": 9, "fullname": "SAE 3.01", "shortname": "SAE301" },
+      "action": { "name": "Ajouter un travail", "url": "https://moodle-but.exemple.test/moodle/mod/assign/view.php?id=701", "itemcount": 1, "actionable": true },
+      "url": "https://moodle-but.exemple.test/moodle/mod/assign/view.php?id=701"
+    }
+  ],
+  "firstid": 3001,
+  "lastid": 3001
+}

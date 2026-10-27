@@ -1,0 +1,56 @@
+{
+  "events": [
+    {
+      "id": 1001,
+      "name": "Rendu TP1 doit être rendu",
+      "activityname": "Rendu TP1",
+      "description": "<p>Déposer l&#039;archive <b>tp1.zip</b>.</p><p>Voir &laquo;&nbsp;consignes&nbsp;&raquo; &amp; barème.</p>",
+      "modulename": "assign",
+      "instance": 11,
+      "eventtype": "due",
+      "timestart": 1792533540,
+      "timesort": 1792533540,
+      "course": { "id": 7, "fullname": "Algorithmique &amp; Données", "shortname": "ALGO" },
+      "action": { "name": "Ajouter un travail", "url": "https://moodle.exemple.test/mod/assign/view.php?id=501&action=editsubmission", "itemcount": 1, "actionable": true },
+      "url": "https://moodle.exemple.test/mod/assign/view.php?id=501"
+    },
+    {
+      "id": 1002,
+      "name": "Rendu TP1 doit être rendu",
+      "activityname": "Rendu TP1",
+      "modulename": "assign",
+      "instance": 12,
+      "timesort": 1792533540,
+      "course": { "id": 7, "fullname": "Algorithmique &amp; Données", "shortname": "ALGO" },
+      "action": { "name": "Ajouter un travail", "url": "https://moodle.exemple.test/mod/assign/view.php?id=502", "itemcount": 1, "actionable": true },
+      "url": "https://moodle.exemple.test/mod/assign/view.php?id=502"
+    },
+    {
+      "id": "1003",
+      "name": "Quiz de synthèse ferme",
+      "modulename": "quiz",
+      "instance": 21,
+      "timestart": 1793401140,
+      "timesort": "1793401140",
+      "course": { "id": 8, "shortname": "RESEAU" },
+      "action": { "name": "Tenter le quiz maintenant", "url": "https://moodle.exemple.test/mod/quiz/view.php?id=601", "itemcount": 0, "actionable": true }
+    },
+    {
+      "id": 1004,
+      "name": "Discussion ouverte se termine",
+      "modulename": "forum",
+      "instance": 31,
+      "timesort": 1793606400,
+      "action": { "name": "Répondre", "url": "javascript:void(0)", "actionable": true },
+      "url": "not a url"
+    },
+    {
+      "id": 1005,
+      "name": "Événement sans date",
+      "modulename": "assign",
+      "timesort": 0
+    }
+  ],
+  "firstid": 1001,
+  "lastid": 1005
+}
