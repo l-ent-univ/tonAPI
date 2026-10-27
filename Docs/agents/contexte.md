@@ -38,8 +38,8 @@ par la console `console/` : connexion CAS avec second facteur puis appareil mém
 de la composante (`umCodeComposante`), emploi du temps (prose Vaadin puis flux ADE), notes et
 absences ScoDoc (CAS de l'IUT, certificat GandiCert), Moodle BUT, mail Zimbra, profil et
 applications du nouvel ENT. Même jour, Université Paul-Valéry (`univ-montp3`) : connexion CAS,
-emploi du temps ADE MyPlanning (GWT-RPC puis `anonymous_cal.jsp`), mail BlueMind, profil et
-applications uPortal, Moodle.
+emploi du temps ADE MyPlanning (GWT-RPC puis `anonymous_cal.jsp`), mail BlueMind, profil uPortal
+complété par l'application de scolarité (numéro étudiant, formation), applications et Moodle.
 Rennes, Lannion et les autres composantes de Montpellier n'ont pas été essayés. Limites connues : les groupes d'un lien iCal ADE et le webmail Zimbra derrière SAML
 (Rennes) renvoient `not_implemented` ; `options.timeout-secs` n'est lu que par ScoDoc.
 
