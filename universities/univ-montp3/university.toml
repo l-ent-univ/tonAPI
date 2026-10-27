@@ -1,0 +1,56 @@
+#:schema ../../schema/university.schema.json
+# Université Paul-Valéry Montpellier 3. Source : reports/univ-montp3.md (observations du 27/10/2026).
+
+id = "univ-montp3"
+name = "Université Paul-Valéry Montpellier 3"
+short-name = "UPV"
+status = "beta"
+
+[links]
+website = "https://www.univ-montp3.fr/"
+
+# [vu] formulaire Apereo CAS (`execution`, `username`, `password`), sans passerelle /pre-otp/.
+# Second facteur : [inconnu].
+[sso]
+kind = "cas"
+base-url = "https://cas.univ-montp3.fr/cas/"
+
+# [vu] uPortal : `api/v4-3/dlm/layout.json` répond, `api/v5-1/userinfo` répond 404 et
+# `layout.jsp` aussi (pas de ProlongationENT). Les applications passent par la variante uPortal 5,
+# qui lit le même layout ; le profil n'est pas disponible.
+[portal]
+kind = "uportal5"
+base-url = "https://monupv.univ-montp3.fr/uPortal/"
+
+# [vu] ADE MyPlanning 6.15 (application GWT) : aucun fournisseur tonAPI pour l'instant.
+[services.timetable]
+provider = "link"
+url = "https://mon-planning.univ-montp3.fr/direct/myplanning.jsp"
+label = "Emploi du temps (ADE)"
+
+# [vu] application de scolarité (Angular, `api/etudiants/notes`) : aucun fournisseur tonAPI.
+[services.grades]
+provider = "link"
+url = "https://scolarite.univ-montp3.fr/"
+label = "Notes et attestations"
+
+# [vu] Moodle : entrée `login/index.php?authCAS=CAS`, retour sur /my/ avec `sesskey`.
+[services.homework]
+provider = "moodle-ajax"
+base-url = "https://moodle.univ-montp3.fr/"
+entry = "cas"
+
+# [vu] BlueMind (mail.etu.umpv.fr) : aucun fournisseur tonAPI.
+[services.mail]
+provider = "link"
+url = "https://mail.etu.univ-montp3.fr/"
+label = "Messagerie (BlueMind)"
+
+[services.apps]
+provider = "portal"
+
+# [vu] portlet « Certificat de scolarité ».
+[services.documents]
+provider = "link"
+url = "https://app.univ-montp3.fr/ent/Certificat"
+label = "Certificat de scolarité"
