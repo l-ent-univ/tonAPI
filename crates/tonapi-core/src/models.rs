@@ -199,6 +199,8 @@ pub struct Profile {
     pub last_name: Option<String>,
     pub email: Option<String>,
     pub student_number: Option<String>,
+    /// Formation suivie (libellé de l'étape d'inscription), quand l'université la donne.
+    pub program: Option<String>,
 }
 
 /// Comment la composante de l'étudiant a été choisie.

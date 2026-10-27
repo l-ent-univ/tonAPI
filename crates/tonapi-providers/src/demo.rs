@@ -430,6 +430,7 @@ pub(crate) fn profile(username: &str) -> Profile {
         last_name: Some("Demo".into()),
         email: Some("camille.demo@example.org".into()),
         student_number: Some("00000000".into()),
+        program: None,
     }
 }
 

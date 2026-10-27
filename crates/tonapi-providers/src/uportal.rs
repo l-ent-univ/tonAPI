@@ -467,6 +467,7 @@ pub(crate) fn parse_profile_v4(session: &V4Session, people: Option<&str>) -> Pro
         last_name: None,
         email: None,
         student_number: None,
+        program: None,
     };
     let people: Option<Value> = people.and_then(|body| serde_json::from_str(body.trim()).ok());
     if let Some(attributes) = people
@@ -646,6 +647,7 @@ pub(crate) fn parse_userinfo(body: &str, account: &str) -> Result<Profile, Probl
         last_name: claim(&["family_name"]),
         email: claim(&["email", "mail"]),
         student_number: claim(&["supannEtuId", "studentNumber"]),
+        program: None,
     };
     complete_display_name(&mut profile);
     Ok(profile)
@@ -968,6 +970,7 @@ mod tests {
                 last_name: Some("Demo".into()),
                 email: Some("camille.demo@etu.exemple.test".into()),
                 student_number: None,
+                program: None,
             }
         );
     }
@@ -1040,6 +1043,7 @@ mod tests {
                 last_name: Some("Demo".into()),
                 email: Some("camille.demo@etu.exemple.test".into()),
                 student_number: Some("00000000".into()),
+                program: None,
             }
         );
     }

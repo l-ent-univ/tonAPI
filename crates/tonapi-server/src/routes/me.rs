@@ -59,6 +59,7 @@ pub async fn me(
                     last_name: None,
                     email: None,
                     student_number: None,
+                    program: None,
                 },
                 "session",
             ),

@@ -170,6 +170,7 @@ pub(crate) fn parse_profile(value: &Value, username: &str) -> Profile {
             last_name: None,
             email: None,
             student_number: None,
+            program: None,
         };
     };
     Profile {
@@ -179,6 +180,7 @@ pub(crate) fn parse_profile(value: &Value, username: &str) -> Profile {
         last_name: first(attrs, &["sn", "surname"]),
         email: first(attrs, &["mail", "email"]),
         student_number: first(attrs, &["supannEtuId", "studentNumber"]),
+        program: None,
     }
 }
 
