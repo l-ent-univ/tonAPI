@@ -73,8 +73,8 @@ Si un contrôle est indisponible, indique la commande et la cause ; ne le décla
 | `tonapi-server` | Routes axum `/v1`, OpenAPI, Scalar, rechargement |
 | `tonapi-cli` | Binaire `tonapi` et commandes de maintenance |
 
-`universities/` contient les configurations et `establishments/` leurs remplacements par
-composante. `schema/` est généré. `Docs/` contient la recherche, `prompts/` les procédures pour
+`universities/<id>/university.toml` contient la configuration d'une université et
+`universities/<id>/establishments/*.toml` ses remplacements par composante. `schema/` est généré. `Docs/` contient la recherche, `prompts/` les procédures pour
 agents et `reports/` les rapports structurés.
 
 ## Contrats techniques
