@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Banc d'essai tonAPI</title>
+<style>
+:root {
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --ink: #16181a;
+  --ink-2: #4a4f55;
+  --line: #d9d9d3;
+  --accent: #1f4fd1;
+  --ok: #156c3a;
+  --ok-bg: #e3f3e8;
+  --warn: #8a5300;
+  --warn-bg: #fbefd9;
+  --bad: #b3261e;
+  --bad-bg: #fbe4e2;
+  --idle: #5b6168;
+  --idle-bg: #ececea;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111315;
+    --surface: #1a1d20;
+    --ink: #eceff1;
+    --ink-2: #a9b0b7;
+    --line: #30353a;
+    --accent: #8fb0ff;
+    --ok: #7fd9a0;
+    --ok-bg: #173323;
+    --warn: #f2c171;
+    --warn-bg: #3a2c12;
+    --bad: #ff9c94;
+    --bad-bg: #3d1a18;
+    --idle: #a9b0b7;
+    --idle-bg: #262a2e;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+header h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+header h1 span { color: var(--ink-2); font-weight: 400; }
+.api { display: flex; align-items: center; gap: 8px; flex: 1 1 320px; }
+.api input { flex: 1; font-family: var(--mono); font-size: 13px; }
+main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 32px; }
+h2 { font-size: 15px; margin: 0 0 12px; text-transform: none; }
+h2 small { color: var(--ink-2); font-weight: 400; margin-left: 8px; }
+label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+input, select, button {
+  font: inherit;
+  color: var(--ink);
+  min-height: 44px;
+  border-radius: 6px;
+}
+input, select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+@media (prefers-color-scheme: dark) { button.primary { color: #0b1020; } }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+a { color: var(--accent); }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.hint { font-size: 13px; color: var(--ink-2); margin: 6px 0 0; }
+.notice { padding: 10px 12px; border-radius: 6px; font-size: 14px; margin: 12px 0 0; }
+.notice.bad { background: var(--bad-bg); color: var(--bad); }
+.notice.warn { background: var(--warn-bg); color: var(--warn); }
+.notice.ok { background: var(--ok-bg); color: var(--ok); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
+.health { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--idle); margin-right: 6px; vertical-align: 1px; }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }
+.who { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font-size: 14px; }
+.who dt { color: var(--ink-2); }
+.who dd { margin: 0; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-weight: 600; color: var(--ink-2); font-size: 12px; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.num { font-family: var(--mono); font-size: 13px; color: var(--ink-2); white-space: nowrap; text-align: right; }
+td.mono { font-family: var(--mono); font-size: 13px; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.idle { background: var(--idle-bg); color: var(--idle); }
+details { margin-top: 6px; }
+summary { cursor: pointer; color: var(--accent); font-size: 13px; min-height: 24px; }
+pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  max-height: 340px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 12px/1.45 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+ul.items { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+ul.items li { margin: 2px 0; }
+.service-form { display: grid; gap: 8px; grid-template-columns: 1fr 1fr auto; margin-top: 8px; }
+.log { font: 12px/1.6 var(--mono); color: var(--ink-2); max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.log .s4, .log .s5 { color: var(--bad); }
+.log .s2 { color: var(--ok); }
+[hidden] { display: none !important; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 640px) {
+  .service-form { grid-template-columns: 1fr; }
+  table, thead, tbody, tr, td { display: block; }
+  thead { display: none; }
+  tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  td { border: 0; padding: 4px 0; }
+  td.num { text-align: left; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chip { transition: background-color 120ms ease, color 120ms ease; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>tonAPI <span>banc d'essai</span></h1>
+  <div class="api">
+    <label for="api" class="visually-hidden">Adresse de l'API</label>
+    <input id="api" type="url" spellcheck="false" autocomplete="off" value="http://127.0.0.1:8080">
+    <button id="api-check" type="button">Vérifier</button>
+  </div>
+  <div class="health" id="health" aria-live="polite"><span class="dot"></span>non vérifiée</div>
+</header>
+
+<main>
+  <section id="login-section" aria-labelledby="login-title">
+    <h2 id="login-title">1. Connexion <small>avec ton compte universitaire</small></h2>
+    <form id="login-form" class="panel" autocomplete="on">
+      <div class="grid">
+        <div>
+          <label for="university">Université</label>
+          <select id="university" required><option value="">Chargement…</option></select>
+          <p class="hint" id="university-hint"></p>
+        </div>
+        <div>
+          <label for="establishment">Composante</label>
+          <select id="establishment"><option value="">Automatique</option></select>
+          <p class="hint">« Automatique » prend la composante par défaut de l'université.</p>
+        </div>
+        <div>
+          <label for="username">Identifiant</label>
+          <input id="username" name="username" autocomplete="username" required spellcheck="false">
+        </div>
+        <div>
+          <label for="password">Mot de passe</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="primary" id="login-button" type="submit">Se connecter et tout tester</button>
+        <span class="hint" style="margin:0">Le mot de passe part seulement vers l'API ci-dessus, puis le champ est vidé.</span>
+      </div>
+      <label class="row" style="margin-top:12px; color:var(--ink)">
+        <input type="checkbox" id="remember-device" checked style="width:auto; min-height:0">
+        Rester reconnu sur ce navigateur : l'université ne redemande pas le second facteur pendant 30 jours
+      </label>
+      <p class="hint" id="device-status"></p>
+      <div id="login-status" aria-live="polite"></div>
+    </form>
+
+    <form id="mfa-form" class="panel" hidden style="margin-top:16px">
+      <h2>Second facteur demandé par l'université</h2>
+      <p class="hint" id="mfa-message"></p>
+      <div class="row" id="mfa-push-row" hidden>
+        <button class="primary" type="button" id="mfa-push">Valider sur mon téléphone</button>
+        <span class="hint" id="mfa-device" style="margin:0"></span>
+      </div>
+      <div class="row" id="mfa-code-row" hidden style="margin-top:12px">
+        <div style="flex:0 1 200px">
+          <label for="mfa-code">Code à 6 chiffres</label>
+          <input id="mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+        </div>
+        <button type="submit" id="mfa-submit" style="align-self:flex-end">Envoyer le code</button>
+      </div>
+      <label class="row" style="margin-top:12px; color:var(--ink)">
+        <input type="checkbox" id="mfa-remember" checked style="width:auto; min-height:0">
+        Faire mémoriser cet appareil par l'université (30 jours)
+      </label>
+      <div id="mfa-status" aria-live="polite"></div>
+    </form>
+  </section>
+
+  <section id="diag-section" aria-labelledby="diag-title" hidden>
+    <h2 id="diag-title">2. Ce que l'API voit <small id="diag-progress" aria-live="polite"></small></h2>
+    <div class="panel">
+      <dl class="who" id="who"></dl>
+      <div class="row" style="margin-top:16px">
+        <div style="flex:0 1 280px">
+          <label for="switch-establishment">Changer de composante</label>
+          <select id="switch-establishment"></select>
+        </div>
+        <button type="button" id="rerun" style="align-self:flex-end">Relancer les tests</button>
+        <button type="button" id="refresh" style="align-self:flex-end">Prolonger la session</button>
+        <button type="button" id="logout" style="align-self:flex-end">Se déconnecter</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px; overflow-x:auto">
+      <table>
+        <thead><tr><th>Service</th><th>Configuration</th><th>Résultat</th><th>Détail</th><th style="text-align:right">Durée</th></tr></thead>
+        <tbody id="services"></tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h2>Rapport anonyme <small>statuts et codes seulement, sans tes données</small></h2>
+      <pre id="report"></pre>
+      <div class="row" style="margin-top:10px">
+        <button type="button" id="copy-report">Copier le rapport</button>
+        <span class="hint" id="copy-status" style="margin:0" aria-live="polite"></span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="log-title">
+    <h2 id="log-title">Journal des requêtes <small>méthode, chemin, statut, durée</small></h2>
+    <div class="panel"><ul class="log" id="log"><li>Aucune requête pour l'instant.</li></ul></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// Le jeton ne vit qu'en mémoire : fermer l'onglet termine la session de test.
+const state = {
+  api: "",
+  token: null,
+  universities: [],
+  university: null,      // détail de l'université connectée
+  pending: null,         // jeton provisoire du second facteur
+  loginUniversity: null, // université de la dernière connexion
+  results: {},           // service → résultat affiché
+};
+
+const $ = (id) => document.getElementById(id);
+
+// Appareil reconnu : le dernier jeton est gardé dans ce navigateur et renvoyé comme
+// `previousToken` à la connexion suivante. Le serveur n'en reprend que les cookies (sans le
+// ticket CAS) : l'université reconnaît l'appareil, le mot de passe reste demandé.
+function deviceKey(university) {
+  return `tonapi.appareil.${apiBase()}.${university}`;
+}
+function storedDevice(university) {
+  try { return localStorage.getItem(deviceKey(university)); } catch { return null; }
+}
+function setToken(token) {
+  state.token = token;
+  if (!token || !state.loginUniversity || !$("remember-device").checked) return;
+  try { localStorage.setItem(deviceKey(state.loginUniversity), token); } catch { /* stockage indisponible */ }
+}
+function forgetDevice(university) {
+  try { localStorage.removeItem(deviceKey(university)); } catch { /* stockage indisponible */ }
+}
+function renderDevice() {
+  const university = $("university").value;
+  const known = university && storedDevice(university);
+  const status = $("device-status");
+  status.replaceChildren();
+  if (!known) return;
+  const button = el("button", { type: "button", text: "Oublier cet appareil" });
+  button.addEventListener("click", () => { forgetDevice(university); renderDevice(); });
+  status.append("Appareil déjà reconnu pour cette université : pas de second facteur attendu. ", button);
+}
+const el = (tag, attrs = {}, ...children) => {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined) continue;
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+};
+
+// ---------------------------------------------------------------------------------------------
+// Appels à l'API
+// ---------------------------------------------------------------------------------------------
+
+function apiBase() {
+  return $("api").value.trim().replace(/\/+$/, "");
+}
+
+/// Les identifiants ne partent qu'en https, ou vers cette machine.
+function apiIsSafe() {
+  try {
+    const url = new URL(apiBase());
+    const local = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+    return url.protocol === "https:" || (url.protocol === "http:" && local);
+  } catch {
+    return false;
+  }
+}
+
+function logRequest(method, path, status, ms) {
+  const log = $("log");
+  if (log.dataset.started !== "1") { log.textContent = ""; log.dataset.started = "1"; }
+  const shown = path.replace(/\?.*$/, "");
+  const cls = status ? `s${String(status)[0]}` : "s5";
+  log.prepend(el("li", { class: cls, text: `${new Date().toLocaleTimeString("fr-FR")}  ${method.padEnd(4)} ${shown}  ${status || "réseau"}  ${ms} ms` }));
+}
+
+/// Appel JSON. Remplace le jeton quand l'API en renvoie un nouveau (`TonAPI-Session`).
+async function call(method, path, { body, auth = true } = {}) {
+  const headers = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (auth && state.token) headers.Authorization = `Bearer ${state.token}`;
+  const started = performance.now();
+  let response;
+  try {
+    response = await fetch(apiBase() + path, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: "omit",
+      cache: "no-store",
+    });
+  } catch {
+    const ms = Math.round(performance.now() - started);
+    logRequest(method, path, 0, ms);
+    return { status: 0, ms, data: null, problem: { code: "network", title: "API injoignable", detail: "Vérifie l'adresse et que tonapi-server tourne." } };
+  }
+  const ms = Math.round(performance.now() - started);
+  logRequest(method, path, response.status, ms);
+  const renewed = response.headers.get("TonAPI-Session");
+  if (renewed) setToken(renewed);
+  let data = null;
+  const text = await response.text();
+  if (text) { try { data = JSON.parse(text); } catch { data = null; } }
+  const isProblem = (response.headers.get("Content-Type") || "").includes("problem+json") || !response.ok;
+  return { status: response.status, ms, data: isProblem ? null : data, problem: isProblem ? (data || { code: "http_" + response.status, title: `HTTP ${response.status}` }) : null };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Santé et liste des universités
+// ---------------------------------------------------------------------------------------------
+
+async function checkApi() {
+  const health = $("health");
+  health.replaceChildren(el("span", { class: "dot" }), "vérification…");
+  const reply = await call("GET", "/healthz", { auth: false });
+  if (reply.status === 200) {
+    health.replaceChildren(el("span", { class: "dot ok" }), "API joignable");
+    await loadUniversities();
+  } else {
+    health.replaceChildren(el("span", { class: "dot bad" }), reply.problem?.title || "API injoignable");
+    $("university").replaceChildren(el("option", { value: "", text: "API injoignable" }));
+  }
+  renderSafety();
+}
+
+async function loadUniversities() {
+  const reply = await call("GET", "/v1/universities", { auth: false });
+  const select = $("university");
+  if (!Array.isArray(reply.data)) {
+    select.replaceChildren(el("option", { value: "", text: "Liste indisponible" }));
+    return;
+  }
+  state.universities = reply.data;
+  const previous = select.value;
+  select.replaceChildren(
+    el("option", { value: "", text: "Choisis ton université" }),
+    ...reply.data.map((u) => el("option", { value: u.id, text: `${u.name}${u.status && u.status !== "active" ? ` (${u.status})` : ""}` })),
+  );
+  if (reply.data.some((u) => u.id === previous)) select.value = previous;
+  onUniversityChange();
+}
+
+function onUniversityChange() {
+  const u = state.universities.find((x) => x.id === $("university").value);
+  const select = $("establishment");
+  const options = [el("option", { value: "", text: "Automatique" })];
+  if (u) {
+    for (const e of u.establishments || []) {
+      options.push(el("option", { value: e.id, text: `${e.name}${e.default ? " (par défaut)" : ""}` }));
+    }
+    const login = u.login ? `Connexion ${u.login.kind}${u.login.mfa ? ", second facteur possible" : ""}.` : "";
+    $("university-hint").textContent = `${login} Code : ${u.id}.`;
+  } else {
+    $("university-hint").textContent = "";
+  }
+  select.replaceChildren(...options);
+  renderDevice();
+}
+
+function renderSafety() {
+  const status = $("login-status");
+  const safe = apiIsSafe();
+  $("login-button").disabled = !safe;
+  status.querySelector(".unsafe")?.remove();
+  if (!safe) {
+    status.prepend(el("p", { class: "notice bad unsafe", text: "Adresse refusée : les identifiants ne partent qu'en https, ou en http vers cette machine (127.0.0.1, localhost)." }));
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Connexion et second facteur
+// ---------------------------------------------------------------------------------------------
+
+function showProblem(target, problem) {
+  const text = [problem.title, problem.detail].filter(Boolean).join(" : ");
+  const notice = el("p", { class: "notice bad", text: `${text}${problem.code ? ` (${problem.code})` : ""}` });
+  if (problem.link) notice.append(" ", el("a", { href: problem.link, target: "_blank", rel: "noopener noreferrer", text: "ouvrir le service" }));
+  target.replaceChildren(notice);
+}
+
+async function onLogin(event) {
+  event.preventDefault();
+  if (!apiIsSafe()) return;
+  const button = $("login-button");
+  const status = $("login-status");
+  const body = {
+    university: $("university").value,
+    username: $("username").value.trim(),
+    password: $("password").value,
+  };
+  if ($("establishment").value) body.establishment = $("establishment").value;
+  state.loginUniversity = body.university;
+  const previous = $("remember-device").checked ? storedDevice(body.university) : null;
+  if (previous) body.previousToken = previous;
+  if (!$("remember-device").checked) forgetDevice(body.university);
+  $("password").value = "";
+  button.disabled = true;
+  status.replaceChildren(el("p", { class: "notice warn", text: "Connexion à l'université… (cela peut prendre quelques secondes)" }));
+  const reply = await call("POST", "/v1/auth/login", { body, auth: false });
+  button.disabled = false;
+  if (reply.status === 200 && reply.data?.token) {
+    setToken(reply.data.token);
+    status.replaceChildren(el("p", { class: "notice ok", text: "Connecté." }));
+    await afterSignIn();
+  } else if (reply.status === 202 && reply.data?.pending) {
+    status.replaceChildren();
+    showMfa(reply.data);
+  } else {
+    showProblem(status, reply.problem || { title: "Échec de la connexion" });
+  }
+}
+
+function showMfa(challenge) {
+  state.pending = challenge.pending;
+  const form = $("mfa-form");
+  form.hidden = false;
+  $("mfa-message").textContent = challenge.message || "Valide la connexion comme sur l'ENT.";
+  const methods = challenge.methods || {};
+  $("mfa-push-row").hidden = !methods.push;
+  $("mfa-device").textContent = methods.push ? `Appareil : ${methods.push}` : "";
+  $("mfa-code-row").hidden = !methods.code;
+  $("mfa-status").replaceChildren();
+  (methods.push ? $("mfa-push") : $("mfa-code")).focus();
+}
+
+async function sendMfa(method) {
+  const body = { pending: state.pending, method, rememberDevice: $("mfa-remember").checked };
+  if (method === "code") {
+    body.code = $("mfa-code").value.trim();
+    if (!body.code) return;
+  }
+  const status = $("mfa-status");
+  status.replaceChildren(el("p", { class: "notice warn", text: method === "push" ? "En attente de la validation sur le téléphone (100 s au plus)…" : "Vérification du code…" }));
+  $("mfa-push").disabled = $("mfa-submit").disabled = true;
+  const reply = await call("POST", "/v1/auth/mfa", { body, auth: false });
+  $("mfa-push").disabled = $("mfa-submit").disabled = false;
+  $("mfa-code").value = "";
+  if (reply.status === 200 && reply.data?.token) {
+    setToken(reply.data.token);
+    state.pending = null;
+    $("mfa-form").hidden = true;
+    $("login-status").replaceChildren(el("p", { class: "notice ok", text: "Connecté après le second facteur." }));
+    await afterSignIn();
+  } else if (reply.status === 202 && reply.data?.pending) {
+    showMfa(reply.data);
+    status.replaceChildren(el("p", { class: "notice bad", text: reply.data.message || "Validation refusée : réessaie." }));
+  } else {
+    showProblem(status, reply.problem || { title: "Échec du second facteur" });
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Diagnostic des services
+// ---------------------------------------------------------------------------------------------
+
+const SERVICES = [
+  { key: "profile", label: "Profil" },
+  { key: "timetable", label: "Emploi du temps", path: () => `/v1/timetable?from=${weekBounds().from}&to=${weekBounds().to}` },
+  { key: "timetable-groups", label: "Groupes", config: "timetable", path: () => "/v1/timetable/groups" },
+  { key: "grades", label: "Notes", path: () => "/v1/grades", separate: "grades" },
+  { key: "absences", label: "Absences", path: () => "/v1/absences", separate: "absences" },
+  { key: "homework", label: "Devoirs", path: () => "/v1/homework", separate: "homework" },
+  { key: "mail", label: "Mail", path: () => "/v1/mail/inbox" },
+  { key: "apps", label: "Applications", path: () => "/v1/apps" },
+  { key: "documents", label: "Documents" },
+];
+
+const PROBLEMS = {
+  service_absent: ["idle", "Non proposé"],
+  not_implemented: ["warn", "Pas encore pris en charge"],
+  service_login_required: ["warn", "Connexion au service requise"],
+  session_expired: ["bad", "Session expirée"],
+  invalid_token: ["bad", "Jeton refusé"],
+  invalid_credentials: ["bad", "Identifiants refusés"],
+  account_action_required: ["bad", "Action requise sur le compte"],
+  service_unavailable: ["bad", "Service injoignable"],
+  upstream_changed: ["bad", "Réponse inattendue (à signaler)"],
+  rate_limited: ["bad", "Trop d'essais"],
+  network: ["bad", "API injoignable"],
+};
+
+function weekBounds() {
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { from: iso(monday), to: iso(sunday) };
+}
+
+function tz() { return state.university?.timezone || "Europe/Paris"; }
+function when(value, withTime = true) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("fr-FR", withTime
+    ? { timeZone: tz(), weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }
+    : { timeZone: tz(), day: "numeric", month: "short", year: "numeric" });
+}
+const grade = (g) => (g ? `${g.value}/${g.outOf}` : "—");
+
+/// Résumé lisible : une phrase et quelques lignes.
+function summarize(key, data) {
+  switch (key) {
+    case "profile":
+      return { line: data.displayName || data.username, items: [data.email, data.studentNumber && `n° ${data.studentNumber}`].filter(Boolean) };
+    case "timetable":
+      return { line: `${data.length} séance(s) cette semaine`, items: data.slice(0, 8).map((c) => `${when(c.start)} · ${c.title}${c.rooms?.length ? ` · ${c.rooms.join(", ")}` : ""}`) };
+    case "timetable-groups": {
+      const selected = data.filter((g) => g.selected);
+      return { line: `${data.length} groupe(s), ${selected.length} sélectionné(s)`, items: selected.slice(0, 8).map((g) => g.path?.length ? g.path.join(" › ") : g.name) };
+    }
+    case "grades": {
+      const semesters = data.semesters || [];
+      return { line: `${semesters.length} semestre(s)`, items: semesters.map((s) => `${s.name} · moyenne ${grade(s.average)}${s.rank ? ` · rang ${s.rank}` : ""} · ${s.modules?.length || 0} module(s)`) };
+    }
+    case "absences": {
+      const t = data.totals || {};
+      return { line: `${(data.absences || []).length} absence(s) : ${t.unjustified ?? 0} non justifiée(s), ${t.justified ?? 0} justifiée(s)`, items: (data.absences || []).slice(0, 6).map((a) => `${when(a.start)}${a.module ? ` · ${a.module}` : ""}${a.justified ? " · justifiée" : ""}`) };
+    }
+    case "homework":
+      return { line: `${data.length} devoir(s)`, items: [...data].sort((a, b) => String(a.due).localeCompare(String(b.due))).slice(0, 8).map((h) => `${when(h.due)} · ${h.title}${h.course ? ` · ${h.course}` : ""}`) };
+    case "mail":
+      return { line: `${(data.messages || []).length} message(s) affiché(s), ${data.unread ?? 0} non lu(s)`, items: (data.messages || []).slice(0, 6).map((m) => `${when(m.date)} · ${m.from?.name || m.from?.address || "?"} · ${m.subject || "(sans objet)"}`) };
+    case "apps":
+      return { line: `${data.length} application(s)`, items: data.slice(0, 10).map((a) => a.title) };
+    default:
+      return { line: "Réponse reçue", items: [] };
+  }
+}
+
+function availabilityFor(services, key) {
+  const configKey = SERVICES.find((s) => s.key === key)?.config || key;
+  return services.find((s) => s.service === configKey);
+}
+
+function configCell(status) {
+  if (!status) return el("td", { class: "mono", text: "—" });
+  if (status.availability === "api") return el("td", { class: "mono", text: status.provider });
+  if (status.availability === "link") return el("td", {}, el("a", { href: status.link, target: "_blank", rel: "noopener noreferrer", text: "lien" }));
+  return el("td", { class: "mono", text: "aucun" });
+}
+
+function renderRows(services) {
+  const body = $("services");
+  body.replaceChildren(...SERVICES.map((service) => {
+    const result = state.results[service.key];
+    const row = el("tr", { id: `row-${service.key}` });
+    row.append(el("td", { text: service.label }), configCell(availabilityFor(services, service.key)));
+    const chipCell = el("td");
+    const detailCell = el("td");
+    const timeCell = el("td", { class: "num", text: result?.ms !== undefined ? `${result.ms} ms` : "" });
+    if (!result) {
+      chipCell.append(el("span", { class: "chip idle", text: "en attente" }));
+    } else if (result.running) {
+      chipCell.append(el("span", { class: "chip idle", text: "en cours…" }));
+    } else if (result.skipped) {
+      chipCell.append(el("span", { class: "chip idle", text: result.skipped }));
+    } else if (result.data !== null && result.data !== undefined) {
+      chipCell.append(el("span", { class: "chip ok", text: "OK" }));
+      const summary = summarize(service.key, result.data);
+      detailCell.append(el("div", { text: summary.line }));
+      if (summary.items.length) detailCell.append(el("ul", { class: "items" }, summary.items.map((item) => el("li", { text: item }))));
+      if (result.provider) detailCell.append(el("div", { class: "hint", text: `fournisseur : ${result.provider}` }));
+      detailCell.append(rawDetails(result.data));
+    } else {
+      const problem = result.problem || {};
+      const [tone, label] = PROBLEMS[problem.code] || ["bad", problem.title || "Erreur"];
+      chipCell.append(el("span", { class: `chip ${tone}`, text: label }));
+      detailCell.append(el("div", { class: "hint", style: "margin:0", text: [problem.detail, problem.code && `(${problem.code})`].filter(Boolean).join(" ") }));
+      if (problem.link) detailCell.append(el("a", { href: problem.link, target: "_blank", rel: "noopener noreferrer", text: "Ouvrir le service" }));
+      if (problem.code === "service_login_required" && service.separate) detailCell.append(serviceLoginForm(service));
+    }
+    row.append(chipCell, detailCell, timeCell);
+    return row;
+  }));
+}
+
+function rawDetails(data) {
+  const details = el("details");
+  details.append(el("summary", { text: "Réponse brute" }));
+  details.addEventListener("toggle", () => {
+    if (details.open && !details.querySelector("pre")) details.append(el("pre", { text: JSON.stringify(data, null, 2) }));
+  }, { once: false });
+  return details;
+}
+
+function serviceLoginForm(service) {
+  const form = el("form", { class: "service-form" });
+  const user = el("input", { "aria-label": "Identifiant du service", placeholder: "Identifiant du service", autocomplete: "username", required: "" });
+  const pass = el("input", { "aria-label": "Mot de passe du service", placeholder: "Mot de passe", type: "password", autocomplete: "current-password", required: "" });
+  const button = el("button", { type: "submit", text: "Se connecter au service" });
+  const status = el("div", { "aria-live": "polite", style: "grid-column:1/-1" });
+  form.append(user, pass, button, status);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = { service: service.separate, username: user.value.trim(), password: pass.value };
+    pass.value = "";
+    button.disabled = true;
+    const reply = await call("POST", "/v1/auth/service-login", { body });
+    button.disabled = false;
+    if (reply.status === 200 && reply.data?.token) {
+      setToken(reply.data.token);
+      await runAll();
+    } else {
+      showProblem(status, reply.problem || { title: "Échec de la connexion au service" });
+    }
+  });
+  return form;
+}
+
+async function afterSignIn() {
+  $("diag-section").hidden = false;
+  $("diag-section").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  await runAll();
+}
+
+/// Lance chaque service l'un après l'autre : chaque réponse peut renouveler le jeton, et deux
+/// appels simultanés écraseraient leurs cookies.
+async function runAll() {
+  if (!state.token) return;
+  $("rerun").disabled = true;
+  state.results = {};
+  const me = await call("GET", "/v1/me");
+  if (!me.data) {
+    $("who").replaceChildren();
+    state.results.profile = { problem: me.problem, ms: me.ms };
+    renderRows([]);
+    $("rerun").disabled = false;
+    renderReport([]);
+    return;
+  }
+  const info = me.data.data;
+  const universityId = info.university.id;
+  if (state.university?.id !== universityId) {
+    const detail = await call("GET", `/v1/universities/${encodeURIComponent(universityId)}`, { auth: false });
+    state.university = detail.data || { id: universityId };
+  }
+  renderWho(info, me.data.meta);
+  const services = info.services || [];
+  state.results.profile = { data: info.profile, provider: me.data.meta?.provider, ms: me.ms };
+  renderRows(services);
+  const runnable = SERVICES.filter((s) => s.path);
+  for (const [index, service] of runnable.entries()) {
+    $("diag-progress").textContent = `${index + 1}/${runnable.length} : ${service.label}`;
+    state.results[service.key] = { running: true };
+    renderRows(services);
+    const reply = await call("GET", service.path());
+    state.results[service.key] = reply.data
+      ? { data: reply.data.data, provider: reply.data.meta?.provider, ms: reply.ms }
+      : { problem: reply.problem, ms: reply.ms };
+    renderRows(services);
+  }
+  state.results.documents = { skipped: "pas de route dans l'API" };
+  renderRows(services);
+  $("diag-progress").textContent = "terminé";
+  $("rerun").disabled = false;
+  renderReport(services);
+}
+
+function renderWho(info, meta) {
+  const est = info.establishment;
+  const entries = [
+    ["Étudiant", info.profile.displayName || info.profile.username],
+    ["Université", `${info.university.name} (${info.university.id})`],
+    ["Composante", est ? `${est.name} · ${est.source}${est.confidence ? ` · confiance ${Math.round(est.confidence * 100)} %` : ""}` : "aucune"],
+    ["Fuseau", tz()],
+  ];
+  $("who").replaceChildren(...entries.flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]));
+  const select = $("switch-establishment");
+  const list = state.universities.find((u) => u.id === info.university.id)?.establishments || [];
+  select.replaceChildren(
+    el("option", { value: "", text: "Automatique" }),
+    ...list.map((e) => el("option", { value: e.id, text: e.name })),
+  );
+  select.value = est?.source === "student" ? est.id : "";
+  select.disabled = list.length === 0;
+}
+
+function renderReport(services) {
+  const lines = [
+    `tonAPI, banc d'essai : ${new Date().toISOString().slice(0, 16)}Z`,
+    `université : ${state.university?.id || "?"}`,
+  ];
+  for (const service of SERVICES) {
+    const result = state.results[service.key];
+    const config = availabilityFor(services, service.key);
+    const provider = config ? (config.availability === "api" ? config.provider : config.availability) : "?";
+    let outcome = "non testé";
+    if (result?.skipped) outcome = result.skipped;
+    else if (result?.data !== undefined && result?.data !== null) outcome = `ok (${countOf(service.key, result.data)})`;
+    else if (result?.problem) outcome = result.problem.code || "erreur";
+    lines.push(`${service.key.padEnd(17)} ${provider.padEnd(20)} ${outcome}${result?.ms !== undefined ? ` · ${result.ms} ms` : ""}`);
+  }
+  $("report").textContent = lines.join("\n");
+}
+
+function countOf(key, data) {
+  if (Array.isArray(data)) return `${data.length} élément(s)`;
+  if (key === "grades") return `${(data.semesters || []).length} semestre(s)`;
+  if (key === "absences") return `${(data.absences || []).length} absence(s)`;
+  if (key === "mail") return `${(data.messages || []).length} message(s)`;
+  return "profil reçu";
+}
+
+// ---------------------------------------------------------------------------------------------
+// Événements
+// ---------------------------------------------------------------------------------------------
+
+$("api-check").addEventListener("click", checkApi);
+$("api").addEventListener("change", checkApi);
+$("api").addEventListener("input", () => {
+  $("health").replaceChildren(el("span", { class: "dot" }), "non vérifiée");
+  renderSafety();
+});
+$("university").addEventListener("change", onUniversityChange);
+$("login-form").addEventListener("submit", onLogin);
+$("mfa-push").addEventListener("click", () => sendMfa("push"));
+$("mfa-form").addEventListener("submit", (event) => { event.preventDefault(); sendMfa("code"); });
+$("rerun").addEventListener("click", runAll);
+$("switch-establishment").addEventListener("change", async (event) => {
+  const reply = await call("PUT", "/v1/me/establishment", { body: { establishment: event.target.value || null } });
+  if (reply.data) await runAll();
+});
+$("refresh").addEventListener("click", async () => {
+  const reply = await call("POST", "/v1/auth/refresh");
+  if (reply.data?.token) setToken(reply.data.token);
+  $("diag-progress").textContent = reply.data ? "session prolongée" : (reply.problem?.title || "échec");
+});
+$("logout").addEventListener("click", async () => {
+  await call("POST", "/v1/auth/logout");
+  state.token = null;
+  state.university = null;
+  state.results = {};
+  $("diag-section").hidden = true;
+  $("login-status").replaceChildren(el("p", { class: "notice ok", text: "Déconnecté. L'appareil reste reconnu si la case est cochée." }));
+  renderDevice();
+});
+$("copy-report").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("report").textContent);
+    $("copy-status").textContent = "Copié.";
+  } catch {
+    $("copy-status").textContent = "Copie impossible : sélectionne le texte à la main.";
+  }
+});
+
+checkApi();
+</script>
+</body>
+</html>

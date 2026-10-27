@@ -14,6 +14,17 @@ cargo run -p tonapi-server
 
 Documentation interactive : <http://127.0.0.1:8080/docs>. Essai sans compte : université `demo`, identifiant `demo`, mot de passe `demo`.
 
+## Tester avec ton compte
+
+La console [`console/index.html`](console/index.html) se connecte à l'API locale, gère le second facteur, puis appelle chaque service et affiche ce qui marche, ce qui manque et pourquoi. Elle produit aussi un rapport anonyme (statuts et codes, sans tes données) à joindre à une issue.
+
+```bash
+cargo run -p tonapi-server
+python3 -m http.server 5173 --bind 127.0.0.1 -d console
+```
+
+Puis ouvre <http://127.0.0.1:5173>. Le jeton reste en mémoire dans l'onglet ; les identifiants ne partent que vers une API en https ou sur ta machine.
+
 ## Outils
 
 ```bash
