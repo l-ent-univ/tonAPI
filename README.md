@@ -16,7 +16,7 @@ Documentation interactive : <http://127.0.0.1:8080/docs>. Essai sans compte : un
 
 ## Tester avec ton compte
 
-La console [`console/index.html`](console/index.html) se connecte à l'API locale, gère le second facteur, puis appelle chaque service et affiche ce qui marche, ce qui manque et pourquoi. Elle produit aussi un rapport anonyme (statuts et codes, sans tes données) à joindre à une issue.
+La console [`console/`](console/index.html) se connecte à l'API locale, gère le second facteur et appelle chaque service : résultat, fournisseur, parcours et durée. Elle garde les comptes de test (jeton chiffré, jamais le mot de passe) pour éviter de refaire le second facteur, et propose aussi la couverture des universités, la fiche de chaque fournisseur, un explorateur des routes OpenAPI et la liste des codes d'erreur.
 
 ```bash
 cargo run -p tonapi-server
