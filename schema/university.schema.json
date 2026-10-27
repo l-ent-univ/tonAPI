@@ -705,6 +705,26 @@
         },
         {
           "additionalProperties": false,
+          "description": "Portail à tuiles avec client CAS intégré : entrée `cas/login?next=/`, profil\n`api/cas-attributes`, applications `api/tiles`. Logiciel non identifié (vu à Montpellier,\noctobre 2026).",
+          "properties": {
+            "base-url": {
+              "description": "Racine du portail (ex. `https://ent.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "kind": {
+              "const": "tiles-portal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "Pas de portail exploitable.",
           "properties": {
             "kind": {

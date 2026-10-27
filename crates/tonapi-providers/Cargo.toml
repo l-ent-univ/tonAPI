@@ -19,6 +19,7 @@ tonapi-config.workspace = true
 tonapi-core.workspace = true
 tonapi-http.workspace = true
 tonapi-session.workspace = true
+tracing = "0.1.44"
 url.workspace = true
 
 [lints]

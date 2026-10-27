@@ -63,7 +63,7 @@ fn portal(ctx: &Context<'_>) -> Result<Portal, Problem> {
     let (variant, base_url) = match &ctx.university.university.portal {
         PortalConfig::Uportal4Prolongation { base_url } => (Variant::Prolongation, base_url),
         PortalConfig::Uportal5 { base_url } => (Variant::Uportal5, base_url),
-        PortalConfig::None => {
+        PortalConfig::TilesPortal { .. } | PortalConfig::None => {
             return Err(Problem::new(ErrorCode::ServiceAbsent)
                 .detail("aucun portail n'est déclaré pour cette université"));
         }

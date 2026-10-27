@@ -2475,6 +2475,7 @@ dependencies = [
  "tonapi-core",
  "tonapi-http",
  "tonapi-session",
+ "tracing",
  "url",
 ]
 

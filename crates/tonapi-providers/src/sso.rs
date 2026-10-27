@@ -102,6 +102,13 @@ fn entry_url(university: &ResolvedUniversity, cas: &CasServer) -> Url {
         PortalConfig::Uportal4Prolongation { base_url } | PortalConfig::Uportal5 { base_url } => {
             base_url.join("Login").ok()
         }
+        // Le portail a son propre client CAS : on entre par lui, il renvoie au CAS avec son service.
+        PortalConfig::TilesPortal { base_url } => {
+            if let Ok(entry) = base_url.join("cas/login?next=%2F") {
+                return entry;
+            }
+            None
+        }
         PortalConfig::None => None,
     };
     cas.login_url(service.as_ref())
@@ -220,12 +227,11 @@ pub async fn login(
                 ..
             } => {
                 reached_cas(&browser, &cas)?;
-                return Ok(LoginOutcome::SignedIn(signed_in(
-                    session,
-                    &browser,
-                    input.now,
-                    input.ttl_secs,
-                )));
+                let session = signed_in(session, &browser, input.now, input.ttl_secs);
+                return Ok(LoginOutcome::SignedIn(
+                    crate::with_detected_establishment(university, session, input.now, input.net)
+                        .await,
+                ));
             }
             Outcome::SecondFactor(challenge) if challenge.password_posted => {
                 return prompt(session, &mut browser, &challenge, None, input.now).await;
@@ -278,9 +284,18 @@ pub async fn complete_mfa(
         .await
         .map_err(cas_problem)?
     {
-        Outcome::SignedIn { .. } => Ok(LoginOutcome::SignedIn(signed_in(
-            pending, &browser, now, ttl_secs,
-        ))),
+        Outcome::SignedIn { .. } => {
+            let session = signed_in(pending, &browser, now, ttl_secs);
+            Ok(LoginOutcome::SignedIn(
+                crate::with_detected_establishment(
+                    university,
+                    session,
+                    now,
+                    NetSettings::default(),
+                )
+                .await,
+            ))
+        }
         Outcome::SecondFactor(mut next) => {
             // Même connexion, mot de passe déjà vérifié : la page suivante en hérite.
             next.password_posted = challenge.password_posted;

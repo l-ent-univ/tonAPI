@@ -20,10 +20,11 @@ flavor = "esup-otp-gateway"
 [sso.mfa]
 api-url = "https://otp-api.umontpellier.fr/"
 
-# uPortal 4.3.1 + ESUP ProlongationENT. Docs/Montpellier/ent.md
+# Nouvel ENT (octobre 2026) : portail à tuiles avec son client CAS, à la place d'uPortal.
+# [vu] pages publiques : api/config, entrée cas/login?next=/, service cas/callback.
 [portal]
-kind = "uportal4-prolongation"
-base-url = "https://ent.umontpellier.fr/uPortal/"
+kind = "tiles-portal"
+base-url = "https://ent.umontpellier.fr/"
 
 # Lien iCal ADE lu sur prose-etudiant. Docs/Montpellier/emploi-du-temps.md, lien-ade.md
 [services.timetable]

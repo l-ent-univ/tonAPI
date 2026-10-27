@@ -155,6 +155,14 @@ pub enum PortalConfig {
         #[serde(rename = "base-url")]
         base_url: Url,
     },
+    /// Portail à tuiles avec client CAS intégré : entrée `cas/login?next=/`, profil
+    /// `api/cas-attributes`, applications `api/tiles`. Logiciel non identifié (vu à Montpellier,
+    /// octobre 2026).
+    TilesPortal {
+        /// Racine du portail (ex. `https://ent.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+    },
     /// Pas de portail exploitable.
     #[default]
     None,

@@ -15,13 +15,15 @@ mod moodle;
 mod net;
 mod scodoc;
 mod sso;
+mod tiles_portal;
 mod uportal;
 mod zimbra;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use tonapi_config::{
-    AbsencesService, AppsService, GradesService, HomeworkService, MailService, ProfileService,
-    ResolvedUniversity, ServiceAvailability, ServiceKind, Services, TimetableService,
+    AbsencesService, AppsService, GradesService, HomeworkService, MailService, PortalConfig,
+    ProfileService, ResolvedUniversity, ServiceAvailability, ServiceKind, Services, Signal,
+    TimetableService,
 };
 use tonapi_core::{
     AbsenceReport, App, Course, ErrorCode, EstablishmentSource, GradeReport, Homework, MailInbox,
@@ -73,6 +75,87 @@ fn absent(services: &Services, kind: ServiceKind) -> Problem {
     }
 }
 
+fn tiles(ctx: &Context<'_>) -> bool {
+    matches!(
+        ctx.university.university.portal,
+        PortalConfig::TilesPortal { .. }
+    )
+}
+
+/// Signaux de rattachement que le portail fournit (aucun pour les autres portails).
+async fn signals(ctx: &mut Context<'_>) -> Result<Vec<Signal>, Problem> {
+    if tiles(ctx) {
+        tiles_portal::fetch_signals(ctx).await
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+/// Composante dont les règles obtiennent le meilleur score, s'il est unique et non nul. La
+/// confiance est la part des poids de ses règles qui correspondent.
+#[must_use]
+pub fn detect_establishment(
+    university: &ResolvedUniversity,
+    signals: &[Signal],
+) -> Option<EstablishmentPick> {
+    let mut scored: Vec<(&String, u32, u32)> = university
+        .establishments
+        .iter()
+        .map(|(id, file)| {
+            let total = file
+                .affiliation
+                .rules
+                .iter()
+                .map(|r| u32::from(r.weight))
+                .sum::<u32>();
+            (id, file.affiliation.score(signals), total)
+        })
+        .filter(|(_, score, _)| *score > 0)
+        .collect();
+    scored.sort_by_key(|(_, score, _)| std::cmp::Reverse(*score));
+    match scored.as_slice() {
+        [(id, score, total), rest @ ..] if rest.first().is_none_or(|next| next.1 < *score) => {
+            #[allow(clippy::cast_precision_loss)]
+            let confidence = (*score as f32 / (*total).max(1) as f32).min(1.0);
+            Some(EstablishmentPick {
+                id: (*id).clone(),
+                source: EstablishmentSource::Detected,
+                confidence,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Après la connexion : sans choix de l'étudiant, détecte sa composante d'après son profil. Un
+/// échec garde la composante par défaut.
+pub(crate) async fn with_detected_establishment(
+    university: &ResolvedUniversity,
+    mut session: SessionData,
+    now: DateTime<Utc>,
+    net: NetSettings,
+) -> SessionData {
+    let chosen = session
+        .establishment
+        .as_ref()
+        .is_some_and(|e| e.source == EstablishmentSource::Student);
+    if chosen || university.establishments.is_empty() {
+        return session;
+    }
+    let mut ctx = Context {
+        university,
+        session: &mut session,
+        now,
+        net,
+    };
+    if let Ok(signals) = signals(&mut ctx).await
+        && let Some(pick) = detect_establishment(university, &signals)
+    {
+        ctx.session.establishment = Some(pick);
+    }
+    session
+}
+
 /// Composante choisie par l'étudiant, sinon celle par défaut de l'université.
 pub fn pick_establishment(
     university: &ResolvedUniversity,
@@ -106,6 +189,10 @@ pub async fn profile(ctx: &mut Context<'_>) -> Result<Fetched<Profile>, Problem>
     let services = ctx.services();
     match &services.profile {
         Some(ProfileService::Demo) => Ok(fetched(demo::profile(&ctx.session.username), "demo")),
+        Some(ProfileService::Portal) if tiles(ctx) => Ok(fetched(
+            tiles_portal::fetch_profile(ctx).await?,
+            "tiles-portal",
+        )),
         Some(ProfileService::Portal) => Ok(fetched(uportal::fetch_profile(ctx).await?, "portal")),
         Some(ProfileService::None) | None => Err(absent(&services, ServiceKind::Profile)),
     }
@@ -222,6 +309,10 @@ pub async fn apps(ctx: &mut Context<'_>) -> Result<Fetched<Vec<App>>, Problem> {
     let services = ctx.services();
     match &services.apps {
         Some(AppsService::Demo) => Ok(fetched(demo::apps(), "demo")),
+        Some(AppsService::Portal) if tiles(ctx) => Ok(fetched(
+            tiles_portal::fetch_apps(ctx).await?,
+            "tiles-portal",
+        )),
         Some(AppsService::Portal) => Ok(fetched(uportal::fetch_apps(ctx).await?, "portal")),
         Some(AppsService::None) | None => Err(absent(&services, ServiceKind::Apps)),
     }
