@@ -289,10 +289,11 @@ const PROBES = [
   { key: "timetable-groups", label: "Groupes", config: "timetable", path: () => "/v1/timetable/groups" },
   { key: "grades", label: "Notes", path: () => "/v1/grades", separate: "grades" },
   { key: "absences", label: "Absences", path: () => "/v1/absences", separate: "absences" },
+  { key: "exams", label: "Examens", path: () => "/v1/exams" },
   { key: "homework", label: "Devoirs", path: () => "/v1/homework", separate: "homework" },
   { key: "mail", label: "Mail", path: () => "/v1/mail/inbox" },
   { key: "apps", label: "Applications", path: () => "/v1/apps" },
-  { key: "documents", label: "Documents" },
+  { key: "documents", label: "Documents", path: () => "/v1/documents" },
 ];
 
 function tz() { return state.me?.timezone || "Europe/Paris"; }
@@ -307,6 +308,8 @@ function summarize(key, data) {
     case "homework": return { line: `${data.length} devoir(s)`, items: [...data].sort((a, b) => String(a.due).localeCompare(String(b.due))).slice(0, 6).map((h) => `${when(h.due, tz())} · ${h.title}`) };
     case "mail": return { line: `${(data.messages || []).length} message(s), ${data.unread ?? 0} non lu(s)`, items: (data.messages || []).slice(0, 5).map((m) => `${when(m.date, tz())} · ${m.from?.name || m.from?.address || "?"} · ${m.subject || "(sans objet)"}`) };
     case "apps": return { line: `${data.length} application(s)`, items: data.slice(0, 8).map((a) => a.title) };
+    case "exams": return { line: data.length ? `${data.length} épreuve(s)` : "Aucune épreuve publiée", items: data.slice(0, 6).map((e) => `${e.start ? when(e.start, tz()) : "date à venir"} · ${e.title}${e.room ? ` · ${e.room}` : ""}`) };
+    case "documents": return { line: `${data.length} document(s), ${data.filter((d) => d.downloadable).length} téléchargeable(s)`, items: data.slice(0, 6).map((d) => `${d.title}${d.year ? ` · ${d.year}` : ""}${d.downloadable ? "" : " · lien"}`) };
     default: return { line: "Réponse reçue", items: [] };
   }
 }
@@ -592,7 +595,6 @@ async function runAll() {
     const r = await call("GET", probe.path());
     state.results[probe.key] = r.data ? { data: r.data.data, provider: r.data.meta?.provider, ms: r.ms } : { problem: r.problem, ms: r.ms };
   }
-  state.results.documents = { skipped: "Pas de route dans l'API" };
   state.running = false;
   route();
 }

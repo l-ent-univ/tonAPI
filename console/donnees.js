@@ -25,14 +25,14 @@ window.TONAPI_FOURNISSEURS = [
   {
     id: "ade-myplanning",
     logiciel: "ADE MyPlanning (GWT)",
-    services: ["timetable"],
+    services: ["timetable", "timetable-groups"],
     ligne: ["CAS", "myplanning.jsp", "signatures GWT", "login · projet · ressources", "anonymous_cal"],
     essai: "reel",
     essais: ["Université Paul-Valéry, 27/10/2026"],
     comment:
-      "Rejoue les appels GWT-RPC de MyPlanning (connexion, projet, getResourceIds) pour obtenir les numéros de ressources de l'étudiant, puis lit le flux public anonymous_cal.jsp. Les signatures GWT sont lues dans le code de la permutation, jamais figées.",
+      "Rejoue les appels GWT-RPC de MyPlanning (connexion, projet, getResourceIds) pour obtenir les numéros de ressources de l'étudiant, puis lit le flux public anonymous_cal.jsp. Les groupes sont nommés en ouvrant, comme MyPlanning, les seuls dossiers de l'arbre qui mènent aux ressources (searchDataById puis getChildren). Les signatures GWT sont lues dans le code de la permutation, jamais figées.",
     limites: [
-      "Les groupes ne sont pas encore listés.",
+      "Groupes : seulement ceux de l'étudiant (tous sélectionnés), pas l'arbre complet.",
       "Les types GWT de la requête de connexion sont ceux d'ADE 6.x : une version majeure différente peut les changer.",
     ],
     config: 'provider = "ade-myplanning"\nbase-url = "https://planning.exemple.fr/"\nproject-id = 1',
@@ -66,16 +66,19 @@ window.TONAPI_FOURNISSEURS = [
   },
   {
     id: "etudiants-api",
-    logiciel: "Application de scolarité (api/etudiants/notes)",
-    services: ["grades", "profile"],
-    ligne: ["CAS", "application", "api/etudiants/notes"],
+    logiciel: "Application de scolarité (api/etudiants)",
+    services: ["grades", "exams", "documents", "profile"],
+    ligne: ["CAS", "application", "notes · calendrier · attestations"],
     essai: "partiel",
-    essais: ["Université Paul-Valéry, 27/10/2026 : profil vérifié, aucune note saisie"],
+    essais: ["Université Paul-Valéry, 27/10/2026 : profil vérifié ; notes, épreuves et attestations vides sur le compte essayé"],
     comment:
-      "Complète le profil du portail par le numéro étudiant et la formation, et lit les notes par semestre. Le format des notes vient du code client public de l'application.",
-    limites: ["Notes jamais vues sur un vrai relevé.", "Logiciel non identifié : le fournisseur porte le nom de son API."],
+      "Complète le profil du portail par le numéro étudiant et la formation, lit les notes par semestre, le calendrier des épreuves et les attestations (semestrielles, annuelles, de réussite), servies en PDF par GET /v1/documents/{id}. Les formats viennent du code client public de l'application.",
+    limites: [
+      "Notes, épreuves et attestations jamais vues remplies : formats des dates et durées déduits.",
+      "Logiciel non identifié : le fournisseur porte le nom de son API.",
+    ],
     config:
-      '# Notes\nprovider = "etudiants-api"\nbase-url = "https://scolarite.exemple.fr/"\n\n# Profil\nprovider = "portal"\nrecord = { kind = "etudiants-api", base-url = "https://scolarite.exemple.fr/" }',
+      '# Notes, examens\nprovider = "etudiants-api"\nbase-url = "https://scolarite.exemple.fr/"\n\n# Documents\nprovider = "etudiants-api"\nbase-url = "https://scolarite.exemple.fr/"\ncertificate-url = "https://ent.exemple.fr/certificat"\n\n# Profil\nprovider = "portal"\nrecord = { kind = "etudiants-api", base-url = "https://scolarite.exemple.fr/" }',
     fichiers: ["crates/tonapi-providers/src/etudiants_api.rs", "reports/univ-montp3.md"],
   },
   {
@@ -151,7 +154,7 @@ window.TONAPI_FOURNISSEURS = [
     essai: "partiel",
     essais: ["Université Paul-Valéry (uPortal 5 sans userinfo), 27/10/2026"],
     comment:
-      "Applications lues dans le layout du portail. Profil par userinfo (uPortal 5) ou, à défaut, par session.json et people.",
+      "Applications lues dans le layout du portail ; en uPortal 5, le vrai lien d'un portlet est lu dans son fragment (iframe), sinon la page du portail sert de lien. Profil par userinfo (uPortal 5) ou, à défaut, par session.json et people.",
     limites: ["uPortal 4 ProlongationENT : faux serveurs seulement (l'ENT de Montpellier a changé).", "uPortal 5 de Rennes : jamais essayé."],
     config: '[portal]\nkind = "uportal5"\nbase-url = "https://ent.exemple.fr/uPortal/"',
     fichiers: ["crates/tonapi-providers/src/uportal.rs"],
@@ -159,7 +162,7 @@ window.TONAPI_FOURNISSEURS = [
   {
     id: "demo",
     logiciel: "Données fictives",
-    services: ["timetable", "timetable-groups", "grades", "absences", "homework", "mail", "apps", "profile"],
+    services: ["timetable", "timetable-groups", "grades", "absences", "exams", "homework", "mail", "apps", "profile", "documents"],
     ligne: ["tonAPI"],
     essai: "aucun",
     essais: ["Université de démonstration (demo / demo)"],
@@ -182,6 +185,7 @@ window.TONAPI_SERVICES = [
   { key: "timetable", label: "Emploi du temps" },
   { key: "grades", label: "Notes" },
   { key: "absences", label: "Absences" },
+  { key: "exams", label: "Examens" },
   { key: "homework", label: "Devoirs" },
   { key: "mail", label: "Mail" },
   { key: "apps", label: "Applications" },
