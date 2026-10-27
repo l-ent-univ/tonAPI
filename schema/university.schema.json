@@ -575,6 +575,29 @@
         },
         {
           "additionalProperties": false,
+          "description": "BlueMind : connexion par le CAS sur le webmail, puis API REST (`/api/…`) avec la clé de\nsession de `webapp/session-infos.js`.",
+          "properties": {
+            "base-url": {
+              "description": "Racine du webmail (ex. `https://mail.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "bluemind",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "Simple lien vers le site de l'établissement.",
           "properties": {
             "label": {

@@ -437,6 +437,15 @@ pub enum MailService {
         #[serde(default, skip_serializing_if = "ServiceOptions::is_default")]
         options: ServiceOptions,
     },
+    /// BlueMind : connexion par le CAS sur le webmail, puis API REST (`/api/…`) avec la clé de
+    /// session de `webapp/session-infos.js`.
+    Bluemind {
+        /// Racine du webmail (ex. `https://mail.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+        #[serde(default, skip_serializing_if = "ServiceOptions::is_default")]
+        options: ServiceOptions,
+    },
     /// Simple lien vers le site de l'établissement.
     Link(LinkService),
     /// Service non proposé.
@@ -447,6 +456,7 @@ pub enum MailService {
 
 provider_ids!(MailService {
     Self::ZimbraRest { .. } => "zimbra-rest",
+    Self::Bluemind { .. } => "bluemind",
     Self::Link(_) => "link",
     Self::None => "none",
     Self::Demo => "demo",

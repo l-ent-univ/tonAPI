@@ -10,6 +10,7 @@
 mod ade_ical;
 mod ade_myplanning;
 mod ade_rest;
+mod bluemind;
 mod demo;
 mod moodle;
 #[allow(dead_code)] // utilisé par les fournisseurs réseau au fur et à mesure de leur ajout
@@ -313,6 +314,10 @@ pub async fn mail_inbox(ctx: &mut Context<'_>) -> Result<Fetched<MailInbox>, Pro
             let inbox = zimbra::fetch_inbox(ctx, base_url, entry_url.as_ref()).await?;
             Ok(fetched(inbox, "zimbra-rest"))
         }
+        Some(MailService::Bluemind { base_url, .. }) => Ok(fetched(
+            bluemind::fetch_inbox(ctx, base_url).await?,
+            "bluemind",
+        )),
         Some(MailService::Link(_) | MailService::None) | None => {
             Err(absent(&services, ServiceKind::Mail))
         }
