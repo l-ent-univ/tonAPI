@@ -6,5 +6,5 @@ mod cookies;
 pub mod forms;
 pub mod otp;
 
-pub use browser::{Browser, BrowserOptions, HttpError, Page, USER_AGENT};
+pub use browser::{Browser, BrowserOptions, HttpError, Page, USER_AGENT, describe};
 pub use cookies::CookieJar;

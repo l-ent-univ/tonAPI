@@ -163,11 +163,9 @@ impl Browser {
         if bytes.len() > MAX_BODY {
             return Err(HttpError::TooLarge);
         }
-        Ok((
-            status,
-            headers,
-            String::from_utf8_lossy(&bytes).into_owned(),
-        ))
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        trace_exchange(&url, status, &headers, &text);
+        Ok((status, headers, text))
     }
 
     /// `GET` en suivant les redirections.
@@ -262,5 +260,128 @@ impl Browser {
             url = next;
         }
         Err(HttpError::TooManyRedirects)
+    }
+}
+
+/// Trace de diagnostic (`RUST_LOG=tonapi_http=debug`) : hôte, chemin, statut, cible d'une
+/// redirection et noms des cookies posés. Jamais de valeur de cookie, de paramètre ni de corps.
+fn trace_exchange(url: &Url, status: StatusCode, headers: &HeaderMap, body: &str) {
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
+    let location = headers
+        .get(header::LOCATION)
+        .and_then(|l| l.to_str().ok())
+        .and_then(|l| url.join(l).ok())
+        .map(|next| format!(" → {}", describe(&next)))
+        .unwrap_or_default();
+    let cookies: Vec<&str> = headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .filter_map(|v| v.split('=').next())
+        .map(str::trim)
+        .collect();
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .unwrap_or("-");
+    let title = page_title(body)
+        .map(|t| format!(" titre={t:?}"))
+        .unwrap_or_default();
+    tracing::debug!(
+        "{} {}{location} [{content_type}] cookies={cookies:?}{title}",
+        status.as_u16(),
+        describe(url),
+    );
+}
+
+/// `<title>` d'une page, court et sans adresse ni numéro.
+fn page_title(body: &str) -> Option<String> {
+    let lower = body.get(..body.len().min(64 * 1024))?.to_ascii_lowercase();
+    let start = lower.find("<title")?;
+    let open_end = start + lower[start..].find('>')? + 1;
+    let close = open_end + lower[open_end..].find("</title>")?;
+    let raw = body.get(open_end..close)?;
+    let words: Vec<&str> = raw
+        .split_whitespace()
+        .map(|w| {
+            let digits = w.chars().filter(char::is_ascii_digit).count();
+            if w.contains('@') || digits >= 6 {
+                "<…>"
+            } else {
+                w
+            }
+        })
+        .collect();
+    let title: String = words.join(" ").chars().take(100).collect();
+    (!title.is_empty()).then_some(title)
+}
+
+/// Adresse sans donnée personnelle : les segments qui ressemblent à un identifiant sont masqués
+/// et la requête est réduite aux noms de ses paramètres.
+#[must_use]
+pub fn describe(url: &Url) -> String {
+    let segments: Vec<String> = url
+        .path()
+        .split('/')
+        .map(|segment| {
+            let digits = segment.chars().filter(char::is_ascii_digit).count();
+            if segment.contains('@')
+                || segment.contains("%40")
+                || segment.len() >= 24
+                || digits >= 6
+            {
+                "<…>".to_owned()
+            } else {
+                segment.to_owned()
+            }
+        })
+        .collect();
+    let names: Vec<String> = url
+        .query_pairs()
+        .map(|(name, _)| name.into_owned())
+        .collect();
+    let query = if names.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", names.join("&"))
+    };
+    let port = url.port().map(|p| format!(":{p}")).unwrap_or_default();
+    format!(
+        "{}{port}{}{query}",
+        url.host_str().unwrap_or("?"),
+        segments.join("/")
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::describe;
+    use url::Url;
+
+    #[test]
+    fn une_adresse_decrite_ne_garde_ni_valeur_ni_identifiant() {
+        let url = Url::parse(
+            "https://ent.example.test/uPortal/api/people/camille.demo@etu.example.test.json?ticket=ST-123-secret&service=x",
+        )
+        .unwrap();
+        let text = describe(&url);
+        assert_eq!(
+            text,
+            "ent.example.test/uPortal/api/people/<…>?ticket&service"
+        );
+        let feed = Url::parse("https://ade.example.test/jsp/custom/modules/plannings/direct_cal.jsp?data=0123456789abcdef0123456789abcdef,1").unwrap();
+        assert!(!describe(&feed).contains("0123"));
+        let id = Url::parse("https://scodoc.example.test/etudiant/22000123/releve").unwrap();
+        assert_eq!(describe(&id), "scodoc.example.test/etudiant/<…>/releve");
+    }
+
+    #[test]
+    fn le_titre_d_une_page_est_lu_sans_adresse() {
+        let page = "<html><head><TITLE>\n  Bonjour camille.demo@example.test  </TITLE></head>";
+        assert_eq!(super::page_title(page).as_deref(), Some("Bonjour <…>"));
+        assert_eq!(super::page_title("{}"), None);
     }
 }
