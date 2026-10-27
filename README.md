@@ -1,6 +1,6 @@
 # tonAPI
 
-API qui donne à un étudiant une vue unifiée de **ses propres** données universitaires : emploi du temps, notes, absences, devoirs, mail, applications de l'ENT. Chaque établissement est décrit par un fichier TOML dans [`universities/`](universities/).
+API qui donne à un étudiant une vue unifiée de **ses propres** données universitaires : emploi du temps, notes, absences, examens, devoirs, mail, applications de l'ENT, attestations. Chaque établissement est décrit par un fichier TOML dans [`universities/`](universities/).
 
 ## Ajouter ton IUT ou ta fac
 

@@ -52,9 +52,13 @@ chaque composante après la connexion ; sans correspondance unique, la composant
 connexion locale (`local-password`). Le mot de passe sert une fois ; seuls les cookies ou le jeton
 du service rejoignent la session, et les échecs passent par le limiteur de connexion.
 
-Les documents administratifs ont des variantes dans la configuration, mais aucune route dédiée
-n'est enregistrée dans `crates/tonapi-server/src/routes/mod.rs`. Ne promets pas leur consultation
-par l'API actuelle.
+`GET /v1/exams` (calendrier des épreuves) et `GET /v1/documents` puis `GET /v1/documents/{id}`
+(fichier en pièce jointe) sont servis par `demo` et `etudiants-api` (Paul-Valéry). Formats lus dans
+le code client de l'application ; épreuves et attestations vides sur le compte essayé, donc jamais
+vues remplies. Les variantes `mon-dossier-web` et `ardemat` des documents renvoient
+`not_implemented`. Les groupes `ade-myplanning` listent les ressources de l'étudiant (arbre
+MyPlanning ouvert sur leur seul chemin) ; les applications uPortal 5 prennent le lien du fragment
+de chaque portlet.
 
 Le rattachement a des types, signaux et fonctions dans `tonapi-config`. Le choix utilisé par
 `tonapi-providers::pick_establishment` retient actuellement le choix explicite de l'étudiant ou
