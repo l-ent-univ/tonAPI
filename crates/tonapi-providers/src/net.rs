@@ -89,7 +89,7 @@ impl Net {
                 .map_err(|e| http_problem(self.provider, &e));
         };
         match cas::open(&mut self.browser, &cas, url, None).await {
-            Ok(Outcome::SignedIn(page)) => Ok(page),
+            Ok(Outcome::SignedIn { page, .. }) => Ok(page),
             Ok(Outcome::SecondFactor(_)) => Err(Problem::new(ErrorCode::SessionExpired)
                 .detail("l'université redemande le second facteur : se reconnecter")),
             Err(CasError::NotAuthenticated) => Err(Problem::new(ErrorCode::SessionExpired)),

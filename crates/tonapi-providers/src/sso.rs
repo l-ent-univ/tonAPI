@@ -13,7 +13,12 @@ use tonapi_http::{Browser, BrowserOptions, CookieJar};
 use tonapi_session::{SessionData, StoredCookie};
 use url::Url;
 
+use crate::net::NetSettings;
 use crate::{demo, pick_establishment};
+
+/// Cookies qui portent à eux seuls une session CAS (ticket-granting) : jamais réutilisés pour une
+/// nouvelle connexion par mot de passe.
+const SSO_TICKET_COOKIES: [&str; 3] = ["TGC", "CASTGC", "CASTGT"];
 
 /// Clé de [`SessionData::tokens`] qui garde le défi du second facteur.
 const OTP_TOKEN: &str = "otp";
@@ -47,6 +52,7 @@ pub struct LoginInput<'a> {
     pub previous_cookies: Vec<StoredCookie>,
     pub now: DateTime<Utc>,
     pub ttl_secs: i64,
+    pub net: NetSettings,
 }
 
 /// Validation du second facteur.
@@ -115,9 +121,11 @@ fn reached_cas(browser: &Browser, cas: &CasServer) -> Result<(), Problem> {
 fn browser(
     university: &ResolvedUniversity,
     cookies: Vec<StoredCookie>,
+    net: NetSettings,
 ) -> Result<Browser, Problem> {
     let options = BrowserOptions {
         extra_ca: university.extra_ca(None),
+        https_only: net.https_only,
         ..BrowserOptions::default()
     };
     Browser::new(&options, CookieJar::from_stored(cookies))
@@ -187,29 +195,47 @@ pub async fn login(
         demo::check_credentials(input.username, input.password)?;
         return Ok(LoginOutcome::SignedIn(session));
     };
-    let mut browser = browser(university, input.previous_cookies)?;
     let credentials = Credentials {
         username: input.username,
         password: input.password,
     };
     let entry = entry_url(university, &cas);
-    match cas::open(&mut browser, &cas, entry, Some(credentials))
-        .await
-        .map_err(cas_problem)?
-    {
-        Outcome::SignedIn(_) => {
-            reached_cas(&browser, &cas)?;
-            Ok(LoginOutcome::SignedIn(signed_in(
-                session,
-                &browser,
-                input.now,
-                input.ttl_secs,
-            )))
-        }
-        Outcome::SecondFactor(challenge) => {
-            prompt(session, &mut browser, &challenge, None, input.now).await
+
+    // Les cookies d'une session précédente servent à faire reconnaître l'appareil (pas de second
+    // facteur), jamais à se passer du mot de passe : on retire le TGC, et si le CAS laisse quand
+    // même passer sans le demander, on recommence avec un pot vide.
+    let previous: Vec<StoredCookie> = input
+        .previous_cookies
+        .into_iter()
+        .filter(|c| !SSO_TICKET_COOKIES.contains(&c.name.as_str()))
+        .collect();
+    for cookies in [previous, Vec::new()] {
+        let mut browser = browser(university, cookies, input.net)?;
+        let outcome = cas::open(&mut browser, &cas, entry.clone(), Some(credentials))
+            .await
+            .map_err(cas_problem)?;
+        match outcome {
+            Outcome::SignedIn {
+                password_posted: true,
+                ..
+            } => {
+                reached_cas(&browser, &cas)?;
+                return Ok(LoginOutcome::SignedIn(signed_in(
+                    session,
+                    &browser,
+                    input.now,
+                    input.ttl_secs,
+                )));
+            }
+            Outcome::SecondFactor(challenge) if challenge.password_posted => {
+                return prompt(session, &mut browser, &challenge, None, input.now).await;
+            }
+            // Identifiants non vérifiés : essai suivant, avec un pot vide.
+            Outcome::SignedIn { .. } | Outcome::SecondFactor(_) => {}
         }
     }
+    Err(Problem::new(ErrorCode::UpstreamChanged)
+        .detail("le CAS n'a pas demandé le mot de passe : connexion refusée"))
 }
 
 /// Valide le second facteur d'une session en attente.
@@ -229,7 +255,11 @@ pub async fn complete_mfa(
         .ok_or_else(|| {
             Problem::new(ErrorCode::InvalidToken).detail("aucun second facteur en attente")
         })?;
-    let mut browser = browser(university, pending.cookies.clone())?;
+    if !challenge.password_posted {
+        return Err(Problem::new(ErrorCode::InvalidToken)
+            .detail("second facteur sans mot de passe vérifié : recommencer la connexion"));
+    }
+    let mut browser = browser(university, pending.cookies.clone(), NetSettings::default())?;
 
     let code = match action {
         MfaAction::Code(code) => code,
@@ -248,10 +278,12 @@ pub async fn complete_mfa(
         .await
         .map_err(cas_problem)?
     {
-        Outcome::SignedIn(_) => Ok(LoginOutcome::SignedIn(signed_in(
+        Outcome::SignedIn { .. } => Ok(LoginOutcome::SignedIn(signed_in(
             pending, &browser, now, ttl_secs,
         ))),
-        Outcome::SecondFactor(next) => {
+        Outcome::SecondFactor(mut next) => {
+            // Même connexion, mot de passe déjà vérifié : la page suivante en hérite.
+            next.password_posted = challenge.password_posted;
             let message = next
                 .error
                 .clone()
@@ -273,12 +305,12 @@ pub async fn refresh(
         session.expires_at = now.timestamp() + ttl_secs;
         return Ok(session);
     };
-    let mut browser = browser(university, session.cookies.clone())?;
+    let mut browser = browser(university, session.cookies.clone(), NetSettings::default())?;
     match cas::open(&mut browser, &cas, entry_url(university, &cas), None)
         .await
         .map_err(cas_problem)?
     {
-        Outcome::SignedIn(_) => Ok(signed_in(session, &browser, now, ttl_secs)),
+        Outcome::SignedIn { .. } => Ok(signed_in(session, &browser, now, ttl_secs)),
         Outcome::SecondFactor(_) => Err(Problem::new(ErrorCode::SessionExpired)
             .detail("l'université redemande le second facteur : reconnectez-vous")),
     }

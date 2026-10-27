@@ -221,6 +221,7 @@ pub async fn login(
             previous_cookies,
             now,
             ttl_secs: state.settings.session_ttl_secs,
+            net: tonapi_providers::NetSettings::default(),
         },
     )
     .await;

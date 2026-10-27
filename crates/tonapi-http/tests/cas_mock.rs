@@ -262,7 +262,7 @@ async fn connexion_sans_second_facteur_puis_reprise_silencieuse() {
     let app = Url::parse(&format!("{base}/app/")).unwrap();
     let mut b = browser(CookieJar::default());
 
-    let Outcome::SignedIn(page) = cas::open(&mut b, &server(&base), app.clone(), Some(ETU))
+    let Outcome::SignedIn { page, .. } = cas::open(&mut b, &server(&base), app.clone(), Some(ETU))
         .await
         .unwrap()
     else {
@@ -278,7 +278,7 @@ async fn connexion_sans_second_facteur_puis_reprise_silencieuse() {
     assert!(jar.contains(&host, "TGC"));
     let mut b2 = browser(jar);
     let outcome = cas::open(&mut b2, &server(&base), app, None).await.unwrap();
-    assert!(matches!(outcome, Outcome::SignedIn(_)));
+    assert!(matches!(outcome, Outcome::SignedIn { .. }));
     assert_eq!(state.lock().unwrap().password_posts, 1);
 }
 
@@ -337,9 +337,10 @@ async fn second_facteur_par_code() {
     };
     assert_eq!(again.error.as_deref(), Some("Le code est invalide."));
 
-    let Outcome::SignedIn(page) = cas::submit_code(&mut b, &cas_server, &again, "123 456", true)
-        .await
-        .unwrap()
+    let Outcome::SignedIn { page, .. } =
+        cas::submit_code(&mut b, &cas_server, &again, "123 456", true)
+            .await
+            .unwrap()
     else {
         panic!("connexion attendue")
     };
@@ -370,6 +371,40 @@ async fn second_facteur_par_notification() {
     let outcome = cas::submit_code(&mut b, &cas_server, &challenge, &code.unwrap(), false)
         .await
         .unwrap();
-    assert!(matches!(outcome, Outcome::SignedIn(_)));
+    assert!(matches!(outcome, Outcome::SignedIn { .. }));
     assert_eq!(state.lock().unwrap().remembered.as_deref(), Some("skip"));
+}
+
+/// Audit 2026-10-27 : avec les cookies d'une session précédente encore vivante, le CAS ne montre
+/// pas de formulaire, et la marche « réussit » sans que le mot de passe fourni ait été vérifié.
+#[tokio::test]
+async fn reprise_de_cookies_ne_verifie_pas_le_mot_de_passe() {
+    let (state, base) = start(false).await;
+    let app = Url::parse(&format!("{base}/app/")).unwrap();
+    let mut b = browser(CookieJar::default());
+    cas::open(&mut b, &server(&base), app.clone(), Some(ETU))
+        .await
+        .unwrap();
+
+    let wrong = Credentials {
+        username: "quelquun",
+        password: "faux",
+    };
+    let mut b2 = browser(b.jar.clone());
+    let outcome = cas::open(&mut b2, &server(&base), app, Some(wrong))
+        .await
+        .unwrap();
+    // La marche le signale : à l'appelant de ne pas prendre cela pour une connexion vérifiée.
+    assert!(matches!(
+        outcome,
+        Outcome::SignedIn {
+            password_posted: false,
+            ..
+        }
+    ));
+    assert_eq!(
+        state.lock().unwrap().password_posts,
+        1,
+        "aucun POST du mauvais mot de passe"
+    );
 }

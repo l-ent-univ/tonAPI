@@ -65,13 +65,19 @@ pub struct OtpChallenge {
     /// Message affiché par la page (code refusé…).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Le mot de passe fourni a été posté avant cette page. Sinon, une session existante a mené
+    /// au second facteur sans vérifier les identifiants.
+    #[serde(default)]
+    pub password_posted: bool,
 }
 
 /// Fin de la marche.
 #[derive(Debug)]
 pub enum Outcome {
-    /// Page finale du service, session ouverte.
-    SignedIn(Page),
+    /// Page finale du service, session ouverte. `password_posted` dit si le mot de passe fourni a
+    /// été envoyé au CAS pendant cette marche : sinon, une session existante a suffi et les
+    /// identifiants fournis n'ont **pas** été vérifiés.
+    SignedIn { page: Page, password_posted: bool },
     /// Le CAS attend un second facteur.
     SecondFactor(OtpChallenge),
 }
@@ -167,7 +173,10 @@ async fn walk(
                 posted = true;
                 page = browser.post_form(target, &fields, &page.url).await?;
             }
-            Kind::Otp(challenge) => return Ok(Outcome::SecondFactor(challenge)),
+            Kind::Otp(mut challenge) => {
+                challenge.password_posted = posted;
+                return Ok(Outcome::SecondFactor(challenge));
+            }
             Kind::Remember(form) if !remembered => {
                 remembered = true;
                 let fields = remember_fields(&form, remember_device);
@@ -179,7 +188,12 @@ async fn walk(
             }
             Kind::PasswordChange => return Err(CasError::Unsupported("password_change")),
             Kind::UnknownMfa => return Err(CasError::Unsupported("mfa")),
-            Kind::Other => return Ok(Outcome::SignedIn(page)),
+            Kind::Other => {
+                return Ok(Outcome::SignedIn {
+                    page,
+                    password_posted: posted,
+                });
+            }
         }
     }
 }
@@ -244,6 +258,7 @@ fn otp_challenge(page: &Page, forms: &[Form]) -> Option<OtpChallenge> {
         user_hash: params["userHash"].as_str()?.to_owned(),
         api_url: Url::parse(params["apiUrl"].as_str()?).ok()?,
         error: forms::error_message(body),
+        password_posted: false,
     })
 }
 
