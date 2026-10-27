@@ -1,0 +1,12 @@
+{
+  "data": {
+    "projectId": 0,
+    "authData": {
+      "projectId": 1,
+      "accessToken": "jeton-api-synthetique",
+      "refreshToken": "00000000-0000-4000-8000-000000000001",
+      "resources": [],
+      "jsonAvailableCategories": { "nbCategories": 8 }
+    }
+  }
+}

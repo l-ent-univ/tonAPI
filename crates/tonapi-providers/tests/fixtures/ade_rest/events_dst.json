@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "id": 14961,
+      "events": [
+        { "id": 1, "name": "Veille du passage à l'heure d'été", "date": "28/03/2026", "startHour": "10:00+0100", "endHour": "12:00+0100" },
+        { "id": 2, "name": "Jour du passage à l'heure d'été", "date": "29/03/2026", "startHour": "10:00+0200", "endHour": "12:00+0200" },
+        { "id": 3, "name": "Sans décalage, après le saut", "date": "29/03/2026", "startHour": "03:00", "endHour": "04:00" },
+        { "id": 4, "name": "Heure répétée, sans décalage", "date": "25/10/2026", "startHour": "02:30", "endHour": "03:30" },
+        { "id": 5, "name": "Jour du passage à l'heure d'hiver", "date": "25/10/2026", "startHour": "08:00+0100", "endHour": "10:00+0100" },
+        { "id": 6, "name": "Heure UTC", "date": "25/10/2026", "startHour": "07:00Z", "endHour": "09:00Z" },
+        { "id": 7, "name": "À cheval sur le saut", "date": "29/03/2026", "startHour": "01:30+0100", "endHour": "03:30+0200" }
+      ]
+    }
+  ]
+}

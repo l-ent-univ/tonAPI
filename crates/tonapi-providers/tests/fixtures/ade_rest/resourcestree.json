@@ -1,0 +1,36 @@
+{
+  "data": {
+    "category": [
+      {
+        "category": "trainee",
+        "branch": [
+          {
+            "id": 100,
+            "name": "Département Démo",
+            "branch": [
+              {
+                "id": 110,
+                "name": "BUT Informatique 2",
+                "branch": [
+                  {
+                    "id": 111,
+                    "name": "Groupe TD 1",
+                    "leaf": [
+                      { "id": 14961, "name": "TP 1" },
+                      { "id": 14962, "name": "TP 2" }
+                    ]
+                  }
+                ],
+                "leaf": [
+                  { "id": 14970, "name": "Amphi" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      { "category": "instructor", "leaf": [{ "id": 900, "name": "Mme Dupont" }] },
+      { "category": "classroom", "leaf": [{ "id": 800, "name": "Salle 12" }] }
+    ]
+  }
+}

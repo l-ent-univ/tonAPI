@@ -1,0 +1,50 @@
+{
+  "data": [
+    {
+      "id": 14961,
+      "events": [
+        {
+          "id": 501,
+          "activityId": 42,
+          "name": "Développement web",
+          "date": "02/09/2026",
+          "startHour": "08:00+0200",
+          "endHour": "10:00+0200",
+          "color": "120,140,160",
+          "canUpdateEvent": false,
+          "eventParticipants": [
+            { "category": "instructor", "name": "Mme Dupont" },
+            { "category": "classroom", "name": "Salle 12" },
+            { "category": "category8", "name": "TP 1" }
+          ]
+        },
+        {
+          "id": 502,
+          "activityId": 43,
+          "date": "03/09/2026",
+          "startHour": "14:00",
+          "eventParticipants": [
+            { "category": "trainee", "name": "TP 1" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 14962,
+      "events": [
+        {
+          "id": 501,
+          "activityId": 42,
+          "name": "Développement web",
+          "date": "02/09/2026",
+          "startHour": "08:00+0200",
+          "endHour": "10:00+0200",
+          "eventParticipants": [
+            { "category": "category8", "name": "TP 2" }
+          ]
+        }
+      ]
+    }
+  ],
+  "settings": {}
+}
