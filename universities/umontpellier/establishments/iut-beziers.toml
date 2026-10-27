@@ -6,6 +6,13 @@ name = "IUT de Béziers"
 short-name = "IUTB"
 status = "beta"
 
+# Code de composante des attributs CAS (`umCodeComposante`, `supannEntiteAffectation`) lus sur
+# le nouvel ENT. [vu] 27/10/2026, un compte étudiant de l'IUT.
+[[affiliation.rules]]
+signal = "enrollment-component"
+prefix = "BE2"
+weight = 3
+
 # Arbre ADE : racine `Iutb` (ex. `Iutb.MMI 1ère année BUT.TDB.`).
 [[affiliation.rules]]
 signal = "ade-group-path"
@@ -18,7 +25,7 @@ signal = "enrollment-component"
 contains = "I.U.T. de Béziers"
 weight = 3
 
-# Adresse du profil uPortal, champs séparés par `$`.
+# Adresse postale des attributs CAS (`postalAddress`), champs séparés par `$`.
 [[affiliation.rules]]
 signal = "postal-address"
 suffix = "$BEZIERS"
@@ -27,8 +34,13 @@ suffix = "$BEZIERS"
 signal = "room-address"
 contains = "iut de béziers"
 
+# cas.iutbeziers.fr n'envoie pas son intermédiaire GandiCert (émis par DigiCert Global Root G2).
+# Source : http://cacerts.digicert.com/GandiCert.crt (AIA du certificat), converti en PEM le
+# 27/10/2026 ; SHA-256 33:37:D4:E4:…:0A:FF:E1, valable jusqu'au 16/04/2034.
+[tls]
+extra-ca = ["certs/gandicert.pem"]
+
 # Passerelle ScoDoc derrière le CAS de l'IUT (phpCAS, identifiant prenom.nom, pas celui de l'UM).
-# TODO étape 4 : tls.extra-ca avec l'intermédiaire GandiCert, que cas.iutbeziers.fr n'envoie pas.
 [services.grades]
 provider = "scodoc-gateway"
 base-url = "https://wscodoc.iutbeziers.fr/"
