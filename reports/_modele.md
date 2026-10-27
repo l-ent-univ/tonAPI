@@ -1,56 +1,65 @@
-# Rapport : <Établissement> — <Composante ou « toute l'université »>
+# Rapport : <établissement> / <composante ou université entière>
 
-> Écrit par Claude avec `prompts/ajouter-un-etablissement.md`, le <AAAA-MM-JJ>, navigateur : <intégré | Chrome>.
-> Aucune valeur personnelle : chaque valeur est remplacée par sa forme (`99.99`, `Aaaa`, `<id>`).
-> Statuts : **vu** (requête observée), **déduit** (raisonnement), **inconnu** (pas pu voir).
+Date : <AAAA-MM-JJ>. Sources : <navigateur, code local, documentation>.
+Les exemples doivent être synthétiques et les valeurs de compte retirées avant remise.
+Provenance : **vu**, **code**, **déduit**, **inconnu**. Indiquer une référence pour chaque preuve.
 
-## Résumé
+## Résultat de l'ajout
 
-- Fichier ajouté : `universities/<université>/…toml` — `tonapi validate` : 0 problème.
-- Services pris en charge par l'API : <liste>.
-- Services en simple lien : <liste>.
-- À compléter : <nombre> points (voir plus bas).
+- Configuration produite : <chemin ou non produite, avec cause>.
+- Services utilisables avec tonAPI et preuves : <liste ou aucun essai effectué>.
+- Fournisseurs encore à implémenter : <liste ou aucun identifié>.
+- Prochaine action : <une action précise>.
 
 ## Services
 
-| Service | Logiciel | Hôte | Connexion | Preuve | Statut |
-|---|---|---|---|---|---|
-| Emploi du temps | <ADE / HyperPlanning / Celcat…> | `<hôte>` | <CAS de l'université / autre> | `<MÉTHODE /chemin>` | vu |
-| Notes | | | | | |
-| Absences | | | | | |
-| Devoirs | | | | | |
-| Mail | | | | | |
-| Applications (ENT) | | | | | |
-| Profil | | | | | |
-| Documents | | | | | |
+| Service | Logiciel et hôte | Connexion | Preuve et provenance | État dans tonAPI |
+|---|---|---|---|---|
+| Emploi du temps | <logiciel, hôte> | <SSO, autre> | <méthode + chemin anonymisé, source, date> | <déclaré / implémenté / testé localement / validé sur le site / lien / absent / inconnu> |
+| Notes | | | | |
+| Absences | | | | |
+| Devoirs | | | | |
+| Mail | | | | |
+| Applications | | | | |
+| Profil | | | | |
+| Documents | | | | |
 
-## Connexion
+Ne pas confondre une page consultée dans l'ENT avec une fonction utilisable dans tonAPI.
+Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout.
 
-- Logiciel : <Apereo CAS / passerelle esup-otp / phpCAS / Shibboleth / autre> sur `<hôte>`.
-- Formulaire : champs `<noms>`, envoyé vers `<chemin>`.
-- Second facteur : <aucun | esup-otp : méthodes vues | autre>.
-- Chaîne de redirections (hôtes et chemins seulement) :
-  1. `GET <hôte>/<chemin>` → 302
-  2. …
-- Cookies posés (noms seulement) : `<noms>`.
+## Connexion observée
+
+- Logiciel : <logiciel, version si connue, provenance>.
+- Hôtes et chemins : <sans identifiants, tickets ni paramètres personnels>.
+- Formulaire : <noms de champs seulement>.
+- MFA : <méthodes observées ou inconnu>.
+- Cookies : <noms seulement>.
+- Redirections : <méthodes, hôtes, chemins et statuts ; valeurs sensibles retirées>.
 
 ## Rattachement à la composante
 
-| Signal | Où il apparaît | Motif |
+| Signal | Source | Motif non personnel | Provenance |
+|---|---|---|---|
+| <composante, chemin de groupe, autre> | <page ou requête> | <texte institutionnel stable ou exemple synthétique> | <vu / code / déduit / inconnu> |
+
+## Fournisseur manquant ou format utile
+
+À remplir seulement si nécessaire : logiciel, service concerné, méthodes et chemins observés,
+noms de paramètres et de champs, types de réponse, entrée de connexion, erreurs observées.
+Aucune valeur réelle de compte. Un endpoint hypothétique est marqué comme tel.
+
+## Vérifications
+
+| Vérification | Commande ou méthode | Résultat réel |
 |---|---|---|
-| Chemin de groupe ADE | `<requête>` | `<Aaa Aaaaaa › AAA A9>` |
-| Composante d'inscription | | |
-| Adresse | | |
+| Configuration | `tonapi validate universities` | <non exécutée / succès / échec avec cause> |
+| Détection automatique de données sensibles | `tonapi report check <rapport> <toml>` | <non exécutée / succès / échec avec cause> |
+| Relecture de confidentialité | <fichiers et liens relus> | <non effectuée / effectuée, limites> |
+| Essai réel de tonAPI | <fonction testée et date, sans données de compte> | <non effectué / résultat> |
 
-## À compléter
+## Inconnues et limites
 
-- [ ] <service> : <ce qui manque> — capture à refaire : <page à ouvrir, action à faire>.
+- <fait manquant, conséquence et prochaine observation utile>.
 
-## Logiciel non géré par tonAPI
-
-_(à remplir seulement si un service n'a aucun fournisseur dans `tonapi providers`)_
-
-- Service, logiciel, hôte.
-- Requêtes utiles : méthode, chemin, paramètres (noms), en-têtes notables.
-- Forme de la réponse (clés et types, valeurs remplacées par leur forme).
-- Connexion requise et comment elle s'obtient.
+Le contrôle automatique et la relecture réduisent les risques de fuite ; ils ne constituent pas
+une garantie absolue d'anonymisation ni une certification de sécurité du service.

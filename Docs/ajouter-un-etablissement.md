@@ -1,6 +1,6 @@
 # Ajouter ton IUT ou ta fac à tonAPI
 
-Environ 15 minutes. Pas besoin de savoir coder : Claude fait le travail technique, toi tu réponds à quelques questions et tu te connectes à ton ENT.
+Prévois 15 à 30 minutes pour observer tes services et préparer les fichiers si le navigateur est disponible. Pas besoin de savoir coder : tu réponds aux questions et tu te connectes à ton ENT. Si un fournisseur manque dans tonAPI, son développement sera une tâche séparée.
 
 ## Ce qu'il te faut
 
@@ -35,24 +35,24 @@ Claude va :
 2. ouvrir ton ENT dans un navigateur, à côté de la conversation ;
 3. te dire **« connecte-toi dans la fenêtre du navigateur, puis écris ok »**. Tape ton identifiant et ton mot de passe **toi-même**, dans le navigateur, jamais dans la conversation ;
 4. ouvrir tes services un par un et regarder quels logiciels ton établissement utilise ;
-5. écrire deux fichiers : la configuration (`universities/…`) et un rapport court (`reports/…`), puis vérifier qu'ils sont valides et qu'ils ne contiennent aucune donnée personnelle.
+5. préparer la configuration (`universities/…`) quand les informations suffisent et un rapport court (`reports/…`), puis valider le format et relire les fichiers pour retirer les données personnelles.
 
-À la fin, il te résume ce qui marchera et te propose d'envoyer ton ajout.
+À la fin, il distingue les services observés, les fournisseurs réellement implémentés et les essais effectués. Une configuration valide ne suffit pas à rendre un service fonctionnel. Tu peux ensuite lui demander de préparer l'envoi.
 
 ## Étape 5 — Envoyer ton ajout
 
 - **Tu as cloné avec Git :** accepte quand Claude propose de créer la pull request.
 - **Sinon :** ouvre une issue [« Nouvel établissement »](https://github.com/l-ent-univ/tonAPI/issues/new?template=nouvel-etablissement.yml) et joins les deux fichiers que Claude t'indique.
 
-Merci : grâce à toi, tous les étudiants de ton établissement pourront utiliser tonAPI.
+Ta contribution documente l'établissement et prépare sa prise en charge. Les services deviennent utilisables quand leurs fournisseurs sont implémentés et validés.
 
 ## Questions fréquentes
 
 **Claude voit-il mon mot de passe ?**
-Non. Tu le tapes dans la page de connexion de ton université, comme d'habitude. Le prompt interdit à Claude de le taper, de te le demander ou de recopier quoi que ce soit de personnel. Les fichiers produits sont contrôlés par `tonapi report check`, qui refuse toute adresse e-mail, tout jeton ou tout numéro.
+Tu le tapes toi-même dans la page de connexion universitaire, jamais dans la conversation. Le prompt demande à l'agent de ne pas lire le champ de mot de passe ni recopier de secrets. Les outils de navigateur et leurs journaux ont leurs propres accès et règles : cette consigne ne garantit pas l'absence de traces. Le contrôle `tonapi report check` détecte certains motifs sensibles ; une relecture des fichiers et des URL reste nécessaire.
 
 **Il me demande une validation sur mon téléphone.**
-Valide-la, puis écris « ok » à Claude.
+Si elle correspond à la connexion que tu viens de lancer, valide-la dans l'outil de ton université, puis écris « ok » à Claude.
 
 **La connexion échoue.**
 Claude s'arrête après un seul essai pour ne pas bloquer ton compte. Vérifie ton mot de passe sur le site de ton université, puis dis-lui de réessayer.

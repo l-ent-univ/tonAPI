@@ -1,106 +1,108 @@
 # Prompt : ajouter mon établissement à tonAPI
 
-Copie tout le bloc ci-dessous dans Claude Code (app Claude, onglet **Code**), le dossier `tonAPI` ouvert, puis réponds aux questions. Guide pas à pas : [Docs/ajouter-un-etablissement.md](../Docs/ajouter-un-etablissement.md).
+Copie le bloc ci-dessous dans ton assistant de développement, avec le dossier `tonAPI` ouvert.
+Le navigateur doit permettre au titulaire du compte de se connecter lui-même. Si cet outil n'est
+pas disponible, l'agent peut préparer la configuration à partir des sources disponibles et
+indiquer les observations qui manquent.
 
----
+Guide : [Docs/ajouter-un-etablissement.md](../Docs/ajouter-un-etablissement.md).
 
-```
-Tu m'aides à ajouter mon établissement (université, IUT, faculté, école) à tonAPI, le dépôt ouvert
-ici. tonAPI est une API qui donne aux étudiants leurs propres données : emploi du temps, notes,
-absences, devoirs, mail. Je ne suis pas forcément à l'aise avec l'informatique : parle-moi
-simplement, une chose à la fois, et dis-moi toujours ce que je dois faire maintenant.
+```text
+Tu m'aides à ajouter mon université, mon IUT, ma faculté ou mon école à tonAPI. L'objectif est de
+permettre à l'étudiant connecté de retrouver ses propres informations dans une API commune.
+Parle en français, simplement, une action à la fois. Ne suppose pas que je connais Git ou Rust.
 
-Tu vas : me poser quelques questions, ouvrir les sites de mon établissement dans un navigateur que
-tu pilotes (le navigateur intégré de l'app, ou Claude in Chrome), me laisser me connecter, observer
-quels logiciels sont utilisés, puis écrire la configuration et un rapport court.
+Lis AGENTS.md, Docs/agents/contexte.md et Docs/agents/perimetre.md. Pour une session Claude, lis
+aussi CLAUDE.md. Appuie-toi sur les fichiers courants : une fonctionnalité déclarée dans le
+catalogue peut ne pas être implémentée. La déclaration d'autorisation du responsable est le
+contexte de travail ; les détails institutionnels ne sont pas nécessaires pour cette contribution.
 
-━━ RÈGLES ABSOLUES (elles passent avant tout le reste) ━━
-1. Tu ne tapes JAMAIS mon identifiant ni mon mot de passe, et tu ne me les demandes jamais. Quand
-   une connexion est nécessaire, tu ouvres la page, tu me dis « connecte-toi dans la fenêtre du
-   navigateur, puis écris ok ici », et tu attends.
-2. Un seul essai de connexion de ma part. Si ça échoue, tu t'arrêtes et tu me demandes si je veux
-   réessayer (risque de blocage du compte).
-3. Lecture seule : tu ouvres des pages et tu lis ce que le site charge lui-même. Tu ne remplis
-   aucun formulaire, ne déposes aucun fichier, n'envoies aucun message, ne changes aucun réglage
-   de mon compte (groupes, préférences, appareils). Si une étape l'exigerait, tu me dis quoi
-   faire et je décide.
-4. Tu ne recopies AUCUNE valeur personnelle ni secrète, nulle part (rapport, fichiers, messages) :
-   nom, prénom, identifiant, numéro étudiant, INE, e-mail, téléphone, adresse, notes, mot de
-   passe, cookie, ticket, jeton, lien iCal personnel. Tu notes seulement des structures : hôtes,
-   chemins, noms de paramètres, de champs et de cookies, et la FORME des valeurs (chiffre → 9,
-   majuscule → A, minuscule → a : « 12.50 » → « 99.99 », « R1.01 » → « A9.99 »). Une valeur
-   opaque devient « <id> », « <jeton> » ou « <hex:32> ».
-5. Tu n'inventes rien : une URL ou un logiciel qui n'apparaît pas dans ce que tu as vu est marqué
-   « déduit » ou « inconnu », jamais « vu ».
+1. Définir l'ajout
 
-━━ ÉTAPE 1 — QUESTIONS (une à la fois, avec des choix quand c'est possible) ━━
-a. Quelle université ou école ? Quelle composante (IUT, faculté, département) ?
-b. Est-ce que tu passes par un ENT (un portail avec toutes tes applis) ? Si oui, son adresse ou
-   comment tu y vas (lien depuis le site de l'université…).
-c. Quels services tu utilises : emploi du temps, notes, absences, devoirs (Moodle…), mail ?
-d. Pour chacun : est-ce sur l'ENT, ou sur un autre site ? Lequel, ou comment tu y arrives ?
-   (ex. « Moodle de l'IUT : moodle.iut-xxx.fr », « notes : lien Notes dans l'ENT »).
-e. Est-ce qu'on te demande une validation sur ton téléphone quand tu te connectes ?
-Regarde ensuite le dépôt : `ls universities/` et les fichiers `establishments/`. Si mon
-université existe déjà, dis-le : on n'ajoutera qu'une composante.
+Cherche d'abord dans universities/ si mon université et ma composante existent. Pose seulement les
+questions dont la réponse manque, une à la fois : établissement et composante, adresse ou chemin
+vers l'ENT, services utilisés, sites séparés éventuels, validation supplémentaire à la connexion.
 
-━━ ÉTAPE 2 — EXPLORATION ━━
-Pour l'ENT, puis pour chaque service cité :
-- Ouvre la page dans le navigateur. Si une page de connexion apparaît, applique la règle 1.
-- Lis les requêtes réseau (outil « read_network_requests » ou équivalent) et la page
-  (« read_page » / texte de la page). Pour comprendre un format, tu peux lire le corps d'une
-  réponse, mais tu n'en notes que la forme (règle 4).
-- Reconnais le logiciel avec ce tableau (chemin ou indice → logiciel → fournisseur tonAPI) :
+Prépare une liste des services à observer. Distingue les capacités recherchées : planning, notes,
+absences, devoirs, mail, applications, profil, documents. Une composante peut remplacer une partie
+des services de son université sans créer une nouvelle université.
 
-  | Indice | Logiciel | Fournisseur tonAPI |
-  |---|---|---|
-  | formulaire `username`/`password` + champ `execution`, « Apereo » | Apereo CAS | sso `cas`, flavor `apereo` |
-  | `/cas/login` puis `/pre-otp/login`, `login-<hash>?…&auth_checked` | passerelle esup-otp | sso `cas`, flavor `esup-otp-gateway` |
-  | page « Authentification renforcée », `start({"apiUrl"…})` | second facteur esup-otp | `[sso.mfa]` api-url |
-  | champ caché `lt` = `LT-…` | phpCAS | flavor `phpcas` (ou `own-cas` d'un service) |
-  | `/Shibboleth.sso/`, `/idp/profile/SAML2`, page WAYF | Shibboleth / SAML | `[sso.saml]` |
-  | `/uPortal/`, `layout.jsp`, `prolongation_ENT` | uPortal 4 + ProlongationENT | portal `uportal4-prolongation` |
-  | `/api/v4-3/dlm/layout.json`, `render.uP` sans `/uPortal/` | uPortal 5 | portal `uportal5` |
-  | `…/plannings/direct_cal.jsp?data=…` | ADE, lien iCal | timetable `ade-ical-link` |
-  | `/portal/RestApi/…`, `/portal/sso/accessToken` | ADE, portail REST | timetable `ade-portal-rest` |
-  | `/direct/` sur un hôte ADE (GWT) | ADE Direct | pas encore géré : à décrire |
-  | `/services/doAuth.php`, `/services/data.php?q=…` | passerelle ScoDoc | grades/absences `scodoc-gateway` |
-  | `/ScoDoc/` | ScoDoc sans passerelle | pas encore géré : à décrire |
-  | `/lib/ajax/service.php`, `M.cfg`, `sesskey` | Moodle (web) | homework `moodle-ajax` |
-  | `/login/token.php`, `/webservice/rest/server.php` | Moodle (web service) | homework `moodle-webservice` |
-  | `/service/soap`, `/service/preauth`, cookie `ZM_AUTH_TOKEN` | Zimbra | mail `zimbra-rest` |
-  | `/UIDL/`, `v-uiId`, Vaadin, « Mon dossier » | Mon Dossier Web | documents `mon-dossier-web` |
-  | HyperPlanning, Celcat, Pégase, Apogée, Outlook/Microsoft 365 | autres | pas encore gérés : à décrire |
+2. Observer avec mon compte
 
-  Liste exacte et paramètres : `cargo run -q -p tonapi-cli -- providers`.
-- Note pour chaque service : logiciel, hôte, connexion (CAS de l'université ? autre compte ?),
-  la requête qui le prouve (méthode + chemin), et si un second facteur a été demandé.
-- Rattachement : si tu vois le chemin de mon groupe dans l'emploi du temps (ex. « IUT X › BUT
-  MMI › … »), le nom de ma composante d'inscription ou une adresse, note le MOTIF (règle 4) et le
-  texte stable qui identifie la composante (ex. « IUT Lannion »), pas mon groupe exact.
-- Si un service ne charge pas ou demande une action de ma part, dis-moi quoi faire en une phrase.
+Ouvre la page de connexion dans le navigateur. Dis « Connecte-toi dans le navigateur, puis écris
+ok ici ». Attends ma réponse. Je saisis mes identifiants et j'effectue la validation MFA.
+Ne demande ni mot de passe, ni code secret dans le chat ; ne lis pas les champs de mot de passe.
 
-━━ ÉTAPE 3 — LIVRABLES ━━
-1. Configuration :
-   - nouvelle composante d'une université déjà présente :
-     `cargo run -q -p tonapi-cli -- new establishment <université> <id>`
-   - nouvelle université : `cargo run -q -p tonapi-cli -- new university <id>`
-   Remplis le fichier créé (lis les modèles commentés et les fichiers voisins, comme
-   `universities/univ-rennes/establishments/iut-lannion.toml`). Le moins de paramètres possible.
-   Commente chaque valeur : `# [vu]` ou `# [déduit]`. Mets `status = "beta"`.
-   Puis `cargo run -q -p tonapi-cli -- validate` et corrige jusqu'à 0 problème.
-2. Rapport : copie `reports/_modele.md` vers `reports/<id>.md` et remplis-le, court et précis.
-3. Contrôle : `cargo run -q -p tonapi-cli -- report check reports/<id>.md <fichier .toml>`.
-   S'il signale quoi que ce soit, retire ou remplace la valeur et relance jusqu'à ✓.
-Si `cargo` n'est pas installé, dis-le moi simplement : écris quand même les fichiers à la main
-en suivant les modèles, et relis-les toi-même selon la règle 4.
+Après ma connexion, observe les pages et les requêtes que l'interface charge pour les services
+choisis. Limite-toi à leur lecture. Ne change pas de groupe, de réglage ou d'appareil mémorisé,
+n'envoie pas de message et ne dépose aucun document. Si une action modifiante est nécessaire,
+explique-la et laisse-moi la décider. Ne déclenche pas une série de tentatives de connexion.
 
-━━ ÉTAPE 4 — FIN ━━
-Dis-moi en 3 lignes maximum : ce qui marchera dans tonAPI, ce qui manque, et la prochaine chose
-à faire. Puis propose l'envoi :
-- si `git` et `gh` sont disponibles : branche `ajout/<id>`, commit
-  `feat(universities): ajoute <nom>` (sans ligne de co-auteur), et une pull request avec le
-  résumé du rapport — seulement après mon accord ;
-- sinon : dis-moi quels fichiers joindre à une issue « Nouvel établissement » sur GitHub.
-Rappelle-moi enfin que je peux fermer le navigateur : rien n'a été enregistré de mes identifiants.
+Une requête POST peut servir à lire des données AJAX : vérifie son effet. Une réponse vide, une
+erreur ou un écran inaccessible est une limite à noter, pas une raison d'inventer un endpoint.
+Respecte les permissions et capacités du navigateur disponible. Si une observation n'est pas
+possible avec lui, propose une observation par l'utilisateur ou une source documentaire.
+
+Ne recopie aucune valeur de compte dans les fichiers ou le chat : identifiant, nom, numéro
+étudiant, INE, adresse, e-mail, note réelle, mot de passe, cookie, ticket, jeton ou lien iCal
+personnel. Garde les hôtes et chemins non personnels, les noms de champs et cookies, et les
+types. Remplace les valeurs par <id>, <jeton>, <texte> ou une valeur synthétique. Retire aussi les
+identifiants des chemins et paramètres d'URL. N'enregistre pas de HAR brut dans le dépôt.
+
+Indices utiles, à confirmer par l'observation et le code :
+
+| Indice | Logiciel | Configuration candidate |
+|---|---|---|
+| Formulaire execution et username/password | Apereo CAS | sso cas, flavor apereo |
+| /cas/ puis /pre-otp/ | Passerelle esup-otp | flavor esup-otp-gateway |
+| Formulaire avec champ lt | CAS ancien / phpCAS | flavor phpcas à vérifier |
+| Shibboleth.sso, WAYF, SAML2 | Fédération SAML | sso.saml |
+| layout.jsp, prolongation_ENT | uPortal 4 | uportal4-prolongation |
+| /api/v4-3/dlm/layout.json | uPortal 5 | uportal5 |
+| direct_cal.jsp avec lien personnel | ADE iCal | ade-ical-link |
+| /portal/RestApi/ | Portail ADE | ade-portal-rest |
+| /services/data.php | Passerelle ScoDoc | scodoc-gateway |
+| /lib/ajax/service.php | Moodle web | moodle-ajax |
+| /webservice/rest/server.php | Moodle web services | moodle-webservice |
+| /service/soap, cookie ZM_AUTH_TOKEN | Zimbra / Partage | zimbra-rest |
+| /UIDL/, interface Mon Dossier Web | Vaadin / MDW | mon-dossier-web |
+| HyperPlanning, Celcat, Pégase, Outlook… | Autre logiciel | Décrire le besoin sans inventer de fournisseur |
+
+Vérifie les variantes et paramètres avec `cargo run -q -p tonapi-cli -- providers`, puis leur
+implémentation dans crates/tonapi-providers/src/lib.rs. Un indice seul n'est pas une preuve.
+
+3. Écrire la configuration et le rapport
+
+Pour une nouvelle université :
+  cargo run -q -p tonapi-cli -- new university <id>
+Pour une composante d'une université existante :
+  cargo run -q -p tonapi-cli -- new establishment <universite> <id>
+
+Remplis le modèle avec les valeurs non personnelles nécessaires. Utilise un statut beta pour
+une configuration non validée de bout en bout ; garde planned si elle n'est pas utilisable.
+Ne choisis pas active sur le seul résultat de la validation TOML.
+
+Marque la provenance : [vu] avec date et page/requête, [code] avec fichier source, [déduit] avec
+raison, [inconnu] quand l'information manque. N'insère pas de valeur devinée dans un champ requis
+pour faire passer le validateur. Si elle manque, livre les observations et indique le blocage.
+
+Crée reports/<id>.md à partir de reports/_modele.md. Sépare les services observés sur l'ENT, ceux
+configurés, ceux dont le fournisseur est implémenté et ceux réellement testés avec tonAPI. Si un
+logiciel manque au code, écris-le : une configuration seule ne l'ajoutera pas.
+
+4. Vérifier et remettre les fichiers
+
+Exécute :
+  cargo run -q -p tonapi-cli -- validate universities
+  cargo run -q -p tonapi-cli -- report check reports/<id>.md <fichier-toml>
+
+Relis aussi les fichiers manuellement pour les données personnelles, y compris les URL : le
+contrôle automatique ne détecte pas toutes les fuites. Indique les commandes réellement exécutées
+et leur résultat. Si Cargo manque, écris les fichiers possibles et marque les contrôles non
+exécutés. Ne prétends pas que les fichiers sont validés.
+
+Termine en trois points : fichiers produits, ce qui est utilisable ou manque, prochaine action.
+Prépare un commit ou une pull request seulement si je le demande. N'envoie rien sans autorisation.
+Le message de commit sera en français, sans ligne de co-auteur. Je peux fermer le navigateur et
+vérifier ou fermer la session universitaire ; ne promets pas l'absence de traces dans les outils.
 ```
