@@ -9,7 +9,7 @@ Un fournisseur = un logiciel (ADE, ScoDoc, Moodle…), jamais une université. T
 1. **Analyse pure**, sans réseau : `pub(crate) fn parse_…(&str | &serde_json::Value, …) -> Result<Modèle, Problem>`. Elle reçoit le corps tel que le service le renvoie et produit les modèles de `tonapi-core`. C'est elle qui porte presque tous les tests.
 2. **Récupération** : `pub(crate) async fn fetch_…(ctx: &mut Context<'_>, config…) -> Result<Modèle, Problem>`. Elle ouvre un `Net` (`src/net.rs`), fait les requêtes, appelle `net.save(ctx)` avant de rendre la main, puis passe le corps à l'analyse.
 
-L'aiguillage (`src/lib.rs`) appelle `fetch_…` dans le bras du fournisseur, à la place de `not_implemented(…)`.
+L'aiguillage (`src/lib.rs`) appelle `fetch_…` dans le bras du fournisseur. Une connexion propre au service (`sign_in`) est appelée par `service_login`.
 
 ## Règles
 

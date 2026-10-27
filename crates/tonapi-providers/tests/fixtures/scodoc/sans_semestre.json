@@ -1,0 +1,7 @@
+{
+  "config": { "passerelle_version": "7.2.3", "session": "e00000000000", "name": "Camille Demo", "statut": 10 },
+  "auth": { "session": "e00000000000", "name": "Camille Demo", "statut": 10 },
+  "semestres": [],
+  "relevé": { "etudiant": { "dept_acronym": null }, "ressources": [], "saes": [] },
+  "absences": []
+}

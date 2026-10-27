@@ -12,6 +12,7 @@ mod ade_rest;
 mod demo;
 #[allow(dead_code)] // utilisé par les fournisseurs réseau au fur et à mesure de leur ajout
 mod net;
+mod scodoc;
 mod sso;
 
 use chrono::{DateTime, NaiveDate, Utc};
@@ -160,7 +161,9 @@ pub async fn grades(ctx: &mut Context<'_>) -> Result<Fetched<GradeReport>, Probl
     let services = ctx.services();
     match &services.grades {
         Some(GradesService::Demo) => Ok(fetched(demo::grades(), "demo")),
-        Some(GradesService::ScodocGateway(_)) => Err(not_implemented("scodoc-gateway")),
+        Some(GradesService::ScodocGateway(config)) => scodoc::fetch_grades(ctx, config)
+            .await
+            .map(|data| fetched(data, "scodoc-gateway")),
         Some(GradesService::Link(_) | GradesService::None) | None => {
             Err(absent(&services, ServiceKind::Grades))
         }
@@ -171,7 +174,9 @@ pub async fn absences(ctx: &mut Context<'_>) -> Result<Fetched<AbsenceReport>, P
     let services = ctx.services();
     match &services.absences {
         Some(AbsencesService::Demo) => Ok(fetched(demo::absences(ctx.now), "demo")),
-        Some(AbsencesService::ScodocGateway(_)) => Err(not_implemented("scodoc-gateway")),
+        Some(AbsencesService::ScodocGateway(config)) => scodoc::fetch_absences(ctx, config)
+            .await
+            .map(|data| fetched(data, "scodoc-gateway")),
         Some(AbsencesService::Link(_) | AbsencesService::None) | None => {
             Err(absent(&services, ServiceKind::Absences))
         }
@@ -219,8 +224,14 @@ pub async fn service_login(
     username: &str,
     password: &str,
 ) -> Result<(), Problem> {
-    let _ = (username, password);
     let services = ctx.services();
+    match (kind, &services.grades, &services.absences) {
+        (ServiceKind::Grades, Some(GradesService::ScodocGateway(config)), _)
+        | (ServiceKind::Absences, _, Some(AbsencesService::ScodocGateway(config))) => {
+            return scodoc::sign_in(ctx, config, username, password).await;
+        }
+        _ => {}
+    }
     let provider = services
         .availability()
         .into_iter()

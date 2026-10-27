@@ -1,0 +1,17 @@
+{
+  "config": { "passerelle_version": "7.2.3", "session": "e00000000000", "name": "Camille Demo", "statut": 10 },
+  "auth": { "session": "e00000000000", "name": "Camille Demo", "statut": 10 },
+  "semestres": [
+    { "titre": "BUT Démo - Semestre 1", "formsemestre_id": 900, "semestre_id": 1, "annee_scolaire": "2025-2026" },
+    { "titre": "BUT Démo - Semestre 2", "formsemestre_id": 901, "semestre_id": 2, "annee_scolaire": "2025-2026" }
+  ],
+  "relevé": {
+    "type": "BUT",
+    "publie": false,
+    "etudiant": { "dept_acronym": "DEMO" },
+    "ressources": [],
+    "saes": [],
+    "message": "Relevé non publié."
+  },
+  "absences": []
+}

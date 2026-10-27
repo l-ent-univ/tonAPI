@@ -1,0 +1,217 @@
+{
+  "config": {
+    "passerelle_version": "7.2.3",
+    "histogramme": true,
+    "module_absences": true,
+    "releve_PDF": true,
+    "etudiant_modif_photo": false,
+    "nom_IUT": "IUT de Démonstration",
+    "message_non_publication_releve": "Relevé non publié.",
+    "data_absences_scodoc": true,
+    "metrique_absences": "demi",
+    "session": "e00000000000",
+    "name": "Camille Demo",
+    "statut": 10
+  },
+  "auth": { "session": "e00000000000", "name": "Camille Demo", "statut": 10 },
+  "semestres": [
+    { "titre": "BUT Démo - Semestre 1", "formsemestre_id": 901, "semestre_id": 1, "annee_scolaire": "2026-2027" }
+  ],
+  "relevé": {
+    "version": "0",
+    "type": "BUT",
+    "date": "2026-10-12T10:58:26+02:00",
+    "publie": true,
+    "etat_inscription": "I",
+    "etudiant": {
+      "nom": "Demo",
+      "prenom": "Camille",
+      "code_nip": "e00000000000",
+      "code_ine": "0000000000A",
+      "email": "camille.demo@exemple.invalid"
+    },
+    "formation": { "id": 11, "acronyme": "DEMO", "titre_officiel": "BUT Démo", "titre": "BUT Démo" },
+    "formsemestre_id": 901,
+    "options": { "show_abs": true, "show_rangs": true },
+    "appreciation": [],
+    "ressources": {
+      "R1.10": {
+        "id": 5110,
+        "titre": "Culture numérique",
+        "code_apogee": "",
+        "moyenne": {},
+        "evaluations": []
+      },
+      "R1.01": {
+        "id": 5101,
+        "titre": "Initiation au développement",
+        "code_apogee": "",
+        "url": "/ScoDoc/DEMO/Scolarite/Notes/moduleimpl_status?moduleimpl_id=5101",
+        "moyenne": {},
+        "evaluations": [
+          {
+            "id": 7001,
+            "coef": "01.00",
+            "date": "2026-09-11T00:00:00+02:00",
+            "description": "Note TD",
+            "evaluation_type": 0,
+            "note": { "value": "12.50", "min": "04.00", "max": "19.00", "moy": "11.20" },
+            "poids": { "UE1.1": 1, "UE1.2": 0 }
+          },
+          {
+            "id": 7002,
+            "coef": 2,
+            "date": "2026-09-25T00:00:00+02:00",
+            "description": "Contrôle",
+            "note": { "value": "14,25", "min": "03.00", "max": "18.00", "moy": "10.90" }
+          },
+          {
+            "id": 7003,
+            "coef": "01.00",
+            "date": "2026-10-02T00:00:00+02:00",
+            "description": "Projet",
+            "note": { "value": "~", "min": "~", "max": "~", "moy": "~" }
+          },
+          {
+            "id": 7004,
+            "coef": "01.00",
+            "date": "2026-10-09T00:00:00+02:00",
+            "description": "Oral",
+            "note": { "value": "ABS", "min": "~", "max": "~", "moy": "~" }
+          },
+          {
+            "id": 7005,
+            "coef": "01.00",
+            "date": "2026-10-10T00:00:00+02:00",
+            "description": "Rattrapage",
+            "note": { "value": "EXC", "min": "~", "max": "~", "moy": "~" }
+          },
+          {
+            "id": 7006,
+            "coef": "01.00",
+            "date": "2026-10-11T00:00:00+02:00",
+            "description": "",
+            "note": { "value": "", "min": "", "max": "", "moy": "" }
+          }
+        ]
+      }
+    },
+    "saes": {
+      "SAÉ 1.01": {
+        "id": 5201,
+        "titre": "Réaliser un site web",
+        "moyenne": { "value": "15.00" },
+        "evaluations": [
+          {
+            "id": 7101,
+            "coef": "03.00",
+            "date": "2026-10-05T00:00:00+02:00",
+            "description": "Rendu intermédiaire",
+            "note": { "value": "16.00", "min": "08.00", "max": "20.00", "moy": "13.10" }
+          }
+        ]
+      }
+    },
+    "ues_capitalisees": {},
+    "ues": {
+      "UE1.2": {
+        "id": 301,
+        "titre": "Réaliser",
+        "numero": 2,
+        "moyenne": { "value": "~", "min": "~", "max": "~", "moy": "~", "rang": "", "total": 0 },
+        "ressources": { "R1.01": { "id": 5101, "coef": 1, "moyenne": "~" } },
+        "saes": {},
+        "ECTS": { "acquis": 0, "total": 10 }
+      },
+      "UE1.1": {
+        "id": 300,
+        "titre": "Comprendre",
+        "numero": 1,
+        "color": "#6125C1",
+        "moyenne": { "value": "12.50", "min": "05.00", "max": "17.00", "moy": "11.00", "rang": "", "total": 0 },
+        "ressources": { "R1.01": { "id": 5101, "coef": 3, "moyenne": "13.40" } },
+        "saes": { "SAÉ 1.01": { "id": 5201, "coef": 8, "moyenne": "15.00" } },
+        "ECTS": { "acquis": 0, "total": 5 }
+      }
+    },
+    "semestre": {
+      "numero": 1,
+      "date_debut": "2026-09-01",
+      "date_fin": "2027-01-31",
+      "annee_universitaire": "2026 - 2027",
+      "absences": { "injustifie": 2, "total": 3, "metrique": "1/2 Jour." },
+      "ECTS": { "acquis": 0, "total": 30 },
+      "notes": { "value": "13.96", "min": "08.00", "moy": "12.00", "max": "16.50" },
+      "rang": { "value": "12", "total": 56, "groupes": {} }
+    }
+  },
+  "absences": {
+    "2026-10-05": [
+      {
+        "idAbs": 79015,
+        "idJustif": [],
+        "debut": 8,
+        "fin": 10,
+        "statut": "absent",
+        "justifie": false,
+        "enseignant": "M. Exemple",
+        "matiereComplet": 5101,
+        "dateFin": "2026-10-05"
+      },
+      {
+        "idAbs": 79016,
+        "idJustif": [],
+        "debut": 10.25,
+        "fin": 10.5,
+        "statut": "retard",
+        "justifie": false,
+        "enseignant": "M. Exemple",
+        "matiereComplet": 5101,
+        "dateFin": "2026-10-05"
+      }
+    ],
+    "2026-10-25": [
+      {
+        "idAbs": 79020,
+        "idJustif": [412],
+        "debut": 8,
+        "fin": 9.5,
+        "statut": "absent",
+        "justifie": true,
+        "enseignant": "Mme Exemple",
+        "matiereComplet": 9999,
+        "dateFin": "2026-10-25"
+      }
+    ],
+    "2026-10-26": [
+      {
+        "idAbs": 79021,
+        "idJustif": [],
+        "debut": 14,
+        "fin": 15.5,
+        "statut": "present",
+        "justifie": false,
+        "enseignant": "M. Exemple",
+        "matiereComplet": 5201,
+        "dateFin": "2026-10-26"
+      },
+      {
+        "idAbs": 79022,
+        "idJustif": [],
+        "debut": 15.5,
+        "fin": 17,
+        "statut": "absent",
+        "justifie": false,
+        "enseignant": "M. Exemple",
+        "matiereComplet": 5201,
+        "dateFin": "2026-10-26"
+      }
+    ]
+  },
+  "totauxAbsences": {
+    "present": { "demi": 5 },
+    "absent": { "demi": 3, "justifie": { "demi": 1 }, "non_justifie": { "demi": 2 } },
+    "retard": { "demi": 1 },
+    "total": { "demi": 9 }
+  }
+}
