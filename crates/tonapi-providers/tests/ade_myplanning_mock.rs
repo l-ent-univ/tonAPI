@@ -1,5 +1,5 @@
 //! Fournisseur `ade-myplanning` de bout en bout contre un faux ADE local : CAS, page MyPlanning,
-//! chargeur GWT, code de permutation, trois services GWT-RPC et `anonymous_cal.jsp`.
+//! chargeur GWT, code de permutation, quatre services GWT-RPC et `anonymous_cal.jsp`.
 //! Codes d'enseignement et numéros de ressources inventés.
 
 use std::collections::BTreeMap;
@@ -11,8 +11,8 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Response, StatusCode, Uri, header};
 use chrono::{NaiveDate, TimeZone, Utc};
 use tonapi_config::{ResolvedUniversity, UniversityFile};
-use tonapi_core::{Course, ErrorCode, Problem};
-use tonapi_providers::{Context, NetSettings, timetable};
+use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
+use tonapi_providers::{Context, NetSettings, timetable, timetable_groups};
 use tonapi_session::{SessionData, StoredCookie};
 
 const SEMAINE: &str = include_str!("fixtures/ade_ical/semaine.ics");
@@ -20,8 +20,45 @@ const PERMUTATION: &str = "1987F1EF14DA1BA12007E141147356DC";
 const POLICY_DIRECT: &str = "AF8E80FD952FAE1F1E1D64FCA0763541";
 const POLICY_WEB: &str = "5EB99F51B592E97DD3B5315B286394D6";
 const POLICY_MY: &str = "E3E2173A11FF04C6E8A538A7E7A002AF";
+const POLICY_CONF: &str = "0F1E2D3C4B5A69788796A5B4C3D2E1F0";
 const LOGIN_REPLY: &str = r#"//OK[0,1,11,9,10,9,2,2,1,8,1,7,6,5,0,2,4,3,1,2,1,["com.adesoft.gwt.directplan.client.rpc.data.MyPlanningLoginReponse/1769343849","java.util.ArrayList/4159755760","com.adesoft.gwt.directplan.client.rpc.data.ProjectParameter/3599371664","com.adesoft.gwt.directplan.client.UrlParameter/970611799","web","","java.util.HashMap/1797211028","com.adesoft.gwt.directplan.client.rpc.ResourceFieldCriteria/1324434193","java.lang.String/2004016611","S1-DEMO-001","S1-DEMO-002"],0,7]"#;
 const IDS_REPLY: &str = r#"//OK[4242,2,4141,2,2,1,["java.util.ArrayList/4159755760","java.lang.Integer/3438268394"],0,7]"#;
+/// Chemin des ressources 4141 et 4242 : catégorie -1, dossiers 10 puis 20.
+const SEARCH_TREE: &str = r#"{"-100""true""0""-1""-1""-1""0""false"[0]""[0][1]{"-1""true""0""-1""-1""-1""0""false"[0]""[0][1]{"10""true""0""-1""-1""-1""0""false"[0]""[0][1]{"20""true""0""-1""-1""-1""0""false"[0]""[2]{"4141""false""0""-1""-1""-1""0""false"[0]""[0]{"4242""false""0""-1""-1""-1""0""false"[0]""[0][0]"#;
+
+/// Nœud de `getChildren` avec son nom (format d'ADE, valeurs inventées).
+fn node(id: &str, folder: bool, name: &str) -> String {
+    format!(
+        r#"{{"{id}""{folder}""1""-1""0""0""0""false"[2]{{"ColorField""COLOR""LabelColor""0,0,0""false""false"{{"StringField""NAME""LabelName""{name}""false""false""{name}""trainee""1""0"[0][0]"#
+    )
+}
+
+/// Enfants d'un dossier, enveloppés comme une réponse GWT.
+fn children_reply(opened: &str) -> String {
+    let id = opened
+        .strip_prefix("{\"")
+        .and_then(|r| r.split('"').next())
+        .unwrap_or("");
+    let kids = match id {
+        "-100" => vec![node("-1", true, "Groupes d'étudiants")],
+        "-1" => vec![
+            node("10", true, "Licence Démo"),
+            node("11", true, "Hors chemin"),
+        ],
+        "10" => vec![node("20", true, "L1 Démo")],
+        "20" => vec![
+            node("4141", false, "Groupe A"),
+            node("4242", false, "Groupe B"),
+            node("4343", false, "Groupe C"),
+        ],
+        other => panic!("dossier {other} ouvert hors du chemin"),
+    };
+    // ADE termine la réponse par une valeur après les enfants.
+    let text = format!(r#"{{"0"{opened}[{}]{}"false""#, kids.len(), kids.concat());
+    // GWT écrit l'apostrophe en \x27.
+    let quoted = serde_json::to_string(&text).unwrap().replace('\'', "\\x27");
+    format!("//OK[1,[{quoted}],0,7]")
+}
 
 #[derive(Default)]
 struct Mock {
@@ -118,7 +155,7 @@ async fn handle(
             "text/html",
             None,
             format!(
-                "function a(){{Yx.call(this,EEd(),'DirectPlanningServiceProxy','{POLICY_DIRECT}',X)}} function b(){{Yx.call(this,EEd(),'WebClientServiceProxy','{POLICY_WEB}',X)}} function c(){{Yx.call(this,EEd(),'MyPlanningClientServiceProxy','{POLICY_MY}',X)}}"
+                "function a(){{Yx.call(this,EEd(),'DirectPlanningServiceProxy','{POLICY_DIRECT}',X)}} function b(){{Yx.call(this,EEd(),'WebClientServiceProxy','{POLICY_WEB}',X)}} function c(){{Yx.call(this,EEd(),'MyPlanningClientServiceProxy','{POLICY_MY}',X)}} function d(){{Yx.call(this,EEd(),'ConfigurationServiceProxy','{POLICY_CONF}',X)}}"
             ),
         ),
         p if p.starts_with("/direct/gwtdirectplanning/") && p.ends_with("ServiceProxy") => {
@@ -138,6 +175,15 @@ async fn handle(
                     assert!(body.contains("|S1-DEMO-001|S1-DEMO-002|"), "{body}");
                     assert!(body.contains("|10|1|11|1|9|2|12|"), "{body}");
                     (POLICY_DIRECT, IDS_REPLY.to_owned())
+                }
+                "method25searchDataById" => {
+                    assert!(body.ends_with("|6|3|8|2|9|4141|9|4242|"), "{body}");
+                    let quoted = serde_json::to_string(SEARCH_TREE).unwrap();
+                    (POLICY_CONF, format!("//OK[1,[{quoted}],0,7]"))
+                }
+                "method4getChildren" => {
+                    let opened = parts.get(10).copied().unwrap_or("");
+                    (POLICY_DIRECT, children_reply(opened))
                 }
                 _ => return reply(StatusCode::OK, "text/plain", None, "//EX[0,[],0,7]".to_owned()),
             };
@@ -281,4 +327,50 @@ async fn sans_session_cas_la_session_est_expiree() {
     let uni = university(&base);
     let problem = week(&uni, &mut session(false)).await.unwrap_err();
     assert_eq!(problem.code, ErrorCode::SessionExpired);
+}
+
+#[tokio::test]
+async fn groupes_nommes_par_l_arbre_ade() {
+    let (state, base) = start().await;
+    let uni = university(&base);
+    let mut session = session(true);
+    let mut ctx = Context {
+        university: &uni,
+        session: &mut session,
+        now: Utc.with_ymd_and_hms(2026, 10, 5, 8, 0, 0).unwrap(),
+        net: NetSettings { https_only: false },
+    };
+    let groups = timetable_groups(&mut ctx).await.unwrap();
+    assert_eq!(groups.provider, "ade-myplanning");
+    assert_eq!(
+        groups.data,
+        [
+            TimetableGroup {
+                id: "4141".to_owned(),
+                name: "Groupe A".to_owned(),
+                path: vec!["Licence Démo".to_owned(), "L1 Démo".to_owned()],
+                selected: true,
+            },
+            TimetableGroup {
+                id: "4242".to_owned(),
+                name: "Groupe B".to_owned(),
+                path: vec!["Licence Démo".to_owned(), "L1 Démo".to_owned()],
+                selected: true,
+            },
+        ]
+    );
+    let s = state.lock().unwrap();
+    // Racine, catégorie, deux dossiers : le dossier 11 hors chemin n'est pas ouvert.
+    assert_eq!(
+        s.calls
+            .iter()
+            .filter(|c| *c == "method4getChildren")
+            .count(),
+        4
+    );
+    let key = format!("ade-myplanning.{}", base.trim_start_matches("http://"));
+    assert_eq!(
+        session.tokens.get(&key).map(String::as_str),
+        Some("4141,4242")
+    );
 }

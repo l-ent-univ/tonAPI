@@ -13,11 +13,17 @@
 //! Les « policies » GWT (une signature par service) changent à chaque version d'ADE : elles sont
 //! lues dans le JavaScript public de la permutation (`<permutation>.cache.html`), jamais figées.
 //! [vu] Paul-Valéry, ADE 6.15, 27/10/2026.
+//!
+//! Groupes : `ConfigurationServiceProxy.searchDataById` donne l'arbre des dossiers qui mènent aux
+//! ressources de l'étudiant (numéros seulement) ; `DirectPlanningServiceProxy.getChildren` ouvre
+//! ces dossiers un par un et donne les noms. Comme MyPlanning, on n'ouvre que ce chemin.
+
+use std::collections::{BTreeMap, HashSet, VecDeque};
 
 use chrono::NaiveDate;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::{Method, StatusCode};
-use tonapi_core::{Course, ErrorCode, Problem};
+use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
 use url::Url;
 
 use crate::Context;
@@ -36,6 +42,15 @@ const LOGIN_REQUEST: &str = "com.adesoft.gwt.core.client.rpc.data.LoginRequest/3
 const DIRECT_LOGIN_REQUEST: &str =
     "com.adesoft.gwt.directplan.client.rpc.data.DirectLoginRequest/635437471";
 const STRING_TYPE: &str = "java.lang.String/2004016611";
+const ARRAY_LIST: &str = "java.util.ArrayList/4159755760";
+const INTEGER_TYPE: &str = "java.lang.Integer/3438268394";
+const FILTER_TYPE: &str = "com.adesoft.gwt.core.client.rpc.config.FilterType/1396315430";
+const TREE_CONFIG: &str = "com.adesoft.gwt.directplan.client.ui.tree.TreeResourceConfig/2234901663";
+
+/// Racine de l'arbre des ressources, telle que MyPlanning la demande.
+const TREE_ROOT: &str = r#"{"-100""true""-1""-1""-1""-1""0""false"[0]"""""0""0"[0][0]"#;
+/// Dossiers ouverts au plus pour lister les groupes (MyPlanning en ouvre 25 pour 14 ressources).
+const MAX_FOLDERS: usize = 80;
 
 fn token_key(base: &Url) -> String {
     match base.port() {
@@ -104,7 +119,7 @@ async fn read(
     {
         return Ok((ics, ids));
     }
-    let ids = discover(net, base, project_id).await?;
+    let (_, ids) = discover(net, base, project_id).await?;
     match download(net, base, project_id, &ids, from, to).await? {
         Some(ics) => Ok((ics, ids)),
         None => Err(upstream(
@@ -151,8 +166,84 @@ async fn download(
     Ok((status.is_success() && is_calendar(&body)).then_some(body))
 }
 
+/// Groupes de l'étudiant : ses ressources ADE, nommées, avec le chemin des dossiers.
+pub(crate) async fn fetch_groups(
+    ctx: &mut Context<'_>,
+    base_url: &Url,
+    project_id: u32,
+) -> Result<Vec<TimetableGroup>, Problem> {
+    let base = root(base_url);
+    let mut net = Net::open(ctx, PROVIDER)?;
+    let result = groups(&mut net, &base, project_id).await;
+    net.save(ctx);
+    let (groups, ids) = result?;
+    ctx.session.tokens.insert(
+        token_key(&base),
+        ids.iter().map(u32::to_string).collect::<Vec<_>>().join(","),
+    );
+    Ok(groups)
+}
+
+async fn groups(
+    net: &mut Net,
+    base: &Url,
+    project_id: u32,
+) -> Result<(Vec<TimetableGroup>, Vec<u32>), Problem> {
+    let (rpc, ids) = discover(net, base, project_id).await?;
+    let reply = rpc
+        .call(net, "ConfigurationServiceProxy", &rpc.search_body(&ids)?)
+        .await?;
+    let folders = path_folders(reply.text().ok_or_else(bad_tree)?)?;
+    let wanted: HashSet<i64> = ids.iter().map(|&id| i64::from(id)).collect();
+
+    let mut found: BTreeMap<i64, TimetableGroup> = BTreeMap::new();
+    let mut queue = VecDeque::from([(TREE_ROOT.to_owned(), Vec::<String>::new())]);
+    let mut opened = 0;
+    while let Some((node, path)) = queue.pop_front() {
+        opened += 1;
+        if opened > MAX_FOLDERS {
+            break;
+        }
+        let reply = rpc
+            .call(
+                net,
+                "DirectPlanningServiceProxy",
+                &rpc.children_body(&node)?,
+            )
+            .await?;
+        for child in children(reply.text().ok_or_else(bad_tree)?)? {
+            if child.folder && folders.contains(&child.id) {
+                let mut inner = path.clone();
+                // Les numéros négatifs sont les catégories d'ADE, pas des dossiers nommés.
+                if child.id >= 0 {
+                    inner.push(child.name.clone());
+                }
+                queue.push_back((child.raw, inner));
+            } else if !child.folder && wanted.contains(&child.id) {
+                found.entry(child.id).or_insert_with(|| TimetableGroup {
+                    id: child.id.to_string(),
+                    name: child.name,
+                    path: path.clone(),
+                    selected: true,
+                });
+            }
+        }
+    }
+    if found.is_empty() {
+        return Err(upstream(
+            PROVIDER,
+            "aucune ressource de l'étudiant dans l'arbre ADE",
+        ));
+    }
+    Ok((found.into_values().collect(), ids))
+}
+
+fn bad_tree() -> Problem {
+    upstream(PROVIDER, "arbre des ressources ADE illisible")
+}
+
 /// Numéros des ressources de l'étudiant, par les appels GWT de MyPlanning.
-async fn discover(net: &mut Net, base: &Url, project_id: u32) -> Result<Vec<u32>, Problem> {
+async fn discover(net: &mut Net, base: &Url, project_id: u32) -> Result<(Rpc, Vec<u32>), Problem> {
     let entry = base
         .join(ENTRY)
         .map_err(|_| upstream(PROVIDER, "adresse ADE illisible"))?;
@@ -196,7 +287,7 @@ async fn discover(net: &mut Net, base: &Url, project_id: u32) -> Result<Vec<u32>
             "trop de ressources ADE pour un étudiant",
         ));
     }
-    Ok(ids)
+    Ok((rpc, ids))
 }
 
 /// Signatures (`policy`) de chaque service, lues dans le code de la première permutation
@@ -400,6 +491,67 @@ impl Rpc {
         values.push("0".to_owned());
         Ok(Self::body(&table, &values))
     }
+
+    /// `searchDataById(client, FilterType#3, [numéros])` : dossiers qui mènent aux ressources.
+    fn search_body(&self, ids: &[u32]) -> Result<String, Problem> {
+        let service = "ConfigurationServiceProxy";
+        let table = [
+            self.module.as_str(),
+            self.policy(service)?,
+            "com.adesoft.gwt.core.client.rpc.ConfigurationServiceProxy",
+            "method25searchDataById",
+            "J",
+            FILTER_TYPE,
+            "java.util.List",
+            ARRAY_LIST,
+            INTEGER_TYPE,
+        ];
+        let mut values: Vec<String> = ["1", "2", "3", "4", "3", "5", "6", "7", &self.client]
+            .iter()
+            .map(|v| (*v).to_owned())
+            .collect();
+        values.extend(["6", "3", "8"].map(str::to_owned));
+        values.push(ids.len().to_string());
+        for id in ids {
+            values.extend(["9".to_owned(), id.to_string()]);
+        }
+        Ok(Self::body(&table, &values))
+    }
+
+    /// `getChildren(client, nœud, configuration)` : enfants d'un dossier avec leur nom. Le nœud
+    /// est renvoyé tel qu'ADE l'a écrit ; la configuration demande les champs couleur et nom.
+    fn children_body(&self, node: &str) -> Result<String, Problem> {
+        const CONFIG: &str = "8|7|0|9|2|-1|-1|10|0|2|6|11|12|0|13|11|14|15|11|0|0|6|16|12|0|17|16|14|15|4|0|0|18|0|18|0|19|20|1|16|18|0";
+        let service = "DirectPlanningServiceProxy";
+        let table = [
+            self.module.as_str(),
+            self.policy(service)?,
+            "com.adesoft.gwt.directplan.client.rpc.DirectPlanningServiceProxy",
+            "method4getChildren",
+            "J",
+            STRING_TYPE,
+            TREE_CONFIG,
+            node,
+            "[I/2970817851",
+            "java.util.LinkedHashMap/3008245022",
+            "COLOR",
+            "com.adesoft.gwt.core.client.rpc.config.OutputField/870745015",
+            "LabelColor",
+            "",
+            "com.adesoft.gwt.core.client.rpc.config.FieldType/1797283245",
+            "NAME",
+            "LabelName",
+            ARRAY_LIST,
+            "com.extjs.gxt.ui.client.data.SortInfo/1143517771",
+            "com.extjs.gxt.ui.client.Style$SortDir/3873584144",
+        ];
+        let values: Vec<String> = ["1", "2", "3", "4", "3", "5", "6", "7", &self.client]
+            .into_iter()
+            .chain(CONFIG.split('|'))
+            .map(str::to_owned)
+            .collect();
+        Ok(Self::body(&table, &values))
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -417,7 +569,7 @@ struct GwtResponse {
 impl GwtResponse {
     fn parse(text: &str) -> Option<Self> {
         let body = text.strip_prefix("//OK")?;
-        let value: serde_json::Value = serde_json::from_str(body).ok()?;
+        let value: serde_json::Value = serde_json::from_str(&json_escapes(body)).ok()?;
         let items = value.as_array()?;
         // Les deux derniers éléments sont les drapeaux et la version ; la table de chaînes précède.
         let table_at = items.len().checked_sub(3)?;
@@ -461,6 +613,186 @@ impl GwtResponse {
         let i = usize::try_from(index).ok()?.checked_sub(1)?;
         self.strings.get(i).map(String::as_str)
     }
+
+    /// Chaîne renvoyée seule (`//OK[1,["…"],0,7]`).
+    fn text(&self) -> Option<&str> {
+        self.string(*self.ints.first()?)
+    }
+}
+
+/// GWT écrit certains caractères en `\xHH` (apostrophe, esperluette), que JSON refuse.
+fn json_escapes(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('x') => out.push_str("\\u00"),
+            Some(next) => {
+                out.push('\\');
+                out.push(next);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------------------------
+// Arbre des ressources (format texte d'ADE dans une chaîne GWT)
+// ---------------------------------------------------------------------------------------------
+
+/// Élément du format d'arbre : `{` ouvre un nœud, `[n]` annonce n éléments, `"…"` une valeur.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Token<'a> {
+    Open,
+    Count(usize),
+    Text(&'a str),
+}
+
+/// Découpe du format ; chaque élément garde sa position de début et de fin.
+fn tokens(text: &str) -> Option<Vec<(Token<'_>, usize, usize)>> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(&b) = text.as_bytes().get(i) {
+        let (token, end) = match b {
+            b'{' => (Token::Open, i + 1),
+            b'[' => {
+                let close = i + 1 + text.get(i + 1..)?.find(']')?;
+                (
+                    Token::Count(text.get(i + 1..close)?.parse().ok()?),
+                    close + 1,
+                )
+            }
+            b'"' => {
+                let close = i + 1 + text.get(i + 1..)?.find('"')?;
+                (Token::Text(text.get(i + 1..close)?), close + 1)
+            }
+            _ => return None,
+        };
+        out.push((token, i, end));
+        i = end;
+    }
+    Some(out)
+}
+
+/// Dossiers de la réponse de `searchDataById` : tous les nœuds marqués `"true"`.
+fn path_folders(text: &str) -> Result<HashSet<i64>, Problem> {
+    let tokens = tokens(text).ok_or_else(bad_tree)?;
+    let mut out = HashSet::new();
+    for window in tokens.windows(3) {
+        if let [
+            (Token::Open, ..),
+            (Token::Text(id), ..),
+            (Token::Text("true"), ..),
+        ] = window
+        {
+            out.insert(id.parse().map_err(|_| bad_tree())?);
+        }
+    }
+    if out.is_empty() {
+        return Err(bad_tree());
+    }
+    Ok(out)
+}
+
+/// Enfant d'un dossier : numéro, dossier ou ressource, nom et texte du nœud.
+#[derive(Debug, PartialEq)]
+struct TreeNode {
+    id: i64,
+    folder: bool,
+    name: String,
+    raw: String,
+}
+
+/// Lecteur des nœuds de `getChildren` :
+/// `{` 8 valeurs, `[n]` n champs (`{` 6 valeurs), 4 valeurs, `[0][0]`.
+struct Reader<'a> {
+    text: &'a str,
+    tokens: Vec<(Token<'a>, usize, usize)>,
+    at: usize,
+}
+
+impl<'a> Reader<'a> {
+    fn next(&mut self) -> Option<(Token<'a>, usize, usize)> {
+        let token = *self.tokens.get(self.at)?;
+        self.at += 1;
+        Some(token)
+    }
+
+    fn open(&mut self) -> Option<usize> {
+        match self.next()? {
+            (Token::Open, start, _) => Some(start),
+            _ => None,
+        }
+    }
+
+    fn count(&mut self) -> Option<(usize, usize)> {
+        match self.next()? {
+            (Token::Count(n), _, end) => Some((n, end)),
+            _ => None,
+        }
+    }
+
+    fn texts(&mut self, n: usize) -> Option<Vec<&'a str>> {
+        (0..n)
+            .map(|_| match self.next()? {
+                (Token::Text(t), ..) => Some(t),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn node(&mut self) -> Option<TreeNode> {
+        let start = self.open()?;
+        let head = self.texts(8)?;
+        let mut name = None;
+        for _ in 0..self.count()?.0 {
+            self.open()?;
+            let field = self.texts(6)?;
+            if field.get(1) == Some(&"NAME") {
+                name = field.get(3).map(|s| (*s).to_owned());
+            }
+        }
+        self.texts(4)?;
+        // Enfants déjà chargés : MyPlanning n'en renvoie pas, on refuse plutôt que deviner.
+        let (first, _) = self.count()?;
+        let (second, end) = self.count()?;
+        if first != 0 || second != 0 {
+            return None;
+        }
+        Some(TreeNode {
+            id: head.first()?.parse().ok()?,
+            folder: *head.get(1)? == "true",
+            name: name.unwrap_or_default(),
+            raw: self.text.get(start..end)?.to_owned(),
+        })
+    }
+}
+
+/// Réponse de `getChildren` : `{"0"`, le dossier ouvert, `[n]`, ses n enfants, puis des valeurs
+/// finales (`"false"` à Paul-Valéry [vu] 27/10/2026, sens [inconnu]) qui sont ignorées.
+fn children(text: &str) -> Result<Vec<TreeNode>, Problem> {
+    let parse = || {
+        let mut reader = Reader {
+            text,
+            tokens: tokens(text)?,
+            at: 0,
+        };
+        reader.open()?;
+        reader.texts(1)?;
+        reader.node()?;
+        let (n, _) = reader.count()?;
+        let nodes = (0..n).map(|_| reader.node()).collect::<Option<Vec<_>>>()?;
+        let rest = reader.tokens.get(reader.at..)?;
+        rest.iter()
+            .all(|(token, ..)| matches!(token, Token::Text(_)))
+            .then_some(nodes)
+    };
+    parse().ok_or_else(bad_tree)
 }
 
 /// Un critère de MyPlanning : champ ADE et valeurs (codes d'enseignement).
@@ -694,6 +1026,60 @@ mod tests {
                 "C4EA130FD0ED44BE513FEEDDE13614DA"
             ]
         );
+    }
+
+    /// Arbre inventé : catégorie -1, dossier 10, ressources 41 et 42.
+    const SEARCH: &str = r#"{"-100""true""0""-1""-1""-1""0""false"[0]""[0][1]{"-1""true""0""-1""-1""-1""0""false"[0]""[0][1]{"10""true""0""-1""-1""-1""0""false"[0]""[2]{"41""false""0""-1""-1""-1""0""false"[0]""[0]{"42""false""0""-1""-1""-1""0""false"[0]""[0][0]"#;
+    const CHILDREN: &str = r#"{"0"{"10""true""1""-1""0""0""0""false"[1]{"StringField""NAME""LabelName""L1 Démo""false""false""L1 Démo""trainee""1""0"[0][0][2]{"41""false""2""-1""0""0""0""false"[2]{"ColorField""COLOR""LabelColor""255,0,0""false""false"{"StringField""NAME""LabelName""Groupe A""false""false""L1 Démo.Groupe A""trainee""1""0"[0][0]{"42""false""2""-1""1""1""0""false"[2]{"ColorField""COLOR""LabelColor""0,0,255""false""false"{"StringField""NAME""LabelName""Groupe B""false""false""L1 Démo.Groupe B""trainee""1""0"[0][0]"false""#;
+
+    #[test]
+    fn dossiers_du_chemin() {
+        let folders = path_folders(SEARCH).unwrap();
+        assert_eq!(folders, HashSet::from([-100, -1, 10]));
+        assert!(path_folders("{\"1\"").is_err());
+    }
+
+    #[test]
+    fn enfants_d_un_dossier() {
+        let nodes = children(CHILDREN).unwrap();
+        assert_eq!(nodes.len(), 2);
+        assert_eq!((nodes[0].id, nodes[0].folder), (41, false));
+        assert_eq!(nodes[1].name, "Groupe B");
+        // Le nœud est recopié tel quel pour être rouvert.
+        assert!(nodes[0].raw.starts_with(r#"{"41""false""2""#));
+        assert!(nodes[0].raw.ends_with(r#""trainee""1""0"[0][0]"#));
+        assert!(CHILDREN.contains(&nodes[1].raw));
+        // Racine demandée par MyPlanning : un nœud sans champ.
+        let root = format!(r#"{{"0"{TREE_ROOT}[0]"false""#);
+        assert_eq!(children(&root).unwrap(), []);
+        // Après les enfants, seules des valeurs sont admises.
+        assert!(children(&format!(r#"{{"0"{TREE_ROOT}[0][0]"#)).is_err());
+        assert!(children(&CHILDREN[..CHILDREN.len() - 3]).is_err());
+    }
+
+    #[test]
+    fn echappements_gwt() {
+        let reply =
+            GwtResponse::parse(r#"//OK[1,["Groupe d\x27\xE9tudiants \x26 co"],0,7]"#).unwrap();
+        assert_eq!(reply.text(), Some("Groupe d'étudiants & co"));
+    }
+
+    #[test]
+    fn corps_de_get_children() {
+        let rpc = Rpc {
+            module: Url::parse("https://ade.example.test/direct/gwtdirectplanning/").unwrap(),
+            policies: vec![(
+                "DirectPlanningServiceProxy".to_owned(),
+                "0123456789ABCDEF0123456789ABCDEF".to_owned(),
+            )],
+            client: "aF_MmK8".to_owned(),
+        };
+        let body = rpc.children_body(TREE_ROOT).unwrap();
+        let parts: Vec<&str> = body.split('|').collect();
+        assert_eq!(parts[2], "20");
+        assert_eq!(parts[10], TREE_ROOT);
+        assert!(body.ends_with("|1|2|3|4|3|5|6|7|aF_MmK8|8|7|0|9|2|-1|-1|10|0|2|6|11|12|0|13|11|14|15|11|0|0|6|16|12|0|17|16|14|15|4|0|0|18|0|18|0|19|20|1|16|18|0|"));
+        assert!(rpc.search_body(&[1]).is_err(), "signature absente");
     }
 
     #[test]

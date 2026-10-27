@@ -257,10 +257,14 @@ pub async fn timetable_groups(
             let groups = ade_rest::fetch_groups(ctx, base_url).await?;
             Ok(fetched(groups, "ade-portal-rest"))
         }
-        Some(TimetableService::AdeMyplanning { .. }) => {
-            Err(Problem::new(ErrorCode::NotImplemented)
-                .detail("le fournisseur `ade-myplanning` ne liste pas encore les groupes"))
-        }
+        Some(TimetableService::AdeMyplanning {
+            base_url,
+            project_id,
+            ..
+        }) => Ok(fetched(
+            ade_myplanning::fetch_groups(ctx, base_url, *project_id).await?,
+            "ade-myplanning",
+        )),
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
             Err(absent(&services, ServiceKind::Timetable))
         }
