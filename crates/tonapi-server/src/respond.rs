@@ -20,7 +20,7 @@ pub struct DataResponse<T: ToSchema> {
 }
 
 /// Exécute `fetch` avec la session de l'étudiant. Si le fournisseur a modifié la session (cookies,
-/// jetons), le nouveau jeton part dans l'en-tête `TonAPI-Session`.
+/// jetons), le nouveau jeton part dans l'en-tête `TonAPI-Session`, y compris avec une erreur.
 pub async fn respond<T, F>(
     state: &AppState,
     original: SessionData,
@@ -41,7 +41,18 @@ where
         now: Utc::now(),
         net: tonapi_providers::NetSettings::default(),
     };
-    let fetched = fetch(&mut ctx).await?;
+    let fetched = match fetch(&mut ctx).await {
+        Ok(fetched) => fetched,
+        // Même en erreur, un fournisseur a pu renouveler des cookies ou retirer un jeton refusé.
+        Err(problem) => {
+            let mut response = ApiError::from(problem).into_response();
+            no_store(&mut response);
+            if session != original {
+                attach_session(state, &session, &mut response)?;
+            }
+            return Ok(response);
+        }
+    };
     let meta = Meta {
         university: session.university.clone(),
         establishment: session.establishment.as_ref().map(|e| e.id.clone()),
