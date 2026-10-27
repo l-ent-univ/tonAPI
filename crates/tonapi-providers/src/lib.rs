@@ -7,6 +7,7 @@
 // Les fournisseurs réseau sont asynchrones ; `demo` ne l'est pas mais partage la même signature.
 #![allow(clippy::unused_async)]
 
+mod ade_ical;
 mod demo;
 #[allow(dead_code)] // utilisé par les fournisseurs réseau au fur et à mesure de leur ajout
 mod net;
@@ -119,7 +120,14 @@ pub async fn timetable(
     let services = ctx.services();
     match &services.timetable {
         Some(TimetableService::Demo) => Ok(fetched(demo::timetable(from, to), "demo")),
-        Some(TimetableService::AdeIcalLink { .. }) => Err(not_implemented("ade-ical-link")),
+        Some(TimetableService::AdeIcalLink {
+            link_page,
+            feed_host,
+            ..
+        }) => {
+            let courses = ade_ical::fetch_timetable(ctx, link_page, feed_host, from, to).await?;
+            Ok(fetched(courses, "ade-ical-link"))
+        }
         Some(TimetableService::AdePortalRest { .. }) => Err(not_implemented("ade-portal-rest")),
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
             Err(absent(&services, ServiceKind::Timetable))
@@ -133,7 +141,7 @@ pub async fn timetable_groups(
     let services = ctx.services();
     match &services.timetable {
         Some(TimetableService::Demo) => Ok(fetched(demo::groups(), "demo")),
-        Some(TimetableService::AdeIcalLink { .. }) => Err(not_implemented("ade-ical-link")),
+        Some(TimetableService::AdeIcalLink { .. }) => Err(ade_ical::groups_unsupported()),
         Some(TimetableService::AdePortalRest { .. }) => Err(not_implemented("ade-portal-rest")),
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
             Err(absent(&services, ServiceKind::Timetable))
