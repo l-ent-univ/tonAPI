@@ -17,7 +17,7 @@ base-url = "https://cas.univ-montp3.fr/cas/"
 
 # [vu] uPortal : `api/v4-3/dlm/layout.json` répond, `api/v5-1/userinfo` répond 404 et
 # `layout.jsp` aussi (pas de ProlongationENT). Les applications passent par la variante uPortal 5,
-# qui lit le même layout ; le profil n'est pas disponible.
+# qui lit le même layout ; le profil vient de `session.json` et `people`.
 [portal]
 kind = "uportal5"
 base-url = "https://monupv.univ-montp3.fr/uPortal/"
@@ -41,13 +41,17 @@ provider = "moodle-ajax"
 base-url = "https://moodle.univ-montp3.fr/"
 entry = "cas"
 
-# [vu] BlueMind (mail.etu.umpv.fr) : aucun fournisseur tonAPI.
+# [vu] BlueMind 5.7.5 : `mail.etu.univ-montp3.fr` redirige vers `mail.etu.umpv.fr`, connexion
+# par le CAS puis API REST. Observé le 27/10/2026.
 [services.mail]
-provider = "link"
-url = "https://mail.etu.univ-montp3.fr/"
-label = "Messagerie (BlueMind)"
+provider = "bluemind"
+base-url = "https://mail.etu.umpv.fr/"
 
 [services.apps]
+provider = "portal"
+
+# [vu] `api/session.json` et `api/people/<id>.json` (le portail n'a pas `v5-1/userinfo`).
+[services.profile]
 provider = "portal"
 
 # [vu] portlet « Certificat de scolarité ».

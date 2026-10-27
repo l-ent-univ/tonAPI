@@ -9,10 +9,9 @@ Provenance : **vu**, **code**, **déduit**, **inconnu**. Indiquer une référenc
 
 - Configuration produite : `university.toml` du dossier `universities/univ-montp3` (statut `beta`).
 - Services utilisables avec tonAPI et preuves : connexion CAS, emploi du temps (ADE MyPlanning),
-  applications du portail et devoirs Moodle, essayés le 27/10/2026 avec un compte étudiant par la
-  console (voir Vérifications).
-- Fournisseurs encore à implémenter : application de scolarité (notes), BlueMind (mail). Ces
-  services sont configurés en lien.
+  mail (BlueMind), profil et applications du portail, devoirs Moodle, essayés le 27/10/2026 avec
+  un compte étudiant par la console (voir Vérifications).
+- Fournisseurs encore à implémenter : application de scolarité (notes), configurée en lien.
 - Prochaine action : observer les notes sur un compte qui en a, pour écrire le fournisseur.
 
 ## Services
@@ -23,9 +22,9 @@ Provenance : **vu**, **code**, **déduit**, **inconnu**. Indiquer une référenc
 | Notes | application Angular, `scolarite.univ-montp3.fr` | CAS | **vu** : `GET /api/etudiants/notes` (JSON `{etapes: [{libelle, codEtape, semestres: {}…}], epreuves: {}, attestations: {}…}`), 27/10 ; aucune note sur ce compte | lien |
 | Absences | aucun relevé observé ; portlet « Déclaration d'absence » (`app.univ-montp3.fr/ent/html/jade.html`) | — | **vu** : portlet `epJade` | absent |
 | Devoirs | Moodle, `moodle.univ-montp3.fr` | CAS (`login/index.php?authCAS=CAS`) | **vu** : retour sur `/my/` avec `sesskey`, `lib/ajax/service.php` | testé (12 éléments) |
-| Mail | BlueMind, `mail.etu.univ-montp3.fr` → `mail.etu.umpv.fr/webapp/mail/` | CAS | **vu** : titre « Messagerie - BlueMind », 27/10 | lien |
+| Mail | BlueMind 5.7.5, `mail.etu.univ-montp3.fr` → `mail.etu.umpv.fr/webapp/mail/` | CAS | **vu** : `webapp/session-infos.js`, `api/mail_folders/…/_all`, `api/mail_items/<dossier>/_sorted`, `_mgetById`, 27/10 | testé (`bluemind`) |
 | Applications | uPortal, `monupv.univ-montp3.fr/uPortal/` | CAS | **vu** : `GET api/v4-3/dlm/layout.json` 200 (47 portlets dont éléments techniques) | testé (32 éléments) |
-| Profil | uPortal | CAS | **vu** : `api/v5-1/userinfo` 404, `layout.jsp` 404 | absent (profil réduit à l'identifiant) |
+| Profil | uPortal | CAS | **vu** : `api/v5-1/userinfo` 404 ; `api/session.json` et `api/people/<id>.json` 200 (`displayName`, `givenName`, `sn`, `mail`, `postalAddress`) | testé (nom, prénom, e-mail ; pas de numéro étudiant) |
 | Documents | portlet « Certificat de scolarité », `app.univ-montp3.fr/ent/Certificat` | CAS | **vu** : portlet `etuCertifScola` | lien |
 
 Ne pas confondre une page consultée dans l'ENT avec une fonction utilisable dans tonAPI.
@@ -68,7 +67,12 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
   `/api/parametres/annee_note`, `/api/parametres/info_not_note` (JSON). Routes relevées dans le
   code client : `/api/etudiants/attestations/…`, `/api/scolarite`. Format des semestres **inconnu**
   (objet vide sur ce compte).
-- **BlueMind** : webmail sur `mail.etu.umpv.fr/webapp/mail/` ; API non observée.
+- **BlueMind 5.7.5**, implémenté (`bluemind`) — **vu** le 27/10/2026 : `webapp/session-infos.js`
+  (`sid`, `userId`, `domain`), en-tête `X-BM-ApiKey` ; `GET api/mail_folders/<domaine_>/user.<id>/_all`,
+  `POST api/mail_items/<dossier>/_sorted` (`{"fields":[{"column":"internal_date","dir":"Desc"}],
+  "filter":{"must":[],"mustNot":["Deleted"]}}`, et `Seen` en plus pour les non lus),
+  `POST api/mail_items/<dossier>/_mgetById` (`value.body.subject`, `date` en ms, `recipients` avec
+  `kind = Originator`, `preview`, `value.flags`).
 
 ## Vérifications
 
@@ -77,7 +81,7 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
 | Configuration | `tonapi validate universities` | succès : 4 universités, 0 problème |
 | Détection automatique de données sensibles | `tonapi report check` sur ce rapport et le TOML | succès |
 | Relecture de confidentialité | rapport et TOML relus : hôtes, chemins, noms de champs et de cookies seulement | effectuée |
-| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), autres services en lien | effectué pour ce compte |
+| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), mail 20 messages, profil (nom, prénom, e-mail), notes et documents en lien | effectué pour ce compte |
 
 ## Inconnues et limites
 
