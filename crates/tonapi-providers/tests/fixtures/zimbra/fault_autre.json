@@ -1,0 +1,9 @@
+{
+  "Body": {
+    "Fault": {
+      "Code": { "Value": "soap:Receiver" },
+      "Reason": { "Text": "system failure" },
+      "Detail": { "Error": { "Code": "service.FAILURE", "_jsns": "urn:zimbra" } }
+    }
+  }
+}

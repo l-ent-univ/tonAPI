@@ -15,6 +15,7 @@ mod moodle;
 mod net;
 mod scodoc;
 mod sso;
+mod zimbra;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use tonapi_config::{
@@ -208,7 +209,14 @@ pub async fn mail_inbox(ctx: &mut Context<'_>) -> Result<Fetched<MailInbox>, Pro
     let services = ctx.services();
     match &services.mail {
         Some(MailService::Demo) => Ok(fetched(demo::inbox(ctx.now), "demo")),
-        Some(MailService::ZimbraRest { .. }) => Err(not_implemented("zimbra-rest")),
+        Some(MailService::ZimbraRest {
+            base_url,
+            entry_url,
+            ..
+        }) => {
+            let inbox = zimbra::fetch_inbox(ctx, base_url, entry_url.as_ref()).await?;
+            Ok(fetched(inbox, "zimbra-rest"))
+        }
         Some(MailService::Link(_) | MailService::None) | None => {
             Err(absent(&services, ServiceKind::Mail))
         }

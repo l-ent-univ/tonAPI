@@ -1,0 +1,9 @@
+{
+  "Body": {
+    "Fault": {
+      "Code": { "Value": "soap:Sender" },
+      "Reason": { "Text": "no valid authtoken present" },
+      "Detail": { "Error": { "Code": "service.AUTH_REQUIRED", "_jsns": "urn:zimbra" } }
+    }
+  }
+}

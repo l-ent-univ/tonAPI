@@ -1,0 +1,10 @@
+{
+  "Body": {
+    "SearchResponse": {
+      "_jsns": "urn:zimbraMail",
+      "sortBy": "dateDesc",
+      "offset": 0,
+      "more": false
+    }
+  }
+}

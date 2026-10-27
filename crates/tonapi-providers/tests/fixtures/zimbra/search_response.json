@@ -1,0 +1,48 @@
+{
+  "Header": { "context": { "_jsns": "urn:zimbra" } },
+  "Body": {
+    "SearchResponse": {
+      "_jsns": "urn:zimbraMail",
+      "sortBy": "dateDesc",
+      "offset": 0,
+      "more": false,
+      "m": [
+        {
+          "id": "4211",
+          "cid": "-4211",
+          "d": 1792998900000,
+          "f": "u",
+          "su": "Réunion de rentrée",
+          "fr": "Bonjour Camille,\n\n   la réunion de rentrée aura lieu   mardi\nen salle  B12.",
+          "e": [
+            { "t": "t", "a": "camille.demo@example.org", "d": "Camille" },
+            { "t": "f", "a": "secretariat.demo@example.org", "d": "Secrétariat", "p": "Secrétariat Demo" }
+          ]
+        },
+        {
+          "id": "4198",
+          "d": 1792866600000,
+          "f": "a",
+          "su": "Planning des examens",
+          "fr": "Voici le planning provisoire.",
+          "e": [
+            { "t": "f", "a": "scolarite.demo@example.org", "d": "Scolarité Demo" }
+          ]
+        },
+        {
+          "id": "4150",
+          "d": 1792888200000
+        },
+        {
+          "id": "4101",
+          "d": 1774740600000,
+          "f": "ur",
+          "su": "Bienvenue",
+          "e": [
+            { "t": "f", "a": "accueil.demo@example.org", "p": "" }
+          ]
+        }
+      ]
+    }
+  }
+}

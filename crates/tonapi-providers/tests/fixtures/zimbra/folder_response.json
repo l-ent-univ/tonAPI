@@ -1,0 +1,10 @@
+{
+  "Body": {
+    "GetFolderResponse": {
+      "_jsns": "urn:zimbraMail",
+      "folder": [
+        { "id": "2", "name": "Inbox", "absFolderPath": "/Inbox", "u": 2, "n": 42 }
+      ]
+    }
+  }
+}
