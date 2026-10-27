@@ -576,7 +576,7 @@ const grade = (g) => (g ? `${g.value}/${g.outOf}` : "—");
 function summarize(key, data) {
   switch (key) {
     case "profile":
-      return { line: data.displayName || data.username, items: [data.email, data.studentNumber && `n° ${data.studentNumber}`].filter(Boolean) };
+      return { line: data.displayName || data.username, items: [data.email, data.studentNumber && `n° ${data.studentNumber}`, data.program].filter(Boolean) };
     case "timetable":
       return { line: `${data.length} séance(s) cette semaine`, items: data.slice(0, 8).map((c) => `${when(c.start)} · ${c.title}${c.rooms?.length ? ` · ${c.rooms.join(", ")}` : ""}`) };
     case "timetable-groups": {
