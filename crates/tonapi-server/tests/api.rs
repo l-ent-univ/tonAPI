@@ -190,7 +190,7 @@ async fn universites_et_composantes() {
         .iter()
         .filter_map(|u| u["id"].as_str())
         .collect();
-    assert_eq!(ids, ["demo", "umontpellier", "univ-rennes"]);
+    assert_eq!(ids, ["demo", "umontpellier", "univ-montp3", "univ-rennes"]);
 
     let r = call(&app, "GET", "/v1/universities/umontpellier", None, None).await;
     assert_eq!(r.status, StatusCode::OK);
