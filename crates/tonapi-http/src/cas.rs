@@ -234,22 +234,153 @@ fn classify(cas: &CasServer, page: &Page) -> Kind {
         if forms.iter().any(|f| f.has("token") || f.has("otp")) || lower.contains("mfa-api") {
             return Kind::UnknownMfa;
         }
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            tracing::debug!("page du CAS non reconnue : {}", page_shape(body, &forms));
+        }
     }
     Kind::Other
 }
 
+/// Structure d'une page pour le diagnostic : scripts, appels `f({…})`, clés JSON et champs de
+/// formulaire. Aucune valeur n'est reprise.
+fn page_shape(body: &str, forms: &[Form]) -> String {
+    let html = scraper::Html::parse_document(body);
+    let mut sources = Vec::new();
+    let mut calls = std::collections::BTreeSet::new();
+    let mut keys = std::collections::BTreeSet::new();
+    if let Ok(selector) = scraper::Selector::parse("script") {
+        for script in html.select(&selector) {
+            if let Some(src) = script.value().attr("src") {
+                sources.push(src.split('?').next().unwrap_or_default().to_owned());
+                continue;
+            }
+            let text: String = script.text().collect();
+            collect_calls(&text, &mut calls);
+            collect_keys(&text, &mut keys);
+        }
+    }
+    let forms: Vec<String> = forms
+        .iter()
+        .map(|f| {
+            let action = f
+                .action
+                .as_deref()
+                .unwrap_or("")
+                .split('?')
+                .next()
+                .unwrap_or("");
+            format!("{action:?}:{:?}", f.names)
+        })
+        .collect();
+    // Pour la page esup-otp : chaque `start(` et le type des paramètres attendus.
+    let starts: Vec<String> = body
+        .match_indices("start(")
+        .map(|(index, call)| {
+            let rest = body[index + call.len()..].trim_start();
+            let value = serde_json::Deserializer::from_str(rest)
+                .into_iter::<serde_json::Value>()
+                .next()
+                .and_then(Result::ok);
+            match value {
+                Some(serde_json::Value::Object(map)) => {
+                    let types: Vec<String> = ["apiUrl", "uid", "userHash"]
+                        .iter()
+                        .map(|k| format!("{k}:{}", json_type(map.get(*k))))
+                        .collect();
+                    format!("objet({})", types.join(","))
+                }
+                Some(_) => "autre".to_owned(),
+                None => rest
+                    .chars()
+                    .next()
+                    .map_or("fin".to_owned(), |c| format!("{c:?}")),
+            }
+        })
+        .collect();
+    let ticket = forms_ticket(body);
+    format!(
+        "scripts={sources:?} appels={calls:?} clés={keys:?} formulaires={forms:?} start={starts:?} ticket={ticket}"
+    )
+}
+
+fn json_type(value: Option<&serde_json::Value>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(serde_json::Value::String(s)) if s.is_empty() => "chaîne vide",
+        Some(serde_json::Value::String(_)) => "chaîne",
+        Some(serde_json::Value::Number(_)) => "nombre",
+        Some(serde_json::Value::Null) => "null",
+        Some(_) => "autre",
+    }
+}
+
+/// État du champ `ticket` : absent, vide ou rempli (jamais sa valeur).
+fn forms_ticket(body: &str) -> &'static str {
+    match forms::forms(body)
+        .iter()
+        .find_map(|f| f.value("ticket").map(str::is_empty))
+    {
+        None => "absent",
+        Some(true) => "vide",
+        Some(false) => "rempli",
+    }
+}
+
+/// Noms `f` des appels `f({` ou `f(\"` dans un script.
+fn collect_calls(text: &str, out: &mut std::collections::BTreeSet<String>) {
+    let bytes = text.as_bytes();
+    for (i, _) in text.match_indices('(') {
+        let next = text[i + 1..].trim_start().chars().next();
+        if !matches!(next, Some('{' | '"' | '\'')) {
+            continue;
+        }
+        let mut start = i;
+        while start > 0
+            && (bytes[start - 1].is_ascii_alphanumeric()
+                || matches!(bytes[start - 1], b'_' | b'$' | b'.'))
+        {
+            start -= 1;
+        }
+        if start < i && out.len() < 30 {
+            out.insert(text[start..i].to_owned());
+        }
+    }
+}
+
+/// Clés `"clé":` d'objets JSON ou JavaScript dans un script.
+fn collect_keys(text: &str, out: &mut std::collections::BTreeSet<String>) {
+    for (i, _) in text.match_indices('"') {
+        let rest = &text[i + 1..];
+        let Some(end) = rest.find('"') else { continue };
+        let key = &rest[..end];
+        let after = rest[end + 1..].trim_start();
+        if after.starts_with(':')
+            && !key.is_empty()
+            && key.len() <= 40
+            && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            && out.len() < 60
+        {
+            out.insert(key.to_owned());
+        }
+    }
+}
+
 /// Page esup-otp : `start({"apiUrl":…,"uid":…,"userHash":…})` et un formulaire avec `ticket`.
+/// La page peut contenir d'autres `start(` (déclaration de la fonction, `restart(`…) : on retient
+/// le premier appel dont l'argument est un objet avec `apiUrl`.
 fn otp_challenge(page: &Page, forms: &[Form]) -> Option<OtpChallenge> {
     let body = &page.body;
-    let start = body.find("start(")? + "start(".len();
-    let rest = body[start..].trim_start();
-    if !rest.starts_with('{') || !rest.contains("\"apiUrl\"") {
-        return None;
-    }
-    let params: serde_json::Value = serde_json::Deserializer::from_str(rest)
-        .into_iter::<serde_json::Value>()
-        .next()?
-        .ok()?;
+    let params = body.match_indices("start(").find_map(|(index, call)| {
+        let rest = body[index + call.len()..].trim_start();
+        if !rest.starts_with('{') {
+            return None;
+        }
+        serde_json::Deserializer::from_str(rest)
+            .into_iter::<serde_json::Value>()
+            .next()?
+            .ok()
+            .filter(|value| value.get("apiUrl").is_some())
+    })?;
     let ticket = forms.iter().find_map(|f| f.value("ticket"))?.to_owned();
     Some(OtpChallenge {
         page_url: page.url.clone(),
@@ -413,6 +544,21 @@ mod tests {
             login_target(&cas, &p.url, &evil),
             Err(CasError::InsecureForm)
         ));
+    }
+
+    #[test]
+    fn page_otp_avec_la_fonction_start_declaree_avant_l_appel() {
+        let otp = page(
+            "https://cas.umontpellier.fr/cas/login-abc?service=x&auth_checked&ticket=ST-1",
+            r#"<script>function start(params) { restart(params); } function restart(p) {}</script>
+            <form method="post"><input name="ticket" value="TK" type="hidden"><input type="hidden" name="uid_hint" value=""></form>
+            <script type="module">start({"apiUrl":"https://otp-api.umontpellier.fr/","uid":"e1","userHash":"h","validated_otp_too_old":false})</script>"#,
+        );
+        let Kind::Otp(challenge) = classify(&um(), &otp) else {
+            panic!("page OTP non reconnue")
+        };
+        assert_eq!(challenge.uid, "e1");
+        assert_eq!(challenge.ticket, "TK");
     }
 
     #[test]
