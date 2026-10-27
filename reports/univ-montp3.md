@@ -8,17 +8,18 @@ Provenance : **vu**, **code**, **déduit**, **inconnu**. Indiquer une référenc
 ## Résultat de l'ajout
 
 - Configuration produite : `university.toml` du dossier `universities/univ-montp3` (statut `beta`).
-- Services utilisables avec tonAPI et preuves : connexion CAS, applications du portail et devoirs
-  Moodle, essayés le 27/10/2026 avec un compte étudiant par la console (voir Vérifications).
-- Fournisseurs encore à implémenter : ADE MyPlanning (emploi du temps), application de scolarité
-  (notes), BlueMind (mail). Ces services sont configurés en lien.
-- Prochaine action : observer l'export iCal d'ADE MyPlanning pour l'emploi du temps.
+- Services utilisables avec tonAPI et preuves : connexion CAS, emploi du temps (ADE MyPlanning),
+  applications du portail et devoirs Moodle, essayés le 27/10/2026 avec un compte étudiant par la
+  console (voir Vérifications).
+- Fournisseurs encore à implémenter : application de scolarité (notes), BlueMind (mail). Ces
+  services sont configurés en lien.
+- Prochaine action : observer les notes sur un compte qui en a, pour écrire le fournisseur.
 
 ## Services
 
 | Service | Logiciel et hôte | Connexion | Preuve et provenance | État dans tonAPI |
 |---|---|---|---|---|
-| Emploi du temps | ADE 6.15 MyPlanning (GWT), `mon-planning.univ-montp3.fr/direct/myplanning.jsp` | CAS | **vu** : portlet `etuADE` → `app.univ-montp3.fr/ent/html/etuADE.html` → MyPlanning, 27/10 | lien |
+| Emploi du temps | ADE 6.15 MyPlanning (GWT), `mon-planning.univ-montp3.fr/direct/myplanning.jsp` | CAS | **vu** : portlet `etuADE` → MyPlanning ; appels GWT `login`, `loadProject`, `getResourceIds` ; flux public `anonymous_cal.jsp`, 27/10 | testé (`ade-myplanning`) |
 | Notes | application Angular, `scolarite.univ-montp3.fr` | CAS | **vu** : `GET /api/etudiants/notes` (JSON `{etapes: [{libelle, codEtape, semestres: {}…}], epreuves: {}, attestations: {}…}`), 27/10 ; aucune note sur ce compte | lien |
 | Absences | aucun relevé observé ; portlet « Déclaration d'absence » (`app.univ-montp3.fr/ent/html/jade.html`) | — | **vu** : portlet `epJade` | absent |
 | Devoirs | Moodle, `moodle.univ-montp3.fr` | CAS (`login/index.php?authCAS=CAS`) | **vu** : retour sur `/my/` avec `sesskey`, `lib/ajax/service.php` | testé (12 éléments) |
@@ -52,9 +53,17 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
 
 ## Fournisseur manquant ou format utile
 
-- **ADE MyPlanning 6.15 (GWT)** : interface `direct/myplanning.jsp` derrière le CAS, liste de
-  ressources de l'étudiant et menu « Options » (impression, export). Le mécanisme d'export iCal
-  n'a pas été observé — **inconnu**. Fournisseur à écrire : `ade-myplanning` (nom provisoire).
+- **ADE MyPlanning 6.15 (GWT)**, implémenté (`ade-myplanning`) — **vu** le 27/10/2026 :
+  - `POST direct/gwtdirectplanning/MyPlanningClientServiceProxy` `method1login` → réponse avec
+    des `ResourceFieldCriteria` (champ ADE + liste de codes d'enseignement) ;
+  - `WebClientServiceProxy` `method6loadProject` (projet 1) ;
+  - `DirectPlanningServiceProxy` `method7getResourceIds` avec ces critères → `ArrayList<Integer>`
+    des numéros de ressources ;
+  - `GET jsp/custom/modules/plannings/anonymous_cal.jsp?resources=<ids>&projectId=1&calType=ical&firstDate&lastDate`
+    → `text/calendar`, sans authentification ;
+  - en-têtes `X-GWT-Permutation` et `X-GWT-Module-Base` ; signatures (`policy`) lues dans
+    `gwtdirectplanning/<permutation>.cache.html` (`'…ServiceProxy','<32 hex>'`).
+  - L'interface « standard » `jsp/standard/` demande un compte ADE local : inutilisable.
 - **Application de scolarité** (Angular, DSIN) : `GET /api/getUsers`, `/api/etudiants/notes`,
   `/api/parametres/annee_note`, `/api/parametres/info_not_note` (JSON). Routes relevées dans le
   code client : `/api/etudiants/attestations/…`, `/api/scolarite`. Format des semestres **inconnu**
@@ -68,7 +77,7 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
 | Configuration | `tonapi validate universities` | succès : 4 universités, 0 problème |
 | Détection automatique de données sensibles | `tonapi report check` sur ce rapport et le TOML | succès |
 | Relecture de confidentialité | rapport et TOML relus : hôtes, chemins, noms de champs et de cookies seulement | effectuée |
-| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, autres services en lien | effectué pour ce compte |
+| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), autres services en lien | effectué pour ce compte |
 
 ## Inconnues et limites
 
