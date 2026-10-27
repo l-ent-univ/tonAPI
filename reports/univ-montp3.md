@@ -24,7 +24,7 @@ Provenance : **vu**, **code**, **déduit**, **inconnu**. Indiquer une référenc
 | Devoirs | Moodle, `moodle.univ-montp3.fr` | CAS (`login/index.php?authCAS=CAS`) | **vu** : retour sur `/my/` avec `sesskey`, `lib/ajax/service.php` | testé (12 éléments) |
 | Mail | BlueMind 5.7.5, `mail.etu.univ-montp3.fr` → `mail.etu.umpv.fr/webapp/mail/` | CAS | **vu** : `webapp/session-infos.js`, `api/mail_folders/…/_all`, `api/mail_items/<dossier>/_sorted`, `_mgetById`, 27/10 | testé (`bluemind`) |
 | Applications | uPortal, `monupv.univ-montp3.fr/uPortal/` | CAS | **vu** : `GET api/v4-3/dlm/layout.json` 200 (47 portlets dont éléments techniques) | testé (32 éléments) |
-| Profil | uPortal | CAS | **vu** : `api/v5-1/userinfo` 404 ; `api/session.json` et `api/people/<id>.json` 200 (`displayName`, `givenName`, `sn`, `mail`, `postalAddress`) | testé (nom, prénom, e-mail ; pas de numéro étudiant) |
+| Profil | uPortal, complété par l'application de scolarité | CAS | **vu** : `api/v5-1/userinfo` 404 ; `api/session.json` et `api/people/<id>.json` 200 (`displayName`, `givenName`, `sn`, `mail`, `postalAddress`) ; `scolarite…/api/etudiants/notes` (`numero`, `etapes[].libelle`) | testé (nom, prénom, e-mail, numéro étudiant, formation) |
 | Documents | portlet « Certificat de scolarité », `app.univ-montp3.fr/ent/Certificat` | CAS | **vu** : portlet `etuCertifScola` | lien |
 
 Ne pas confondre une page consultée dans l'ENT avec une fonction utilisable dans tonAPI.
@@ -63,7 +63,9 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
   - en-têtes `X-GWT-Permutation` et `X-GWT-Module-Base` ; signatures (`policy`) lues dans
     `gwtdirectplanning/<permutation>.cache.html` (`'…ServiceProxy','<32 hex>'`).
   - L'interface « standard » `jsp/standard/` demande un compte ADE local : inutilisable.
-- **Application de scolarité** (Angular, DSIN) : `GET /api/getUsers`, `/api/etudiants/notes`,
+- **Application de scolarité** (Angular, DSIN) : derrière le CAS (`/login/cas?ticket`, puis
+  `/?continue`) ; le numéro et la formation servent au profil (`record.kind = "etudiants-api"`).
+  `GET /api/getUsers`, `/api/etudiants/notes`,
   `/api/parametres/annee_note`, `/api/parametres/info_not_note` (JSON). Routes relevées dans le
   code client : `/api/etudiants/attestations/…`, `/api/scolarite`. Format des semestres **inconnu**
   (objet vide sur ce compte).
@@ -81,7 +83,7 @@ Un résultat de `tonapi validate` ne prouve pas une intégration de bout en bout
 | Configuration | `tonapi validate universities` | succès : 4 universités, 0 problème |
 | Détection automatique de données sensibles | `tonapi report check` sur ce rapport et le TOML | succès |
 | Relecture de confidentialité | rapport et TOML relus : hôtes, chemins, noms de champs et de cookies seulement | effectuée |
-| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), mail 20 messages, profil (nom, prénom, e-mail), notes et documents en lien | effectué pour ce compte |
+| Essai réel de tonAPI | console, 27/10/2026 : connexion 200 sans MFA, applications 32, devoirs 12, emploi du temps 11 cours la semaine du 2 novembre (semaine des vacances vide), mail 20 messages, profil complet (dont numéro étudiant et formation), notes et documents en lien | effectué pour ce compte |
 
 ## Inconnues et limites
 

@@ -50,9 +50,12 @@ base-url = "https://mail.etu.umpv.fr/"
 [services.apps]
 provider = "portal"
 
-# [vu] `api/session.json` et `api/people/<id>.json` (le portail n'a pas `v5-1/userinfo`).
+# [vu] `api/session.json` et `api/people/<id>.json` (le portail n'a pas `v5-1/userinfo`),
+# complétés par le numéro étudiant et la formation de l'application de scolarité
+# (`api/etudiants/notes`).
 [services.profile]
 provider = "portal"
+record = { kind = "etudiants-api", base-url = "https://scolarite.univ-montp3.fr/" }
 
 # [vu] portlet « Certificat de scolarité ».
 [services.documents]
