@@ -1,3 +1,4 @@
 /target
 .env
 *.har
+.DS_Store

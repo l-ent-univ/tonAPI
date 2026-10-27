@@ -39,6 +39,7 @@ where
         university,
         session: &mut session,
         now: Utc::now(),
+        net: tonapi_providers::NetSettings::default(),
     };
     let fetched = fetch(&mut ctx).await?;
     let meta = Meta {

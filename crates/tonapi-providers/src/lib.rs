@@ -8,6 +8,8 @@
 #![allow(clippy::unused_async)]
 
 mod demo;
+#[allow(dead_code)] // utilisé par les fournisseurs réseau au fur et à mesure de leur ajout
+mod net;
 mod sso;
 
 use chrono::{DateTime, NaiveDate, Utc};
@@ -21,6 +23,7 @@ use tonapi_core::{
 };
 use tonapi_session::{EstablishmentPick, SessionData};
 
+pub use net::NetSettings;
 pub use sso::{LoginInput, LoginOutcome, MfaAction, MfaPrompt, complete_mfa, login, refresh};
 pub use tonapi_http::otp::OtpMethods;
 
@@ -29,10 +32,11 @@ pub struct Context<'a> {
     pub university: &'a ResolvedUniversity,
     pub session: &'a mut SessionData,
     pub now: DateTime<Utc>,
+    pub net: NetSettings,
 }
 
 impl Context<'_> {
-    fn services(&self) -> Services {
+    pub(crate) fn services(&self) -> Services {
         self.university
             .services_for(self.session.establishment.as_ref().map(|e| e.id.as_str()))
     }
@@ -188,5 +192,30 @@ pub async fn apps(ctx: &mut Context<'_>) -> Result<Fetched<Vec<App>>, Problem> {
         Some(AppsService::Demo) => Ok(fetched(demo::apps(), "demo")),
         Some(AppsService::Portal) => Err(not_implemented("portal")),
         Some(AppsService::None) | None => Err(absent(&services, ServiceKind::Apps)),
+    }
+}
+
+/// Connexion à un service qui a son propre compte (CAS de composante, Moodle en connexion
+/// locale). Le mot de passe sert une fois ; seuls les cookies ou le jeton du service restent dans
+/// la session.
+pub async fn service_login(
+    ctx: &mut Context<'_>,
+    kind: ServiceKind,
+    username: &str,
+    password: &str,
+) -> Result<(), Problem> {
+    let _ = (username, password);
+    let services = ctx.services();
+    let provider = services
+        .availability()
+        .into_iter()
+        .find(|(k, _)| *k == kind)
+        .map(|(_, a)| a);
+    match provider {
+        Some(ServiceAvailability::Api { provider }) => Err(Problem::new(ErrorCode::InvalidRequest)
+            .detail(format!(
+                "le fournisseur `{provider}` n'a pas de connexion séparée"
+            ))),
+        _ => Err(absent(&services, kind)),
     }
 }

@@ -27,6 +27,8 @@ pub enum ErrorCode {
     UnknownEstablishment,
     /// Service non proposé à cet étudiant (éventuellement remplacé par un lien).
     ServiceAbsent,
+    /// Le service a son propre compte : appeler `POST /v1/auth/service-login`.
+    ServiceLoginRequired,
     /// Fournisseur prévu mais pas encore pris en charge par cette version.
     NotImplemented,
     /// Le serveur de l'université ne répond pas ou renvoie une erreur.
@@ -52,7 +54,7 @@ impl ErrorCode {
             | ErrorCode::UnknownUniversity
             | ErrorCode::UnknownEstablishment
             | ErrorCode::ServiceAbsent => 404,
-            ErrorCode::AccountActionRequired => 403,
+            ErrorCode::AccountActionRequired | ErrorCode::ServiceLoginRequired => 403,
             ErrorCode::RateLimited => 429,
             ErrorCode::Internal => 500,
             ErrorCode::NotImplemented => 501,
@@ -73,6 +75,7 @@ impl ErrorCode {
             ErrorCode::UnknownUniversity => "Université inconnue",
             ErrorCode::UnknownEstablishment => "Composante inconnue",
             ErrorCode::ServiceAbsent => "Service non proposé",
+            ErrorCode::ServiceLoginRequired => "Connexion au service requise",
             ErrorCode::NotImplemented => "Pas encore pris en charge",
             ErrorCode::ServiceUnavailable => "Service de l'université indisponible",
             ErrorCode::UpstreamChanged => "Réponse inattendue du service de l'université",
@@ -94,6 +97,7 @@ impl ErrorCode {
             ErrorCode::UnknownUniversity => "unknown_university",
             ErrorCode::UnknownEstablishment => "unknown_establishment",
             ErrorCode::ServiceAbsent => "service_absent",
+            ErrorCode::ServiceLoginRequired => "service_login_required",
             ErrorCode::NotImplemented => "not_implemented",
             ErrorCode::ServiceUnavailable => "service_unavailable",
             ErrorCode::UpstreamChanged => "upstream_changed",
