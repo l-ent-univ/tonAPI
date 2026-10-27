@@ -3,7 +3,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use serde::Serialize;
-use tonapi_config::{ResolvedUniversity, Sso, Status};
+use tonapi_config::{PortalConfig, ResolvedUniversity, Sso, Status};
 use tonapi_core::{ErrorCode, Problem, ServiceStatus};
 use utoipa::ToSchema;
 
@@ -80,6 +80,9 @@ pub struct UniversityDetail {
     /// Fuseau horaire IANA des données.
     timezone: String,
     login: LoginInfo,
+    /// Logiciel du portail qui sert les applications et le profil : `uportal4-prolongation`,
+    /// `uportal5`, `tiles-portal`, ou absent.
+    portal: Option<&'static str>,
     /// Liens utiles (`website`, `passwordReset`…).
     links: Vec<LinkInfo>,
     /// Services communs à toute l'université.
@@ -189,6 +192,12 @@ pub async fn detail(
         status: status(u.university.status),
         timezone: u.university.timezone.clone(),
         login: login(u),
+        portal: match u.university.portal {
+            PortalConfig::Uportal4Prolongation { .. } => Some("uportal4-prolongation"),
+            PortalConfig::Uportal5 { .. } => Some("uportal5"),
+            PortalConfig::TilesPortal { .. } => Some("tiles-portal"),
+            PortalConfig::None => None,
+        },
         links,
         services: service_statuses(&u.university.services),
         establishments: u
