@@ -109,6 +109,13 @@ async fn portal_handler(State(p): State<Portal>, uri: Uri, headers: HeaderMap) -
     if rel == "index.html" {
         return reply(StatusCode::OK, "accueil");
     }
+    // Fragment d'un portlet « iframe » : le vrai lien de l'application.
+    if rel == "api/v4-3/portlet/webapp-assistance.html" {
+        return reply(
+            StatusCode::OK,
+            "\n\n<iframe src=\"https://aide.exemple.test/assistance.html\" frameBorder=\"0\" height=\"600\">\n <a href=\"https://aide.exemple.test/assistance.html\" target=\"_blank\">Click here</a>\n</iframe>\n",
+        );
+    }
 
     let known = matches!(
         rel.as_str(),
@@ -424,7 +431,8 @@ async fn uportal5_applications_et_profil() {
     );
     // Résolu sur la racine du faux portail.
     assert_eq!(apps[2].url, format!("{root}/mdw/"));
-    assert_eq!(apps[3].url, format!("{root}/p/webapp-assistance"));
+    // Lien lu dans le fragment du portlet, à la place de la page du portail.
+    assert_eq!(apps[3].url, "https://aide.exemple.test/assistance.html");
 
     let profile = profile(&mut context(&university, &mut session))
         .await

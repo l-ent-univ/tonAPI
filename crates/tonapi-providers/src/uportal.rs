@@ -157,9 +157,100 @@ async fn apps_once(net: &mut Net, portal: &Portal) -> Result<Vec<App>, Problem> 
         Variant::Uportal5 => {
             let url = route(&portal.base, "api/v4-3/dlm/layout.json")?;
             let body = get(net, url, "application/json", &portal.base).await?;
-            parse_uportal5_layout(&body, &portal.base)
+            let mut apps = parse_uportal5_layout(&body, &portal.base)?;
+            direct_links(net, portal, &mut apps).await;
+            Ok(apps)
         }
     }
+}
+
+/// Fragments lus au plus par appel (un par portlet sans lien, environ 40 ms chacun).
+const MAX_FRAGMENTS: usize = 60;
+
+/// Remplace la page `<portail>/p/<fname>` par le lien du fragment du portlet
+/// (`api/v4-3/portlet/<fname>.html`), quand il en contient un. Un fragment illisible garde la
+/// page du portail, qui reste un lien valide.
+async fn direct_links(net: &mut Net, portal: &Portal, apps: &mut [App]) {
+    let pending = apps
+        .iter_mut()
+        .filter(|app| {
+            portal_page(&portal.base, &app.id).is_some_and(|page| page.as_str() == app.url)
+        })
+        .take(MAX_FRAGMENTS);
+    for app in pending {
+        let Ok(mut url) = route(&portal.base, "api/v4-3/portlet/") else {
+            return;
+        };
+        let Ok(mut segments) = url.path_segments_mut() else {
+            return;
+        };
+        segments.pop_if_empty().push(&format!("{}.html", app.id));
+        drop(segments);
+        if let Ok((status, body)) = fetch(net, url, "text/html", &portal.base).await
+            && status.is_success()
+            && let Some(link) = fragment_link(&body, &portal.base)
+        {
+            app.url = link.into();
+        }
+    }
+}
+
+/// Lien d'un fragment de portlet : la source de son `<iframe>`, sinon son premier lien `<a>`
+/// absolu hors du portail. Les fragments d'erreur ne pointent que vers le portail : ignorés.
+pub(crate) fn fragment_link(html: &str, base: &Url) -> Option<Url> {
+    let lower = html.to_ascii_lowercase();
+    let attribute = |tag: &str, name: &str| -> Vec<String> {
+        let mut out = Vec::new();
+        let mut from = 0;
+        while let Some(at) = lower.get(from..).and_then(|rest| rest.find(tag)) {
+            let start = from + at;
+            let end = lower
+                .get(start..)
+                .and_then(|rest| rest.find('>'))
+                .map_or(lower.len(), |e| start + e);
+            if let Some(value) = html.get(start..end).and_then(|t| attr(t, name)) {
+                out.push(value);
+            }
+            from = end;
+        }
+        out
+    };
+    let outside = |raw: &str| {
+        let url = resolve(base, &raw.replace("&amp;", "&"))?;
+        let inside = url.host_str() == base.host_str() && url.path().starts_with(base.path());
+        (!inside).then_some(url)
+    };
+    attribute("<iframe", "src")
+        .iter()
+        .chain(attribute("<a ", "href").iter())
+        .find_map(|raw| outside(raw))
+}
+
+/// Valeur d'un attribut entre guillemets dans une balise ouvrante.
+fn attr(tag: &str, name: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(at) = lower.get(from..)?.find(name) {
+        let start = from + at;
+        from = start + name.len();
+        let before_ok = start == 0
+            || lower
+                .as_bytes()
+                .get(start - 1)
+                .is_some_and(u8::is_ascii_whitespace);
+        let rest = tag.get(from..)?.trim_start();
+        let Some(rest) = rest.strip_prefix('=') else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let quote = rest.chars().next()?;
+        if !before_ok || (quote != '"' && quote != '\'') {
+            continue;
+        }
+        let value = rest.get(1..)?;
+        return value.find(quote).map(|end| value[..end].to_owned());
+    }
+    None
 }
 
 async fn profile_once(net: &mut Net, portal: &Portal) -> Result<Profile, Problem> {
@@ -506,7 +597,7 @@ fn complete_display_name(profile: &mut Profile) {
 ///
 /// Le lien de lancement est, dans l'ordre : un paramètre du portlet (`alternativeMaximizedLink`,
 /// `launchUrl`, `url`), sinon la page du portail `<portail>/p/<fname>`. Le vrai lien de beaucoup de
-/// portlets n'est que dans leur fragment HTML, qu'on ne lit pas ici.
+/// portlets n'est que dans leur fragment HTML, lu ensuite par [`direct_links`].
 pub(crate) fn parse_uportal5_layout(body: &str, base: &Url) -> Result<Vec<App>, Problem> {
     let root: Value = serde_json::from_str(body.trim())
         .map_err(|_| upstream(PROVIDER, "layout.json n'est pas du JSON"))?;
@@ -674,6 +765,29 @@ fn userinfo_claims(body: &str) -> Result<Value, Problem> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn lien_du_fragment_de_portlet() {
+        let base = Url::parse("https://ent.exemple.test/uPortal/").unwrap();
+        let iframe = "\n<iframe src=\"https://app.exemple.test/ent/html/edt.html\" frameBorder=\"0\"\n name=\"x\">\n<a href=\"https://autre.exemple.test/\">ici</a></iframe>";
+        assert_eq!(
+            fragment_link(iframe, &base).map(String::from).as_deref(),
+            Some("https://app.exemple.test/ent/html/edt.html")
+        );
+        let anchor = "<div><A HREF='https://scolarite.exemple.test/?a=1&amp;b=2'>Ouvrir</A></div>";
+        assert_eq!(
+            fragment_link(anchor, &base).map(String::from).as_deref(),
+            Some("https://scolarite.exemple.test/?a=1&b=2")
+        );
+        // Fragment d'erreur : seul un lien vers le portail, donc rien.
+        let error =
+            "<span><a href=\"/uPortal/p/error.ctf2/normal/action.uP?x=1\">Réinitialiser</a></span>";
+        assert_eq!(fragment_link(error, &base), None);
+        assert_eq!(
+            fragment_link("<iframe data-src=\"https://x.test/\">", &base),
+            None
+        );
+    }
+
     use super::*;
 
     const LAYOUT_JSONP: &str = include_str!("../tests/fixtures/uportal/layout_prolongation.jsonp");
