@@ -24,13 +24,13 @@ mod zimbra;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use tonapi_config::{
-    AbsencesService, AppsService, GradesService, HomeworkService, MailService, PortalConfig,
-    ProfileService, ResolvedUniversity, ServiceAvailability, ServiceKind, Services, Signal,
-    StudentRecord, TimetableService,
+    AbsencesService, AppsService, DocumentsService, ExamsService, GradesService, HomeworkService,
+    MailService, PortalConfig, ProfileService, ResolvedUniversity, ServiceAvailability,
+    ServiceKind, Services, Signal, StudentRecord, TimetableService,
 };
 use tonapi_core::{
-    AbsenceReport, App, Course, ErrorCode, EstablishmentSource, GradeReport, Homework, MailInbox,
-    Problem, Profile, TimetableGroup,
+    AbsenceReport, App, Course, Document, ErrorCode, EstablishmentSource, Exam, GradeReport,
+    Homework, MailInbox, Problem, Profile, TimetableGroup,
 };
 use tonapi_session::{EstablishmentPick, SessionData};
 
@@ -51,6 +51,14 @@ impl Context<'_> {
         self.university
             .services_for(self.session.establishment.as_ref().map(|e| e.id.as_str()))
     }
+}
+
+/// Fichier servi tel quel (attestation PDF…).
+#[derive(Debug, Clone)]
+pub struct Download {
+    pub content_type: String,
+    pub file_name: String,
+    pub bytes: Vec<u8>,
 }
 
 /// Données et fournisseur qui les a produites.
@@ -297,6 +305,60 @@ pub async fn absences(ctx: &mut Context<'_>) -> Result<Fetched<AbsenceReport>, P
             .map(|data| fetched(data, "scodoc-gateway")),
         Some(AbsencesService::Link(_) | AbsencesService::None) | None => {
             Err(absent(&services, ServiceKind::Absences))
+        }
+    }
+}
+
+pub async fn exams(ctx: &mut Context<'_>) -> Result<Fetched<Vec<Exam>>, Problem> {
+    let services = ctx.services();
+    match &services.exams {
+        Some(ExamsService::Demo) => Ok(fetched(demo::exams(ctx.now), "demo")),
+        Some(ExamsService::EtudiantsApi { base_url }) => Ok(fetched(
+            etudiants_api::fetch_exams(ctx, base_url).await?,
+            "etudiants-api",
+        )),
+        Some(ExamsService::Link(_) | ExamsService::None) | None => {
+            Err(absent(&services, ServiceKind::Exams))
+        }
+    }
+}
+
+pub async fn documents(ctx: &mut Context<'_>) -> Result<Fetched<Vec<Document>>, Problem> {
+    let services = ctx.services();
+    match &services.documents {
+        Some(DocumentsService::Demo) => Ok(fetched(demo::documents(), "demo")),
+        Some(DocumentsService::EtudiantsApi {
+            base_url,
+            certificate_url,
+        }) => Ok(fetched(
+            etudiants_api::fetch_documents(ctx, base_url, certificate_url.as_ref()).await?,
+            "etudiants-api",
+        )),
+        Some(DocumentsService::MonDossierWeb { .. } | DocumentsService::Ardemat { .. }) => {
+            Err(Problem::new(ErrorCode::NotImplemented)
+                .detail("ce fournisseur de documents n'est pas encore implémenté"))
+        }
+        Some(DocumentsService::Link(_) | DocumentsService::None) | None => {
+            Err(absent(&services, ServiceKind::Documents))
+        }
+    }
+}
+
+/// Fichier d'un document de [`documents`] marqué `downloadable`.
+pub async fn document(ctx: &mut Context<'_>, id: &str) -> Result<Fetched<Download>, Problem> {
+    let services = ctx.services();
+    match &services.documents {
+        Some(DocumentsService::Demo) => Ok(fetched(demo::document(id)?, "demo")),
+        Some(DocumentsService::EtudiantsApi { base_url, .. }) => Ok(fetched(
+            etudiants_api::download(ctx, base_url, id).await?,
+            "etudiants-api",
+        )),
+        Some(DocumentsService::MonDossierWeb { .. } | DocumentsService::Ardemat { .. }) => {
+            Err(Problem::new(ErrorCode::NotImplemented)
+                .detail("ce fournisseur de documents n'est pas encore implémenté"))
+        }
+        Some(DocumentsService::Link(_) | DocumentsService::None) | None => {
+            Err(absent(&services, ServiceKind::Documents))
         }
     }
 }

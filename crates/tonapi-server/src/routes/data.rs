@@ -1,19 +1,20 @@
 //! Données de l'étudiant connecté.
 
 use axum::extract::rejection::QueryRejection;
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use chrono::{Datelike, Duration, NaiveDate, Utc};
 use serde::Deserialize;
 use tonapi_core::{
-    AbsenceReport, App, Course, GradeReport, Homework, MailInbox, Problem, TimetableGroup,
+    AbsenceReport, App, Course, Document, Exam, GradeReport, Homework, MailInbox, Problem,
+    TimetableGroup,
 };
-use utoipa::IntoParams;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::AppState;
 use crate::auth::AuthSession;
 use crate::error::{ApiError, invalid};
-use crate::respond::{DataResponse, respond};
+use crate::respond::{DataResponse, respond, respond_file};
 
 /// Écart maximal entre `from` et `to`, en jours.
 const MAX_RANGE_DAYS: i64 = 92;
@@ -207,6 +208,80 @@ pub async fn apps(
 ) -> Result<Response, ApiError> {
     respond(&state, session, async |ctx| {
         tonapi_providers::apps(ctx).await
+    })
+    .await
+}
+
+/// Épreuves du calendrier d'examens.
+#[utoipa::path(
+    get,
+    path = "/v1/exams",
+    tag = "données",
+    security(("session" = [])),
+    responses(
+        (status = 200, description = "Succès", body = DataResponse<Vec<Exam>>),
+        (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`service_absent` (avec `link` si le service est un simple lien) ou ressource inconnue", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn exams(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+) -> Result<Response, ApiError> {
+    respond(&state, session, async |ctx| {
+        tonapi_providers::exams(ctx).await
+    })
+    .await
+}
+
+/// Documents administratifs : certificat, attestations.
+#[utoipa::path(
+    get,
+    path = "/v1/documents",
+    tag = "données",
+    security(("session" = [])),
+    responses(
+        (status = 200, description = "Succès", body = DataResponse<Vec<Document>>),
+        (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`service_absent` (avec `link` si le service est un simple lien) ou ressource inconnue", body = Problem, content_type = "application/problem+json"),
+        (status = 501, description = "`not_implemented` : fournisseur de documents pas encore pris en charge", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn documents(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+) -> Result<Response, ApiError> {
+    respond(&state, session, async |ctx| {
+        tonapi_providers::documents(ctx).await
+    })
+    .await
+}
+
+/// Fichier binaire (PDF le plus souvent).
+#[derive(ToSchema)]
+#[schema(value_type = String, format = Binary)]
+pub struct File(#[allow(dead_code)] Vec<u8>);
+
+/// Fichier d'un document marqué `downloadable`, en pièce jointe.
+#[utoipa::path(
+    get,
+    path = "/v1/documents/{id}",
+    tag = "données",
+    security(("session" = [])),
+    params(("id" = String, Path, description = "Identifiant donné par `GET /v1/documents`")),
+    responses(
+        (status = 200, description = "Fichier du document", body = File, content_type = "application/pdf"),
+        (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`not_found` : document inconnu, ou `service_absent`", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn document(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    respond_file(&state, session, async |ctx| {
+        tonapi_providers::document(ctx, &id).await
     })
     .await
 }

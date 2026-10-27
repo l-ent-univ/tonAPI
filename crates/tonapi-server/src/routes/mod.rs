@@ -29,9 +29,12 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(data::timetable_groups))
         .routes(routes!(data::grades))
         .routes(routes!(data::absences))
+        .routes(routes!(data::exams))
         .routes(routes!(data::homework))
         .routes(routes!(data::mail_inbox))
         .routes(routes!(data::apps))
+        .routes(routes!(data::documents))
+        .routes(routes!(data::document))
 }
 
 /// Disponibilité de chaque service, au format de l'API.

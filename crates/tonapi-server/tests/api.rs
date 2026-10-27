@@ -84,7 +84,7 @@ async fn parcours_demo_complet() {
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert_eq!(r.body["data"]["profile"]["username"], "demo");
     assert_eq!(r.body["meta"]["provider"], "demo");
-    assert_eq!(r.body["data"]["services"].as_array().unwrap().len(), 8);
+    assert_eq!(r.body["data"]["services"].as_array().unwrap().len(), 9);
 
     let r = call(
         &app,
@@ -104,14 +104,36 @@ async fn parcours_demo_complet() {
         "/v1/timetable/groups",
         "/v1/grades",
         "/v1/absences",
+        "/v1/exams",
         "/v1/homework",
         "/v1/mail/inbox",
         "/v1/apps",
+        "/v1/documents",
     ] {
         let r = call(&app, "GET", path, Some(&token), None).await;
         assert_eq!(r.status, StatusCode::OK, "{path}: {}", r.body);
         assert!(r.body["meta"]["fetchedAt"].is_string(), "{path}");
     }
+
+    // Fichier d'un document : servi en pièce jointe, jamais mis en cache.
+    let r = call(
+        &app,
+        "GET",
+        "/v1/documents/sem.2025_S1_1",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.headers[header::CONTENT_TYPE], "application/pdf");
+    assert_eq!(r.headers[header::CACHE_CONTROL], "no-store");
+    assert_eq!(
+        r.headers[header::CONTENT_DISPOSITION],
+        "attachment; filename=\"sem-2025_S1_1.pdf\""
+    );
+    let r = call(&app, "GET", "/v1/documents/inconnu", Some(&token), None).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    assert_eq!(r.body["code"], "not_found");
 
     let r = call(&app, "POST", "/v1/auth/refresh", Some(&token), None).await;
     assert_eq!(r.status, StatusCode::OK);

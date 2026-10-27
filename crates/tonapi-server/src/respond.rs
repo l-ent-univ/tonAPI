@@ -5,7 +5,7 @@ use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use serde::Serialize;
 use tonapi_core::{ErrorCode, Meta, Problem};
-use tonapi_providers::{Context, Fetched};
+use tonapi_providers::{Context, Download, Fetched};
 use tonapi_session::SessionData;
 use utoipa::ToSchema;
 
@@ -28,6 +28,71 @@ pub async fn respond<T, F>(
 ) -> Result<Response, ApiError>
 where
     T: Serialize + ToSchema,
+    F: AsyncFnOnce(&mut Context<'_>) -> Result<Fetched<T>, Problem>,
+{
+    run(state, original, fetch, |fetched, session| {
+        let meta = Meta {
+            university: session.university.clone(),
+            establishment: session.establishment.as_ref().map(|e| e.id.clone()),
+            provider: fetched.provider.to_owned(),
+            fetched_at: Utc::now().fixed_offset(),
+        };
+        axum::Json(DataResponse {
+            data: fetched.data,
+            meta,
+        })
+        .into_response()
+    })
+    .await
+}
+
+/// Comme [`respond`], pour un fichier servi tel quel, en pièce jointe.
+pub async fn respond_file<F>(
+    state: &AppState,
+    original: SessionData,
+    fetch: F,
+) -> Result<Response, ApiError>
+where
+    F: AsyncFnOnce(&mut Context<'_>) -> Result<Fetched<Download>, Problem>,
+{
+    run(state, original, fetch, |fetched, _| {
+        let file = fetched.data;
+        // Nom réduit à des caractères sûrs pour l'en-tête.
+        let name: String = file
+            .file_name
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let mut response = file.bytes.into_response();
+        let headers = response.headers_mut();
+        if let Ok(value) = HeaderValue::from_str(&file.content_type) {
+            headers.insert(header::CONTENT_TYPE, value);
+        }
+        if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")) {
+            headers.insert(header::CONTENT_DISPOSITION, value);
+        }
+        headers.insert(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        );
+        response
+    })
+    .await
+}
+
+async fn run<T, F>(
+    state: &AppState,
+    original: SessionData,
+    fetch: F,
+    finish: impl FnOnce(Fetched<T>, &SessionData) -> Response,
+) -> Result<Response, ApiError>
+where
     F: AsyncFnOnce(&mut Context<'_>) -> Result<Fetched<T>, Problem>,
 {
     let registry = state.registry.load_full();
@@ -53,17 +118,7 @@ where
             return Ok(response);
         }
     };
-    let meta = Meta {
-        university: session.university.clone(),
-        establishment: session.establishment.as_ref().map(|e| e.id.clone()),
-        provider: fetched.provider.to_owned(),
-        fetched_at: Utc::now().fixed_offset(),
-    };
-    let mut response = axum::Json(DataResponse {
-        data: fetched.data,
-        meta,
-    })
-    .into_response();
+    let mut response = finish(fetched, &session);
     no_store(&mut response);
     if session != original {
         attach_session(state, &session, &mut response)?;

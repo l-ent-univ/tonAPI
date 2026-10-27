@@ -112,6 +112,18 @@ impl Net {
             .map_err(|e| http_problem(self.provider, &e))
     }
 
+    /// `GET` d'un fichier : statut, en-têtes et corps brut.
+    pub async fn download(
+        &mut self,
+        url: Url,
+        headers: HeaderMap,
+    ) -> Result<(reqwest::StatusCode, HeaderMap, Vec<u8>), Problem> {
+        self.browser
+            .send_bytes(Method::GET, url, headers, None, None)
+            .await
+            .map_err(|e| http_problem(self.provider, &e))
+    }
+
     /// Requête dont la réponse doit être du JSON.
     pub async fn json(
         &mut self,

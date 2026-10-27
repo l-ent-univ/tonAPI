@@ -220,6 +220,34 @@
         },
         {
           "additionalProperties": false,
+          "description": "Application de scolarité avec `api/etudiants/attestations` : attestations semestrielles,\nannuelles et de réussite, en PDF.",
+          "properties": {
+            "base-url": {
+              "description": "Racine de l'application (ex. `https://scolarite.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "certificate-url": {
+              "description": "Page du certificat de scolarité, ajoutée à la liste comme lien.",
+              "format": "uri",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "const": "etudiants-api",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "API ardemat (attestations dématérialisées).",
           "properties": {
             "base-url": {
@@ -232,6 +260,86 @@
             },
             "provider": {
               "const": "ardemat",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Simple lien vers le site de l'établissement.",
+          "properties": {
+            "label": {
+              "description": "Libellé du lien.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "const": "link",
+              "type": "string"
+            },
+            "url": {
+              "description": "Page à ouvrir.",
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Service non proposé.",
+          "properties": {
+            "provider": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Données fictives de l'université de démonstration.",
+          "properties": {
+            "provider": {
+              "const": "demo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ExamsService": {
+      "description": "Calendrier des examens.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Application de scolarité avec `api/etudiants/calendrier` (voir [`StudentRecord::EtudiantsApi`]).",
+          "properties": {
+            "base-url": {
+              "description": "Racine de l'application (ex. `https://scolarite.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "provider": {
+              "const": "etudiants-api",
               "type": "string"
             }
           },
@@ -928,6 +1036,17 @@
             }
           ],
           "description": "Documents (certificat de scolarité, attestations)."
+        },
+        "exams": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExamsService"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Calendrier des examens."
         },
         "grades": {
           "anyOf": [

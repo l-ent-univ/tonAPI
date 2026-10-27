@@ -63,7 +63,7 @@ impl AppState {
     info(
         title = "tonAPI",
         description = "Vue unifiée des données universitaires d'un étudiant : emploi du temps, notes, \
-absences, devoirs, mail, applications. L'étudiant se connecte avec son compte universitaire ; \
+absences, examens, devoirs, mail, applications, documents. L'étudiant se connecte avec son compte universitaire ; \
 la session est un jeton chiffré qu'il garde, le serveur ne stocke rien.\n\n\
 Essai sans compte : université `demo`, identifiant `demo`, mot de passe `demo`.",
         license(name = "AGPL-3.0-only", identifier = "AGPL-3.0-only"),

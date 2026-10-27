@@ -12,6 +12,7 @@ kind = "demo"
 timetable = { provider = "demo" }
 grades = { provider = "demo" }
 absences = { provider = "demo" }
+exams = { provider = "demo" }
 homework = { provider = "demo" }
 mail = { provider = "demo" }
 apps = { provider = "demo" }

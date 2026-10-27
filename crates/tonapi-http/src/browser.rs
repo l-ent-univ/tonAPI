@@ -140,6 +140,22 @@ impl Browser {
         body: Option<String>,
         timeout: Option<Duration>,
     ) -> Result<(StatusCode, HeaderMap, String), HttpError> {
+        let trace_url = url.clone();
+        let (status, headers, bytes) = self.send_bytes(method, url, headers, body, timeout).await?;
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        trace_exchange(&trace_url, status, &headers, &text);
+        Ok((status, headers, text))
+    }
+
+    /// Comme [`Browser::send`], corps brut (fichier PDF…), jamais tracé.
+    pub async fn send_bytes(
+        &mut self,
+        method: Method,
+        url: Url,
+        headers: HeaderMap,
+        body: Option<String>,
+        timeout: Option<Duration>,
+    ) -> Result<(StatusCode, HeaderMap, Vec<u8>), HttpError> {
         let url = self.secure(url)?;
         let mut request = self.client.request(method, url.clone()).headers(headers);
         if let Some(cookie) = self.jar.header_for(&url, Self::now()) {
@@ -163,9 +179,7 @@ impl Browser {
         if bytes.len() > MAX_BODY {
             return Err(HttpError::TooLarge);
         }
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        trace_exchange(&url, status, &headers, &text);
-        Ok((status, headers, text))
+        Ok((status, headers, bytes.to_vec()))
     }
 
     /// `GET` en suivant les redirections.

@@ -6,10 +6,12 @@ use chrono::{
 };
 use chrono_tz::Europe::Paris;
 use tonapi_core::{
-    Absence, AbsenceReport, AbsenceTotals, App, Course, ErrorCode, Evaluation, Grade, GradeReport,
-    Homework, MailAddress, MailInbox, MailMessage, ModuleGrades, Problem, Profile, SemesterGrades,
-    TimetableGroup, UnitGrade,
+    Absence, AbsenceReport, AbsenceTotals, App, Course, Document, DocumentKind, ErrorCode,
+    Evaluation, Exam, Grade, GradeReport, Homework, MailAddress, MailInbox, MailMessage,
+    ModuleGrades, Problem, Profile, SemesterGrades, TimetableGroup, UnitGrade,
 };
+
+use crate::Download;
 
 pub(crate) fn check_credentials(username: &str, password: &str) -> Result<(), Problem> {
     if username == "demo" && password == "demo" {
@@ -403,6 +405,77 @@ pub(crate) fn inbox(now: DateTime<Utc>) -> MailInbox {
         ],
         webmail_url: Some("https://www.example.org/webmail".into()),
     }
+}
+
+pub(crate) fn exams(now: DateTime<Utc>) -> Vec<Exam> {
+    let day = |offset: i64, hour: u32| {
+        let date = (now + Duration::days(offset)).date_naive();
+        Paris
+            .from_local_datetime(&date.and_hms_opt(hour, 0, 0).unwrap_or_default())
+            .earliest()
+            .map(|d| d.fixed_offset())
+    };
+    vec![
+        Exam {
+            id: "S1-DEMO-EP1".to_owned(),
+            title: "Algorithmique".to_owned(),
+            start: day(14, 9),
+            duration_minutes: Some(120),
+            room: Some("Amphi A".to_owned()),
+            building: Some("Bâtiment A".to_owned()),
+            session: Some("Session 1".to_owned()),
+            courses: vec!["DEMO-11 - Algorithmique".to_owned()],
+            notice: None,
+        },
+        Exam {
+            id: "S1-DEMO-EP2".to_owned(),
+            title: "Anglais".to_owned(),
+            start: day(15, 14),
+            duration_minutes: Some(90),
+            room: Some("B204".to_owned()),
+            building: Some("Bâtiment B".to_owned()),
+            session: Some("Session 1".to_owned()),
+            courses: vec!["DEMO-14 - Anglais".to_owned()],
+            notice: Some("Dictionnaire papier autorisé.".to_owned()),
+        },
+    ]
+}
+
+/// Fichier PDF minimal, identique pour chaque document de démonstration.
+const DEMO_PDF: &[u8] = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n";
+
+pub(crate) fn documents() -> Vec<Document> {
+    vec![
+        Document {
+            id: "certificat".to_owned(),
+            title: "Certificat de scolarité".to_owned(),
+            kind: DocumentKind::Certificate,
+            year: None,
+            session: None,
+            downloadable: false,
+            url: Some("https://www.example.org/certificat".to_owned()),
+        },
+        Document {
+            id: "sem.2025_S1_1".to_owned(),
+            title: "Semestre 1".to_owned(),
+            kind: DocumentKind::SemesterTranscript,
+            year: Some("2025".to_owned()),
+            session: Some("1".to_owned()),
+            downloadable: true,
+            url: None,
+        },
+    ]
+}
+
+pub(crate) fn document(id: &str) -> Result<Download, Problem> {
+    if id != "sem.2025_S1_1" {
+        return Err(Problem::new(ErrorCode::NotFound).detail("document inconnu"));
+    }
+    Ok(Download {
+        content_type: "application/pdf".to_owned(),
+        file_name: "sem-2025_S1_1.pdf".to_owned(),
+        bytes: DEMO_PDF.to_vec(),
+    })
 }
 
 pub(crate) fn apps() -> Vec<App> {

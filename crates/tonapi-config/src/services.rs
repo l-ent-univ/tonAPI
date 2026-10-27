@@ -23,6 +23,9 @@ pub struct Services {
     /// Absences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub absences: Option<AbsencesService>,
+    /// Calendrier des examens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exams: Option<ExamsService>,
     /// Devoirs et échéances.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub homework: Option<HomeworkService>,
@@ -51,6 +54,7 @@ impl Services {
             timetable: pick(self.timetable.as_ref(), overrides.timetable.as_ref()),
             grades: pick(self.grades.as_ref(), overrides.grades.as_ref()),
             absences: pick(self.absences.as_ref(), overrides.absences.as_ref()),
+            exams: pick(self.exams.as_ref(), overrides.exams.as_ref()),
             homework: pick(self.homework.as_ref(), overrides.homework.as_ref()),
             mail: pick(self.mail.as_ref(), overrides.mail.as_ref()),
             apps: pick(self.apps.as_ref(), overrides.apps.as_ref()),
@@ -69,6 +73,7 @@ impl Services {
             (ServiceKind::Timetable, of(self.timetable.as_ref())),
             (ServiceKind::Grades, of(self.grades.as_ref())),
             (ServiceKind::Absences, of(self.absences.as_ref())),
+            (ServiceKind::Exams, of(self.exams.as_ref())),
             (ServiceKind::Homework, of(self.homework.as_ref())),
             (ServiceKind::Mail, of(self.mail.as_ref())),
             (ServiceKind::Apps, of(self.apps.as_ref())),
@@ -87,6 +92,7 @@ pub enum ServiceKind {
     Timetable,
     Grades,
     Absences,
+    Exams,
     Homework,
     Mail,
     Apps,
@@ -95,10 +101,11 @@ pub enum ServiceKind {
 }
 
 impl ServiceKind {
-    pub const ALL: [ServiceKind; 8] = [
+    pub const ALL: [ServiceKind; 9] = [
         ServiceKind::Timetable,
         ServiceKind::Grades,
         ServiceKind::Absences,
+        ServiceKind::Exams,
         ServiceKind::Homework,
         ServiceKind::Mail,
         ServiceKind::Apps,
@@ -113,6 +120,7 @@ impl ServiceKind {
             ServiceKind::Timetable => "timetable",
             ServiceKind::Grades => "grades",
             ServiceKind::Absences => "absences",
+            ServiceKind::Exams => "exams",
             ServiceKind::Homework => "homework",
             ServiceKind::Mail => "mail",
             ServiceKind::Apps => "apps",
@@ -318,6 +326,31 @@ provider_ids!(TimetableService {
     Self::AdeIcalLink { .. } => "ade-ical-link",
     Self::AdePortalRest { .. } => "ade-portal-rest",
     Self::AdeMyplanning { .. } => "ade-myplanning",
+    Self::Link(_) => "link",
+    Self::None => "none",
+    Self::Demo => "demo",
+});
+
+/// Calendrier des examens.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "provider", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum ExamsService {
+    /// Application de scolarité avec `api/etudiants/calendrier` (voir [`StudentRecord::EtudiantsApi`]).
+    EtudiantsApi {
+        /// Racine de l'application (ex. `https://scolarite.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+    },
+    /// Simple lien vers le site de l'établissement.
+    Link(LinkService),
+    /// Service non proposé.
+    None,
+    /// Données fictives de l'université de démonstration.
+    Demo,
+}
+
+provider_ids!(ExamsService {
+    Self::EtudiantsApi { .. } => "etudiants-api",
     Self::Link(_) => "link",
     Self::None => "none",
     Self::Demo => "demo",
@@ -550,6 +583,20 @@ pub enum DocumentsService {
         #[serde(default, skip_serializing_if = "ServiceOptions::is_default")]
         options: ServiceOptions,
     },
+    /// Application de scolarité avec `api/etudiants/attestations` : attestations semestrielles,
+    /// annuelles et de réussite, en PDF.
+    EtudiantsApi {
+        /// Racine de l'application (ex. `https://scolarite.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+        /// Page du certificat de scolarité, ajoutée à la liste comme lien.
+        #[serde(
+            default,
+            rename = "certificate-url",
+            skip_serializing_if = "Option::is_none"
+        )]
+        certificate_url: Option<Url>,
+    },
     /// API ardemat (attestations dématérialisées).
     Ardemat {
         /// Racine de l'API (ex. `https://app.exemple.fr/ardemat-api/`).
@@ -568,6 +615,7 @@ pub enum DocumentsService {
 
 provider_ids!(DocumentsService {
     Self::MonDossierWeb { .. } => "mon-dossier-web",
+    Self::EtudiantsApi { .. } => "etudiants-api",
     Self::Ardemat { .. } => "ardemat",
     Self::Link(_) => "link",
     Self::None => "none",

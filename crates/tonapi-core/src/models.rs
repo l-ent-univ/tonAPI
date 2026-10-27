@@ -176,6 +176,54 @@ pub struct MailAddress {
     pub address: String,
 }
 
+/// Épreuve du calendrier d'examens.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Exam {
+    /// Code de l'épreuve dans le logiciel de scolarité.
+    pub id: String,
+    pub title: String,
+    /// Début de l'épreuve. Absent quand la date ou l'heure n'est pas encore fixée.
+    pub start: Option<DateTime<FixedOffset>>,
+    /// Durée en minutes.
+    pub duration_minutes: Option<u32>,
+    pub room: Option<String>,
+    pub building: Option<String>,
+    /// Période ou session d'examens (ex. `Session 1 - Semestre impair`).
+    pub session: Option<String>,
+    /// Enseignements concernés (`code - intitulé`).
+    pub courses: Vec<String>,
+    /// Consigne particulière publiée avec l'épreuve.
+    pub notice: Option<String>,
+}
+
+/// Document administratif de l'étudiant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Document {
+    /// Identifiant à passer à `GET /v1/documents/{id}` quand `downloadable` est vrai.
+    pub id: String,
+    pub title: String,
+    pub kind: DocumentKind,
+    /// Année universitaire de début (ex. `2025` pour 2025-2026).
+    pub year: Option<String>,
+    pub session: Option<String>,
+    /// Le fichier est servi par `GET /v1/documents/{id}`.
+    pub downloadable: bool,
+    /// Page de l'établissement qui produit le document, quand l'API ne le sert pas.
+    pub url: Option<String>,
+}
+
+/// Nature d'un document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum DocumentKind {
+    Certificate,
+    SemesterTranscript,
+    AnnualTranscript,
+    Achievement,
+}
+
 /// Application du portail.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]

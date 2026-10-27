@@ -6,20 +6,51 @@
 //! semestre est `{intitule, classifiedElementPedagogiques: [{codElement, libElement,
 //! niveauElement, noteEpreuve1, noteEpreuve2, note, resultat}]}`. Aucun relevé réel n'a encore été
 //! observé : types des notes [inconnu], d'où une lecture tolérante (texte ou nombre).
+//!
+//! [code] même client : `api/etudiants/calendrier` donne `epreuves` (période → épreuves
+//! `{libPeriode, dateEpreuve, heureDebutEpreuve, dureeEpreuve, codEpreuve, libEpreuve,
+//! salleEpreuve, batEpreuve, infoEpreuve, elementPedagogiques: [{codElement, libElement}]}`) ;
+//! `api/etudiants/attestations` et `…/annuelle` donnent `attestations` (année → `[{annee, type,
+//! libelle, session}]`, fichier `<base>/<annee>_<type sans '/'>_<session>`) ; `…/reussites` donne
+//! `attestationReussites` (clé → nom, fichier `<base>/<clé>`). [vu] 27/10/2026 : ces trois champs
+//! sont vides sur le compte observé, formats des dates et durées [inconnu].
 
+use chrono::{DateTime, Duration, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
+use chrono_tz::Tz;
 use reqwest::Method;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde_json::Value;
 use tonapi_core::{
-    ErrorCode, Evaluation, Grade, GradeReport, ModuleGrades, Problem, SemesterGrades,
+    Document, DocumentKind, ErrorCode, Evaluation, Exam, Grade, GradeReport, ModuleGrades, Problem,
+    SemesterGrades,
 };
 use url::Url;
 
-use crate::Context;
+use crate::ade_ical::university_tz;
 use crate::net::{Net, upstream};
+use crate::{Context, Download};
 
 const PROVIDER: &str = "etudiants-api";
 const NOTES: &str = "api/etudiants/notes";
+const CALENDAR: &str = "api/etudiants/calendrier";
+/// Listes d'attestations et préfixe de leurs fichiers, par nature.
+const ATTESTATIONS: [(DocumentKind, &str, &str); 3] = [
+    (
+        DocumentKind::SemesterTranscript,
+        "sem",
+        "api/etudiants/attestations/",
+    ),
+    (
+        DocumentKind::AnnualTranscript,
+        "anu",
+        "api/etudiants/attestations/annuelle/",
+    ),
+    (
+        DocumentKind::Achievement,
+        "reu",
+        "api/etudiants/attestations/reussites/",
+    ),
+];
 
 /// Ce que le dossier ajoute au profil.
 #[derive(Debug, Default, PartialEq)]
@@ -40,23 +71,158 @@ fn root(base_url: &Url) -> Url {
 }
 
 pub(crate) async fn fetch_record(ctx: &mut Context<'_>, base_url: &Url) -> Result<Record, Problem> {
-    parse_record(&fetch_notes(ctx, base_url).await?)
+    parse_record(&one(ctx, base_url, NOTES).await?)
 }
 
 pub(crate) async fn fetch_grades(
     ctx: &mut Context<'_>,
     base_url: &Url,
 ) -> Result<GradeReport, Problem> {
-    parse_grades(&fetch_notes(ctx, base_url).await?)
+    parse_grades(&one(ctx, base_url, NOTES).await?)
 }
 
-async fn fetch_notes(ctx: &mut Context<'_>, base_url: &Url) -> Result<Value, Problem> {
+pub(crate) async fn fetch_exams(
+    ctx: &mut Context<'_>,
+    base_url: &Url,
+) -> Result<Vec<Exam>, Problem> {
+    let tz = university_tz(ctx)?;
+    parse_exams(&one(ctx, base_url, CALENDAR).await?, tz)
+}
+
+/// Attestations des trois listes, puis le certificat de scolarité en lien s'il est configuré.
+pub(crate) async fn fetch_documents(
+    ctx: &mut Context<'_>,
+    base_url: &Url,
+    certificate_url: Option<&Url>,
+) -> Result<Vec<Document>, Problem> {
+    let paths = ATTESTATIONS.map(|(_, _, path)| path.trim_end_matches('/'));
+    let values = many(ctx, base_url, &paths).await?;
+    let mut out = Vec::new();
+    if let Some(url) = certificate_url {
+        out.push(Document {
+            id: "certificat".to_owned(),
+            title: "Certificat de scolarité".to_owned(),
+            kind: DocumentKind::Certificate,
+            year: None,
+            session: None,
+            downloadable: false,
+            url: Some(url.to_string()),
+        });
+    }
+    for ((kind, prefix, _), value) in ATTESTATIONS.iter().zip(&values) {
+        out.extend(parse_attestations(value, *kind, prefix)?);
+    }
+    Ok(out)
+}
+
+/// Fichier d'une attestation, par l'identifiant donné dans la liste.
+pub(crate) async fn download(
+    ctx: &mut Context<'_>,
+    base_url: &Url,
+    id: &str,
+) -> Result<Download, Problem> {
+    let unknown = || Problem::new(ErrorCode::NotFound).detail("document inconnu");
+    let (prefix, key) = id.split_once('.').ok_or_else(unknown)?;
+    let path = ATTESTATIONS
+        .iter()
+        .find(|(_, p, _)| *p == prefix)
+        .map(|(_, _, path)| *path)
+        .ok_or_else(unknown)?;
+    if key.is_empty()
+        || key.len() > 80
+        || !key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(unknown());
+    }
     let base = root(base_url);
     let url = base
-        .join(NOTES)
+        .join(path)
+        .and_then(|u| u.join(key))
         .map_err(|_| upstream(PROVIDER, "adresse de l'application illisible"))?;
     let mut net = Net::open(ctx, PROVIDER)?;
-    let result = read(&mut net, &base, url).await;
+    let result = async {
+        if let Some(file) = get_file(&mut net, url.clone(), id).await? {
+            return Ok(file);
+        }
+        net.open_protected(base.clone()).await?;
+        get_file(&mut net, url, id).await?.ok_or_else(|| {
+            Problem::new(ErrorCode::SessionExpired)
+                .detail("l'application de scolarité refuse la session après le passage par le CAS")
+        })
+    }
+    .await;
+    net.save(ctx);
+    result
+}
+
+/// `None` quand l'application n'a pas de session (redirection, 401, 403 ou page HTML).
+async fn get_file(net: &mut Net, url: Url, id: &str) -> Result<Option<Download>, Problem> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::ACCEPT,
+        HeaderValue::from_static("application/pdf, application/octet-stream;q=0.9"),
+    );
+    let (status, headers, bytes) = net.download(url, headers).await?;
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Err(Problem::new(ErrorCode::NotFound).detail("document inconnu"));
+    }
+    if status.is_server_error() {
+        return Err(Problem::new(ErrorCode::ServiceUnavailable)
+            .detail(format!("{PROVIDER} : l'application répond HTTP {status}")));
+    }
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_owned();
+    if !status.is_success() || content_type.starts_with("text/html") {
+        return Ok(None);
+    }
+    let pdf = bytes.starts_with(b"%PDF");
+    let file_name = format!(
+        "{}.{}",
+        id.replace('.', "-"),
+        if pdf { "pdf" } else { "bin" }
+    );
+    Ok(Some(Download {
+        content_type: if pdf {
+            "application/pdf".to_owned()
+        } else {
+            content_type
+        },
+        file_name,
+        bytes,
+    }))
+}
+
+async fn one(ctx: &mut Context<'_>, base_url: &Url, path: &str) -> Result<Value, Problem> {
+    let mut values = many(ctx, base_url, &[path]).await?;
+    values
+        .pop()
+        .ok_or_else(|| upstream(PROVIDER, "réponse absente"))
+}
+
+/// Routes JSON lues dans la même session réseau (un seul passage par le CAS).
+async fn many(
+    ctx: &mut Context<'_>,
+    base_url: &Url,
+    paths: &[&str],
+) -> Result<Vec<Value>, Problem> {
+    let base = root(base_url);
+    let mut net = Net::open(ctx, PROVIDER)?;
+    let result = async {
+        let mut out = Vec::with_capacity(paths.len());
+        for path in paths {
+            let url = base
+                .join(path)
+                .map_err(|_| upstream(PROVIDER, "adresse de l'application illisible"))?;
+            out.push(read(&mut net, &base, url).await?);
+        }
+        Ok(out)
+    }
+    .await;
     net.save(ctx);
     result
 }
@@ -225,6 +391,160 @@ pub(crate) fn parse_grades(value: &Value) -> Result<GradeReport, Problem> {
     Ok(GradeReport { semesters })
 }
 
+/// Épreuves de toutes les périodes, triées par date (les épreuves sans date à la fin).
+pub(crate) fn parse_exams(value: &Value, tz: Tz) -> Result<Vec<Exam>, Problem> {
+    let periods = value
+        .get("epreuves")
+        .and_then(Value::as_object)
+        .ok_or_else(|| upstream(PROVIDER, "calendrier des épreuves absent"))?;
+    let mut exams = Vec::new();
+    for (key, list) in periods {
+        let Some(list) = list.as_array() else {
+            return Err(upstream(PROVIDER, "période d'épreuves illisible"));
+        };
+        for (n, item) in list.iter().enumerate() {
+            let code = text(item.get("codEpreuve"));
+            let date = text(item.get("dateEpreuve")).and_then(|d| exam_date(&d));
+            let time = text(item.get("heureDebutEpreuve")).and_then(|t| exam_time(&t));
+            let start = match (date, time) {
+                (Some(date), Some(time)) => local(tz, date.and_time(time)),
+                // Date sans heure : minuit local, pour que le jour reste lisible.
+                (Some(date), None) => local(tz, date.and_time(NaiveTime::MIN)),
+                _ => None,
+            };
+            let courses = item
+                .get("elementPedagogiques")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(
+                    |e| match (text(e.get("codElement")), text(e.get("libElement"))) {
+                        (Some(c), Some(l)) => Some(format!("{c} - {l}")),
+                        (c, l) => c.or(l),
+                    },
+                )
+                .collect();
+            let id = code.clone().unwrap_or_else(|| format!("{}", n + 1));
+            exams.push(Exam {
+                id: format!("{key}-{id}"),
+                title: text(item.get("libEpreuve"))
+                    .or(code)
+                    .unwrap_or_else(|| "Épreuve".to_owned()),
+                start,
+                duration_minutes: text(item.get("dureeEpreuve")).and_then(|d| minutes(&d)),
+                room: text(item.get("salleEpreuve")),
+                building: text(item.get("batEpreuve")),
+                session: text(item.get("libPeriode")),
+                courses,
+                notice: text(item.get("infoEpreuve")),
+            });
+        }
+    }
+    exams.sort_by(|a, b| match (a.start, b.start) {
+        (Some(x), Some(y)) => x.cmp(&y),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    Ok(exams)
+}
+
+/// Heure locale ; une heure sautée au passage à l'heure d'été avance d'une heure.
+fn local(tz: Tz, at: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
+    tz.from_local_datetime(&at)
+        .earliest()
+        .or_else(|| {
+            tz.from_local_datetime(&(at + Duration::hours(1)))
+                .earliest()
+        })
+        .map(|d| d.fixed_offset())
+}
+
+/// `JJ/MM/AAAA` (Apogée) ou `AAAA-MM-JJ`, éventuellement suivi d'une heure ignorée.
+fn exam_date(raw: &str) -> Option<NaiveDate> {
+    let day = raw.split(['T', ' ']).next()?;
+    NaiveDate::parse_from_str(day, "%d/%m/%Y")
+        .or_else(|_| NaiveDate::parse_from_str(day, "%Y-%m-%d"))
+        .ok()
+}
+
+/// `14:00`, `14h00`, `14h`, `14.00` ou `1400`.
+fn exam_time(raw: &str) -> Option<NaiveTime> {
+    let raw = raw.trim().to_ascii_lowercase();
+    let (h, m) = match raw.split_once([':', 'h', '.']) {
+        Some((h, m)) => (h, if m.is_empty() { "0" } else { m }),
+        None if raw.len() == 4 => raw.split_at(2),
+        None => return None,
+    };
+    let m = m.get(..2).unwrap_or(m);
+    NaiveTime::from_hms_opt(h.trim().parse().ok()?, m.trim().parse().ok()?, 0)
+}
+
+/// Durée : `2:00`, `2h00`, `2h`, `1h30` ; un nombre seul est lu en minutes [déduit].
+fn minutes(raw: &str) -> Option<u32> {
+    let raw = raw.trim().to_ascii_lowercase();
+    if let Some((h, m)) = raw.split_once([':', 'h']) {
+        let h: u32 = h.trim().parse().ok()?;
+        let m: u32 = if m.trim().is_empty() {
+            0
+        } else {
+            m.trim().get(..2.min(m.trim().len()))?.parse().ok()?
+        };
+        return (m < 60).then_some(h * 60 + m);
+    }
+    raw.parse().ok().filter(|&v| v > 0)
+}
+
+/// Attestations d'une liste : `attestations` (année → fichiers) ou `attestationReussites`.
+pub(crate) fn parse_attestations(
+    value: &Value,
+    kind: DocumentKind,
+    prefix: &str,
+) -> Result<Vec<Document>, Problem> {
+    let bad = || upstream(PROVIDER, "liste des attestations illisible");
+    let mut out = Vec::new();
+    if kind == DocumentKind::Achievement {
+        let map = value
+            .get("attestationReussites")
+            .and_then(Value::as_object)
+            .ok_or_else(bad)?;
+        for (key, name) in map {
+            out.push(Document {
+                id: format!("{prefix}.{key}"),
+                title: text(Some(name)).unwrap_or_else(|| "Attestation de réussite".to_owned()),
+                kind,
+                year: None,
+                session: None,
+                downloadable: true,
+                url: None,
+            });
+        }
+        return Ok(out);
+    }
+    let years = value
+        .get("attestations")
+        .and_then(Value::as_object)
+        .ok_or_else(bad)?;
+    for (year, list) in years {
+        for item in list.as_array().ok_or_else(bad)? {
+            let annee = text(item.get("annee")).unwrap_or_else(|| year.clone());
+            let kind_code = text(item.get("type")).ok_or_else(bad)?.replace('/', "");
+            let session = text(item.get("session"));
+            let key = format!("{annee}_{kind_code}_{}", session.as_deref().unwrap_or(""));
+            out.push(Document {
+                id: format!("{prefix}.{key}"),
+                title: text(item.get("libelle")).unwrap_or(kind_code),
+                kind,
+                year: Some(annee),
+                session,
+                downloadable: true,
+                url: None,
+            });
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,6 +617,62 @@ mod tests {
                 .any(|e| e.status.as_deref() == Some("DEF"))
         );
         assert_eq!(s1.modules[2].average, None, "25/20 n'est pas une note");
+    }
+
+    #[test]
+    fn epreuves_triees_avec_fuseau() {
+        let value = json!({ "epreuves": { "S1": [
+            { "libPeriode": "Session 1", "codEpreuve": "EP2", "libEpreuve": "Histoire",
+              "dateEpreuve": "15/12/2026", "heureDebutEpreuve": "14h00", "dureeEpreuve": "2h00",
+              "salleEpreuve": "A101", "batEpreuve": "Bât. A", "infoEpreuve": " ",
+              "elementPedagogiques": [{ "codElement": "EC11", "libElement": "Histoire" }] },
+            { "codEpreuve": "EP1", "libEpreuve": "Lettres", "dateEpreuve": "2026-12-14",
+              "heureDebutEpreuve": "09:30", "dureeEpreuve": "90", "elementPedagogiques": [] },
+            { "codEpreuve": "EP3", "dateEpreuve": "à fixer" }
+        ] } });
+        let exams = parse_exams(&value, chrono_tz::Europe::Paris).unwrap();
+        let ids: Vec<&str> = exams.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["S1-EP1", "S1-EP2", "S1-EP3"]);
+        assert_eq!(
+            exams[1].start.map(|d| d.to_rfc3339()).as_deref(),
+            Some("2026-12-15T14:00:00+01:00")
+        );
+        assert_eq!(exams[0].duration_minutes, Some(90));
+        assert_eq!(exams[1].duration_minutes, Some(120));
+        assert_eq!(exams[1].courses, ["EC11 - Histoire"]);
+        assert_eq!(exams[1].notice, None, "consigne vide ignorée");
+        assert_eq!((exams[2].start, exams[2].title.as_str()), (None, "EP3"));
+        assert!(parse_exams(&json!({}), chrono_tz::Europe::Paris).is_err());
+    }
+
+    #[test]
+    fn heure_sautee_au_passage_a_l_ete() {
+        let value = json!({ "epreuves": { "S2": [
+            { "codEpreuve": "E", "dateEpreuve": "28/03/2027", "heureDebutEpreuve": "02:30" }
+        ] } });
+        let exams = parse_exams(&value, chrono_tz::Europe::Paris).unwrap();
+        assert_eq!(
+            exams[0].start.map(|d| d.to_rfc3339()).as_deref(),
+            Some("2027-03-28T03:30:00+02:00")
+        );
+    }
+
+    #[test]
+    fn attestations_et_reussites() {
+        let sem = json!({ "attestations": { "2025": [
+            { "annee": "2025", "type": "S1/L1", "libelle": "Semestre 1", "session": "1" }
+        ] }, "attestationReussites": {} });
+        let docs = parse_attestations(&sem, DocumentKind::SemesterTranscript, "sem").unwrap();
+        assert_eq!(docs[0].id, "sem.2025_S1L1_1");
+        assert_eq!(docs[0].title, "Semestre 1");
+        assert_eq!(docs[0].year.as_deref(), Some("2025"));
+        let reu = json!({ "attestations": {}, "attestationReussites": { "7": "Licence Arts" } });
+        let docs = parse_attestations(&reu, DocumentKind::Achievement, "reu").unwrap();
+        assert_eq!(
+            (docs[0].id.as_str(), docs[0].title.as_str()),
+            ("reu.7", "Licence Arts")
+        );
+        assert!(parse_attestations(&json!({}), DocumentKind::AnnualTranscript, "anu").is_err());
     }
 
     #[test]

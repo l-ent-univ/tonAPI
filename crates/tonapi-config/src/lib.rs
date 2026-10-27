@@ -24,9 +24,10 @@ pub use establishment::EstablishmentFile;
 pub use load::{LoadReport, Registry, ResolvedUniversity};
 pub use schema::{establishment_schema, university_schema};
 pub use services::{
-    AbsencesService, AppsService, Credentials, DocumentsService, GradesService, HomeworkService,
-    LinkService, MailService, MoodleEntry, ProfileService, ScoDocGateway, ServiceAvailability,
-    ServiceKind, ServiceOptions, Services, SignIn, StudentRecord, TimetableService,
+    AbsencesService, AppsService, Credentials, DocumentsService, ExamsService, GradesService,
+    HomeworkService, LinkService, MailService, MoodleEntry, ProfileService, ScoDocGateway,
+    ServiceAvailability, ServiceKind, ServiceOptions, Services, SignIn, StudentRecord,
+    TimetableService,
 };
 pub use templates::{PLACEHOLDER, PLACEHOLDER_HOST, establishment_template, university_template};
 pub use university::{
