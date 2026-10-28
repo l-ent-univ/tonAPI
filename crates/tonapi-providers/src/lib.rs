@@ -297,6 +297,31 @@ pub async fn grades(ctx: &mut Context<'_>) -> Result<Fetched<GradeReport>, Probl
     }
 }
 
+/// Notes puis absences ; une seule lecture quand les deux viennent de la même passerelle ScoDoc.
+pub async fn grades_and_absences(
+    ctx: &mut Context<'_>,
+) -> (
+    Result<Fetched<GradeReport>, Problem>,
+    Result<Fetched<AbsenceReport>, Problem>,
+) {
+    let services = ctx.services();
+    if let (
+        Some(GradesService::ScodocGateway(grades_config)),
+        Some(AbsencesService::ScodocGateway(absences_config)),
+    ) = (&services.grades, &services.absences)
+        && grades_config == absences_config
+    {
+        let (g, a) = scodoc::fetch_both(ctx, grades_config).await;
+        return (
+            g.map(|data| fetched(data, "scodoc-gateway")),
+            a.map(|data| fetched(data, "scodoc-gateway")),
+        );
+    }
+    let g = grades(ctx).await;
+    let a = absences(ctx).await;
+    (g, a)
+}
+
 pub async fn absences(ctx: &mut Context<'_>) -> Result<Fetched<AbsenceReport>, Problem> {
     let services = ctx.services();
     match &services.absences {

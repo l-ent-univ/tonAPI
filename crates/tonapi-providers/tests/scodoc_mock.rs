@@ -9,7 +9,9 @@ use chrono::Utc;
 use serde_json::{Value, json};
 use tonapi_config::{ResolvedUniversity, ServiceKind, UniversityFile};
 use tonapi_core::ErrorCode;
-use tonapi_providers::{Context, NetSettings, absences, grades, service_login};
+use tonapi_providers::{
+    Context, NetSettings, absences, grades, grades_and_absences, service_login,
+};
 use tonapi_session::{SessionData, StoredCookie};
 
 use support::Server;
@@ -68,6 +70,17 @@ fn own_cas(server: &Server) -> Value {
         "flavor": "phpcas",
         "credentials": { "kind": "separate", "label": "Identifiant IUT (prenom.nom)" },
     })
+}
+
+#[tokio::test]
+async fn notes_et_absences_d_une_seule_lecture() {
+    let server = support::start(PAYLOAD).await;
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let (notes, report) = grades_and_absences(&mut context(&university, &mut session)).await;
+    assert_eq!(notes.unwrap().data.semesters[0].id, "901");
+    assert_eq!(report.unwrap().data.absences.len(), 3);
+    assert_eq!(server.state().data_calls, 1, "une seule requête à data.php");
 }
 
 #[tokio::test]

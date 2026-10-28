@@ -687,6 +687,22 @@ pub(crate) async fn fetch_absences(
     parse_absences(&fetch_data(ctx, config).await?, tz)
 }
 
+/// Notes et absences d'une seule lecture de la passerelle : `data.php` les donne ensemble, et une
+/// session PHP traite ses requêtes l'une après l'autre.
+pub(crate) async fn fetch_both(
+    ctx: &mut Context<'_>,
+    config: &ScoDocGateway,
+) -> (Result<GradeReport, Problem>, Result<AbsenceReport, Problem>) {
+    let data = match timezone(ctx) {
+        Ok(tz) => fetch_data(ctx, config).await.map(|data| (data, tz)),
+        Err(problem) => Err(problem),
+    };
+    match data {
+        Ok((data, tz)) => (parse_grades(&data, tz), parse_absences(&data, tz)),
+        Err(problem) => (Err(problem.clone()), Err(problem)),
+    }
+}
+
 /// Connexion à une passerelle derrière un CAS propre à la composante (`sign-in = own-cas`).
 ///
 /// Le mot de passe sert une fois, vers le CAS de la composante seulement. Seuls les cookies de la
