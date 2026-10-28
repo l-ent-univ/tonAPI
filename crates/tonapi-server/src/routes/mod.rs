@@ -2,6 +2,7 @@
 
 mod data;
 mod me;
+mod overview;
 mod session;
 mod universities;
 
@@ -35,6 +36,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(data::apps))
         .routes(routes!(data::documents))
         .routes(routes!(data::document))
+        .routes(routes!(overview::overview))
 }
 
 /// Disponibilité de chaque service, au format de l'API.

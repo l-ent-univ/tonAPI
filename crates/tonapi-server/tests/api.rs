@@ -446,3 +446,70 @@ async fn connexion_a_un_service_controle_ses_entrees() {
     .await;
     assert!(!r.body.to_string().contains("camille.demo"));
 }
+
+#[tokio::test]
+async fn appel_groupe_en_parallele() {
+    let app = server();
+    let token = login(&app, "demo", json!({})).await.body["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Par défaut : le profil et chaque service servi par l'API, dans l'ordre fixe.
+    let r = call(&app, "GET", "/v1/overview", Some(&token), None).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.headers[header::CACHE_CONTROL], "no-store");
+    let services: Vec<&str> = r.body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["service"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        services,
+        [
+            "profile",
+            "timetable",
+            "grades",
+            "absences",
+            "exams",
+            "homework",
+            "mail",
+            "apps",
+            "documents"
+        ]
+    );
+    for item in r.body["data"].as_array().unwrap() {
+        assert_eq!(item["provider"], "demo", "{item}");
+        assert!(item["problem"].is_null(), "{item}");
+        assert!(item["durationMs"].is_u64());
+    }
+    assert_eq!(r.body["meta"]["provider"], "overview");
+
+    // Liste choisie, dates de l'emploi du temps comme `/v1/timetable`.
+    let r = call(
+        &app,
+        "GET",
+        "/v1/overview?services=timetable,timetable-groups&from=2026-10-12&to=2026-10-18",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.body["data"][0]["data"].as_array().unwrap().len(), 9);
+    assert_eq!(r.body["data"][1]["service"], "timetable-groups");
+
+    let r = call(
+        &app,
+        "GET",
+        "/v1/overview?services=notes",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert_eq!(r.body["code"], "invalid_request");
+
+    let r = call(&app, "GET", "/v1/overview", None, None).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+}

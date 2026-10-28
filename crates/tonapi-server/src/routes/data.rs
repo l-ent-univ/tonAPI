@@ -23,12 +23,15 @@ const MAX_RANGE_DAYS: i64 = 92;
 #[into_params(parameter_in = Query)]
 pub struct Range {
     /// Premier jour inclus (`AAAA-MM-JJ`). Défaut : lundi de la semaine en cours.
-    from: Option<NaiveDate>,
+    pub(crate) from: Option<NaiveDate>,
     /// Dernier jour inclus. Défaut : dimanche qui suit `from`.
-    to: Option<NaiveDate>,
+    pub(crate) to: Option<NaiveDate>,
 }
 
-fn resolve_range(range: &Range, timezone: &str) -> Result<(NaiveDate, NaiveDate), ApiError> {
+pub(crate) fn resolve_range(
+    range: &Range,
+    timezone: &str,
+) -> Result<(NaiveDate, NaiveDate), ApiError> {
     let today = timezone.parse::<chrono_tz::Tz>().map_or_else(
         |_| Utc::now().date_naive(),
         |tz| Utc::now().with_timezone(&tz).date_naive(),
