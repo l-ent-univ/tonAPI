@@ -47,6 +47,11 @@ Rennes, Lannion et les autres composantes de Montpellier n'ont pas été essayé
 Le rattachement automatique compare les attributs CAS du portail (`tiles-portal`) aux règles de
 chaque composante après la connexion ; sans correspondance unique, la composante par défaut reste.
 
+`GET /v1/overview` interroge plusieurs services en parallèle (une copie de session par service,
+cookies et jetons fusionnés ensuite) ; notes et absences ScoDoc y partagent une seule lecture de
+`data.php`. Le client HTTP est partagé par le processus (connexions réutilisées). Mesuré le
+28/10/2026 avec un compte de l'IUT de Béziers : passage complet de la console 3,8 s → 0,86 s.
+
 `POST /v1/auth/service-login` ouvre un service qui a son propre compte, après une réponse
 `service_login_required` : ScoDoc derrière le CAS d'une composante (`own-cas`) et Moodle en
 connexion locale (`local-password`). Le mot de passe sert une fois ; seuls les cookies ou le jeton
