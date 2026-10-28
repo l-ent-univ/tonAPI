@@ -74,6 +74,9 @@ Sans session → `302 /uPortal/Login?refUrl=…`. À tester **connecté** (⏳) 
 `AttestationDto{academie, annee, attestationToken, code, codeUtilisateur, commune, composante, cy3, etablissement, etudiantToken, libUtilisateur, libelle, report, session, type, version}` — les `*Token` sont fournis par `getEtudiant` et rejoués pour télécharger.
 - Pour un BUT1 en octobre : `attestations` vide (« Aucun document n'est disponible »).
 - **Pour tonAPI** : chaîne CAS silencieuse vers `https://app.umontpellier.fr/ardemat/` pour obtenir un ST (ne pas le consommer soi-même), puis `GET /ardemat-api/api/etudiants/<ST>`.
+  Implémenté le 28/10/2026 (`crates/tonapi-providers/src/ardemat.rs`, `cas::service_ticket`) ;
+  service CAS confirmé `https://app.umontpellier.fr/ardemat/` [vu] 28/10/2026 ; essai réel le même
+  jour : ticket obtenu sans être consommé, `api/etudiants/<ST>` 200 JSON, liste vide (BUT).
 - ⚠️ `/ardemat-api/actuator`, `/actuator/health`, `/actuator/info` sont **ouverts sans auth** (Spring Boot Actuator). Ne pas aller plus loin (`env`, `heapdump`…) ; à signaler à la DSI si l'occasion se présente.
 - `rn_demat` (relevés certifiés) n'expose pas de Swagger aux chemins testés (`rn_demat-api` 404, `rndemat-api` 503).
 

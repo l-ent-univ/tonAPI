@@ -55,8 +55,9 @@ du service rejoignent la session, et les échecs passent par le limiteur de conn
 `GET /v1/exams` (calendrier des épreuves) et `GET /v1/documents` puis `GET /v1/documents/{id}`
 (fichier en pièce jointe) sont servis par `demo` et `etudiants-api` (Paul-Valéry). Formats lus dans
 le code client de l'application ; épreuves et attestations vides sur le compte essayé, donc jamais
-vues remplies. Les variantes `mon-dossier-web` et `ardemat` des documents renvoient
-`not_implemented`. Les groupes `ade-myplanning` listent les ressources de l'étudiant (arbre
+vues remplies. `ardemat` (attestations de réussite, Montpellier) demande au CAS un ticket pour
+l'application sans le consommer et le passe à l'API ; essai réel le 28/10/2026 (IUT de Béziers) :
+liste 200 sans attestation, téléchargement d'un vrai PDF jamais essayé. La variante `mon-dossier-web` renvoie `not_implemented`. Les groupes `ade-myplanning` listent les ressources de l'étudiant (arbre
 MyPlanning ouvert sur leur seul chemin) ; les applications uPortal 5 prennent le lien du fragment
 de chaque portlet.
 
