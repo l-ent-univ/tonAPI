@@ -98,7 +98,8 @@ pub async fn overview(
         &university.university.timezone,
     )?;
     let services = requested(query.services.as_deref(), university, &session)?;
-    let (items, sessions) = run_all(&registry, &session, &services, from, to).await?;
+    let groups = groups(&services, university, &session);
+    let (items, sessions) = run_all(&registry, &session, groups, from, to).await?;
 
     let merged = session.merged(&sessions);
     let meta = Meta {
@@ -156,61 +157,118 @@ fn requested(
         .collect())
 }
 
-/// Un service et son résultat, à sa place dans la réponse.
-type Outcome = (usize, &'static str, Result<(Value, &'static str), Problem>);
+/// Un service, son résultat et sa durée, à sa place dans la réponse.
+type Outcome = (
+    usize,
+    &'static str,
+    Result<(Value, &'static str), Problem>,
+    u64,
+);
 
-/// Lance chaque service sur sa copie de la session ; éléments dans l'ordre demandé et sessions
+/// Services d'une tâche : leur place dans la réponse et leur nom.
+type Group = Vec<(usize, &'static str)>;
+
+/// Services regroupés par fournisseur. Ceux d'un même fournisseur passent l'un après l'autre
+/// dans une même tâche : un service web n'accepte pas toujours deux ouvertures simultanées de la
+/// même session (ADE MyPlanning répond 500, une session PHP sérialise). Les groupes, eux,
+/// partent en parallèle.
+fn groups(
+    services: &[&'static str],
+    university: &ResolvedUniversity,
+    session: &SessionData,
+) -> Vec<Group> {
+    let available = university
+        .services_for(session.establishment.as_ref().map(|e| e.id.as_str()))
+        .availability();
+    let provider = |key: &str| -> Option<String> {
+        let kind = match key {
+            "profile" => ServiceKind::Profile,
+            "timetable-groups" => ServiceKind::Timetable,
+            other => *ServiceKind::ALL.iter().find(|k| k.key() == other)?,
+        };
+        available.iter().find_map(|(k, a)| match a {
+            ServiceAvailability::Api { provider } if *k == kind => Some(provider.clone()),
+            _ => None,
+        })
+    };
+    let mut out: Vec<(Option<String>, Group)> = Vec::new();
+    for (index, key) in services.iter().copied().enumerate() {
+        match provider(key) {
+            Some(p) => match out
+                .iter_mut()
+                .find(|(g, _)| g.as_deref() == Some(p.as_str()))
+            {
+                Some((_, members)) => members.push((index, key)),
+                None => out.push((Some(p), vec![(index, key)])),
+            },
+            // Service absent ou simple lien : réponse immédiate, sans voisin.
+            None => out.push((None, vec![(index, key)])),
+        }
+    }
+    out.into_iter().map(|(_, members)| members).collect()
+}
+
+/// Lance chaque groupe sur sa copie de la session ; éléments dans l'ordre demandé et sessions
 /// modifiées, à fusionner.
 async fn run_all(
     registry: &Arc<Registry>,
     session: &SessionData,
-    services: &[&'static str],
+    groups: Vec<Group>,
     from: NaiveDate,
     to: NaiveDate,
 ) -> Result<(Vec<OverviewItem>, Vec<SessionData>), ApiError> {
-    // Notes et absences partagent une tâche : ScoDoc les donne d'une seule lecture.
-    let both = services.contains(&"grades") && services.contains(&"absences");
-    let partner = services.iter().position(|k| *k == "absences");
     let mut tasks = JoinSet::new();
-    for (index, key) in services.iter().copied().enumerate() {
-        if both && key == "absences" {
-            continue;
-        }
-        let paired = both && key == "grades";
+    for members in groups {
         let registry = registry.clone();
         let mut copy = session.clone();
         tasks.spawn(async move {
-            let started = Instant::now();
-            let results: Vec<Outcome> = match registry.get(&copy.university) {
-                Some(university) => {
-                    let mut ctx = Context {
-                        university,
-                        session: &mut copy,
-                        now: Utc::now(),
-                        net: NetSettings::default(),
-                    };
-                    if paired {
-                        let (g, a) = tonapi_providers::grades_and_absences(&mut ctx).await;
-                        vec![
-                            (index, key, g.and_then(value)),
-                            (partner.unwrap_or(index), "absences", a.and_then(value)),
-                        ]
-                    } else {
-                        vec![(index, key, fetch(key, &mut ctx, from, to).await)]
-                    }
+            let mut results: Vec<Outcome> = Vec::with_capacity(members.len());
+            let Some(university) = registry.get(&copy.university) else {
+                for (index, key) in members {
+                    results.push((
+                        index,
+                        key,
+                        Err(Problem::new(ErrorCode::UnknownUniversity)),
+                        0,
+                    ));
                 }
-                None => vec![(index, key, Err(Problem::new(ErrorCode::UnknownUniversity)))],
+                return (results, copy);
             };
-            let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-            (results, copy, ms)
+            let mut ctx = Context {
+                university,
+                session: &mut copy,
+                now: Utc::now(),
+                net: NetSettings::default(),
+            };
+            // Notes et absences d'une même passerelle : une seule lecture (ScoDoc).
+            let absences = members.iter().find(|(_, k)| *k == "absences").copied();
+            let paired = absences.is_some() && members.iter().any(|(_, k)| *k == "grades");
+            for (index, key) in members {
+                let started = Instant::now();
+                if paired && key == "absences" {
+                    continue;
+                }
+                if paired && key == "grades" {
+                    let (g, a) = tonapi_providers::grades_and_absences(&mut ctx).await;
+                    let ms = elapsed(started);
+                    results.push((index, key, g.and_then(value), ms));
+                    if let Some((at, name)) = absences {
+                        results.push((at, name, a.and_then(value), ms));
+                    }
+                    continue;
+                }
+                let result = fetch(key, &mut ctx, from, to).await;
+                results.push((index, key, result, elapsed(started)));
+            }
+            (results, copy)
         });
     }
-    let mut items: Vec<(usize, OverviewItem)> = Vec::with_capacity(services.len());
-    let mut sessions = Vec::with_capacity(services.len());
+    let mut items: Vec<(usize, OverviewItem)> = Vec::new();
+    let mut sessions = Vec::new();
     while let Some(joined) = tasks.join_next().await {
-        let (results, copy, ms) = joined.map_err(|_| ErrorCode::Internal)?;
+        let (results, copy) = joined.map_err(|_| ErrorCode::Internal)?;
         sessions.push(copy);
-        for (index, key, result) in results {
+        for (index, key, result, ms) in results {
             let (provider, data, problem) = match result {
                 Ok((data, provider)) => (Some(provider.to_owned()), Some(data), None),
                 Err(problem) => (None, None, Some(problem)),
@@ -229,6 +287,10 @@ async fn run_all(
     }
     items.sort_by_key(|(index, _)| *index);
     Ok((items.into_iter().map(|(_, item)| item).collect(), sessions))
+}
+
+fn elapsed(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 fn value<T: Serialize>(fetched: Fetched<T>) -> Result<(Value, &'static str), Problem> {
@@ -255,5 +317,61 @@ async fn fetch(
         "apps" => value(p::apps(ctx).await?),
         "documents" => value(p::documents(ctx).await?),
         _ => Err(Problem::new(ErrorCode::InvalidRequest)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use tonapi_config::UniversityFile;
+
+    use super::*;
+
+    fn university() -> ResolvedUniversity {
+        let file: UniversityFile = serde_json::from_value(serde_json::json!({
+            "id": "test",
+            "name": "Université de test",
+            "sso": { "kind": "demo" },
+            "services": {
+                "timetable": { "provider": "ade-myplanning", "base-url": "https://ade.exemple.test/" },
+                "grades": { "provider": "etudiants-api", "base-url": "https://scol.exemple.test/" },
+                "exams": { "provider": "etudiants-api", "base-url": "https://scol.exemple.test/" },
+                "mail": { "provider": "link", "url": "https://mail.exemple.test/" }
+            }
+        }))
+        .unwrap();
+        ResolvedUniversity {
+            dir: std::path::PathBuf::new(),
+            university: file,
+            establishments: BTreeMap::new(),
+        }
+    }
+
+    fn session() -> SessionData {
+        SessionData {
+            university: "test".to_owned(),
+            username: "e".to_owned(),
+            establishment: None,
+            cookies: Vec::new(),
+            tokens: BTreeMap::new(),
+            pending: false,
+            issued_at: 0,
+            expires_at: 1,
+        }
+    }
+
+    #[test]
+    fn un_fournisseur_une_tache() {
+        let services = ["timetable", "grades", "timetable-groups", "mail", "exams"];
+        let groups = groups(&services, &university(), &session());
+        assert_eq!(
+            groups,
+            [
+                vec![(0, "timetable"), (2, "timetable-groups")],
+                vec![(1, "grades"), (4, "exams")],
+                vec![(3, "mail")],
+            ]
+        );
     }
 }
