@@ -5,7 +5,7 @@
 //! déchiffre avec n'importe laquelle, ce qui permet de changer de clé sans déconnecter personne.
 //! Le mot de passe de l'étudiant n'entre jamais dans le jeton.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
@@ -79,6 +79,66 @@ pub struct StoredCookie {
 impl fmt::Debug for StoredCookie {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}@{}{}", self.name, self.domain, self.path)
+    }
+}
+
+impl SessionData {
+    /// Session après plusieurs fournisseurs lancés en parallèle, chacun sur une copie de `self`.
+    /// Pour les cookies (domaine, chemin, nom) et les jetons, chaque ajout ou changement est
+    /// repris ; une suppression l'est aussi, sauf si un autre fournisseur a écrit la même entrée.
+    /// La composante choisie par un fournisseur (détection) remplace celle de départ.
+    #[must_use]
+    pub fn merged(&self, results: &[SessionData]) -> SessionData {
+        type Key = (String, String, String);
+        let key = |c: &StoredCookie| (c.domain.clone(), c.path.clone(), c.name.clone());
+        let base: BTreeMap<Key, &StoredCookie> = self.cookies.iter().map(|c| (key(c), c)).collect();
+        let mut cookies: BTreeMap<Key, StoredCookie> =
+            self.cookies.iter().map(|c| (key(c), c.clone())).collect();
+        // Ordre de départ, puis cookies nouveaux dans l'ordre où ils apparaissent.
+        let mut order: Vec<Key> = self.cookies.iter().map(key).collect();
+        let mut written: BTreeSet<Key> = BTreeSet::new();
+        let mut tokens = self.tokens.clone();
+        let mut written_tokens: BTreeSet<String> = BTreeSet::new();
+        let mut merged = self.clone();
+
+        // Les écritures d'abord, puis les suppressions : l'ordre des résultats ne compte pas.
+        for result in results {
+            for cookie in &result.cookies {
+                let k = key(cookie);
+                if base.get(&k).is_none_or(|old| *old != cookie) {
+                    if !cookies.contains_key(&k) {
+                        order.push(k.clone());
+                    }
+                    cookies.insert(k.clone(), cookie.clone());
+                    written.insert(k);
+                }
+            }
+            for (name, value) in &result.tokens {
+                if self.tokens.get(name) != Some(value) {
+                    tokens.insert(name.clone(), value.clone());
+                    written_tokens.insert(name.clone());
+                }
+            }
+            if result.establishment != self.establishment {
+                merged.establishment.clone_from(&result.establishment);
+            }
+        }
+        for result in results {
+            let kept: BTreeSet<Key> = result.cookies.iter().map(key).collect();
+            for k in base.keys() {
+                if !kept.contains(k) && !written.contains(k) {
+                    cookies.remove(k);
+                }
+            }
+            for name in self.tokens.keys() {
+                if !result.tokens.contains_key(name) && !written_tokens.contains(name) {
+                    tokens.remove(name);
+                }
+            }
+        }
+        merged.cookies = order.iter().filter_map(|k| cookies.remove(k)).collect();
+        merged.tokens = tokens;
+        merged
     }
 }
 
@@ -236,6 +296,89 @@ fn valid_kid(kid: &str) -> bool {
 
 fn aad(kid: &str) -> String {
     format!("tonapi:{VERSION}:{kid}")
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    fn cookie(domain: &str, name: &str, value: &str) -> StoredCookie {
+        StoredCookie {
+            domain: domain.to_owned(),
+            path: "/".to_owned(),
+            name: name.to_owned(),
+            value: value.to_owned(),
+            host_only: true,
+            expires: None,
+        }
+    }
+
+    fn session(cookies: Vec<StoredCookie>, tokens: &[(&str, &str)]) -> SessionData {
+        SessionData {
+            university: "u".to_owned(),
+            username: "e".to_owned(),
+            establishment: None,
+            cookies,
+            tokens: tokens
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect(),
+            pending: false,
+            issued_at: 0,
+            expires_at: 1,
+        }
+    }
+
+    fn value(s: &SessionData, name: &str) -> Option<String> {
+        s.cookies
+            .iter()
+            .find(|c| c.name == name)
+            .map(|c| c.value.clone())
+    }
+
+    #[test]
+    fn chaque_fournisseur_garde_ses_cookies() {
+        let start = session(vec![cookie("cas", "TGC", "t0")], &[]);
+        let mut a = start.clone();
+        a.cookies.push(cookie("scodoc", "PHPSESSID", "s1"));
+        let mut b = start.clone();
+        b.cookies.push(cookie("moodle", "MoodleSession", "m1"));
+        b.tokens.insert("moodle".to_owned(), "jeton".to_owned());
+        let merged = start.merged(&[a, b]);
+        assert_eq!(value(&merged, "TGC").as_deref(), Some("t0"));
+        assert_eq!(value(&merged, "PHPSESSID").as_deref(), Some("s1"));
+        assert_eq!(value(&merged, "MoodleSession").as_deref(), Some("m1"));
+        assert_eq!(
+            merged.tokens.get("moodle").map(String::as_str),
+            Some("jeton")
+        );
+    }
+
+    #[test]
+    fn une_ecriture_l_emporte_sur_une_suppression() {
+        let start = session(
+            vec![
+                cookie("cas", "TGC", "t0"),
+                cookie("ade", "JSESSIONID", "j0"),
+            ],
+            &[("ade", "1,2")],
+        );
+        // A renouvelle le TGC ; B a vidé ses cookies et retiré un jeton refusé.
+        let mut a = start.clone();
+        a.cookies[0].value = "t1".to_owned();
+        let mut b = start.clone();
+        b.cookies.clear();
+        b.tokens.clear();
+        let merged = start.merged(&[b, a]);
+        assert_eq!(value(&merged, "TGC").as_deref(), Some("t1"));
+        assert_eq!(
+            value(&merged, "JSESSIONID"),
+            None,
+            "supprimé par B, écrit par personne"
+        );
+        assert!(merged.tokens.is_empty());
+        assert_eq!(start.merged(std::slice::from_ref(&start)), start);
+    }
 }
 
 #[cfg(test)]
