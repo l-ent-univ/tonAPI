@@ -193,6 +193,21 @@ window.TONAPI_ESSAIS = {
   aucun: { label: "Sans service distant", court: "démo", ton: "idle" },
 };
 
+/// Essais réels par établissement (`université` ou `université/composante`), service par service :
+/// « ok » = données réelles reçues ; « vide » = le service a répondu, mais le compte n'avait encore
+/// rien (aucune note publiée…), donc le format reste à confirmer. Un essai ne vaut que pour
+/// l'établissement où il a eu lieu, même si le logiciel est le même ailleurs.
+window.TONAPI_VERIFIE = {
+  "univ-montp3": {
+    date: "27 et 28/10/2026",
+    services: { profile: "ok", timetable: "ok", grades: "vide", exams: "vide", homework: "ok", mail: "ok", apps: "ok", documents: "vide" },
+  },
+  "umontpellier/iut-beziers": {
+    date: "27 et 28/10/2026",
+    services: { profile: "ok", timetable: "ok", grades: "ok", absences: "ok", homework: "ok", mail: "ok", apps: "ok", documents: "vide" },
+  },
+};
+
 window.TONAPI_SERVICES = [
   { key: "profile", label: "Profil" },
   { key: "timetable", label: "Emploi du temps" },

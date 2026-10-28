@@ -134,7 +134,7 @@ function forgetAccount(id) { saveAccounts(accounts().filter((a) => a.id !== id))
 /// Compte dont la session est ouverte : reprise au rechargement tant que son jeton est valable.
 const ACTIVE = "tonapi.session";
 function usable(a) { return Boolean(a?.token) && a.api === apiBase() && (!a.expiresAt || Date.parse(a.expiresAt) > Date.now()); }
-function resumeAccount(a) {
+function resumeAccount(a, run = true) {
   if (!usable(a) || state.running) return;
   state.accountId = a.id;
   state.form = { ...state.form, university: a.university, username: a.username, establishment: a.establishment || "", remember: true };
@@ -143,13 +143,14 @@ function resumeAccount(a) {
   store.set(ACTIVE, a.id);
   upsertAccount({ id: a.id, lastUsed: Date.now() });
   route();
-  runAll();
+  if (run) runAll();
 }
 function resumeOnLoad() {
   const id = store.get(ACTIVE, null);
   if (!id) return;
   const a = accounts().find((x) => x.id === id);
-  if (usable(a)) resumeAccount(a);
+  // Les tests ne repartent seuls que sur le banc d'essai : les autres pages n'appellent pas l'université.
+  if (usable(a)) resumeAccount(a, !location.hash.replace(/^#\/?/, "").split("?")[0]);
   else store.set(ACTIVE, null);
 }
 function endSession() {
@@ -522,7 +523,8 @@ function resultsPanel() {
     counts.warn ? pill("warn", `${counts.warn} à voir`) : null,
     counts.bad ? pill("bad", `${counts.bad} en échec`) : null,
     counts.idle ? pill("idle", `${counts.idle} sans données`) : null,
-    counts.run ? pill("run", `${counts.run} en cours`) : null);
+    counts.run ? pill("run", `${counts.run} en cours`) : null,
+    state.overviewMs && !state.running ? el("span", { class: "hint", text: `Tous les services en un appel groupé : ${state.overviewMs} ms` }) : null);
 
   const rows = PROBES.map((probe) => {
     const result = state.results[probe.key];
@@ -624,11 +626,25 @@ async function runAll() {
   state.me = { ...info, timezone: detail?.timezone };
   state.results.profile = { data: info.profile, provider: me.data.meta?.provider, ms: me.ms };
   route();
-  for (const probe of PROBES.filter((p) => p.path)) {
-    state.results[probe.key] = { running: true };
-    route();
-    const r = await call("GET", probe.path());
-    state.results[probe.key] = r.data ? { data: r.data.data, provider: r.data.meta?.provider, ms: r.ms } : { problem: r.problem, ms: r.ms };
+  const probes = PROBES.filter((p) => p.path);
+  for (const probe of probes) state.results[probe.key] = { running: true };
+  route();
+  // Un seul appel, services interrogés en parallèle côté serveur ; ms = durée de chaque service.
+  const query = `services=${probes.map((p) => p.key).join(",")}&from=${iso(state.week)}&to=${iso(addDays(state.week, 6))}`;
+  const all = await call("GET", `/v1/overview?${query}`);
+  if (all.data) {
+    for (const item of all.data.data) {
+      state.results[item.service] = item.problem ? { problem: item.problem, ms: item.durationMs } : { data: item.data, provider: item.provider, ms: item.durationMs };
+    }
+    state.overviewMs = all.ms;
+  } else {
+    // Serveur sans `/v1/overview` : un appel par service.
+    state.overviewMs = null;
+    for (const probe of probes) {
+      const r = await call("GET", probe.path());
+      state.results[probe.key] = r.data ? { data: r.data.data, provider: r.data.meta?.provider, ms: r.ms } : { problem: r.problem, ms: r.ms };
+      route();
+    }
   }
   state.running = false;
   route();
@@ -746,48 +762,85 @@ async function loadDetails() {
   }));
 }
 
-function cell(status, inherited, detail) {
-  if (!status || status.availability === "absent") return el("span", { class: "cell vide", text: "absent" });
-  if (status.availability === "link") return el("a", { class: "cell vide", href: status.link, target: "_blank", rel: "noopener noreferrer", text: "lien" });
-  const id = providerFor(status, detail);
-  const f = fournisseur(id);
-  const essai = ESSAIS[f?.essai || "faux"];
-  return el("a", { class: `cell${inherited ? " herite" : ""}`, href: `#/fournisseurs?id=${encodeURIComponent(id)}`, title: f ? `${f.logiciel} : ${essai.label}` : id },
-    el("code", { text: id }), pill(essai.ton, essai.court));
+/// État d'un service pour un établissement, du plus sûr au moins sûr, en mots simples.
+const ETATS = {
+  ok: { ton: "ok", court: "Vérifié", long: "Essayé avec un vrai compte : données reçues." },
+  vide: { ton: "warn", court: "Répond, rien à montrer", long: "Essayé avec un vrai compte, qui n'avait encore rien (notes non publiées…) : format à confirmer." },
+  code: { ton: "idle", court: "Pas encore essayé ici", long: "Codé et testé sur de faux serveurs, jamais avec un compte de cet établissement." },
+  demo: { ton: "idle", court: "Démo", long: "Données fictives de l'université de démonstration." },
+  lien: { ton: "idle", court: "Lien", long: "L'API renvoie vers la page de l'université." },
+  absent: { ton: "idle", court: "Pas proposé", long: "Ni données ni lien pour ce service." },
+};
+const VERIFIE = window.TONAPI_VERIFIE || {};
+
+function etat(status, key, service) {
+  if (!status || status.availability === "absent") return "absent";
+  if (status.availability === "link") return "lien";
+  if (status.provider === "demo") return "demo";
+  return VERIFIE[key]?.services?.[service] || "code";
+}
+
+function serviceTile(service, status, key, detail) {
+  const e = etat(status, key, service.key);
+  const info = ETATS[e];
+  const provider = status?.availability === "api" && e !== "demo" ? providerFor(status, detail) : null;
+  const inner = [
+    el("span", { class: "tile-name", text: service.label }),
+    el("span", { class: `tile-state ${info.ton}`, text: info.court }),
+    provider ? el("span", { class: "tile-provider", text: provider }) : null,
+  ];
+  const attrs = { class: `tile ${e}`, title: info.long };
+  if (provider) return el("a", { ...attrs, href: `#/fournisseurs?id=${encodeURIComponent(provider)}` }, inner);
+  if (e === "lien") return el("a", { ...attrs, href: status.link, target: "_blank", rel: "noopener noreferrer" }, inner);
+  return el("div", attrs, inner);
+}
+
+function coverageBlock(title, sub, statuses, key, detail) {
+  const byService = Object.fromEntries(statuses.map((s) => [s.service, s]));
+  const etats = SERVICES.map((sv) => etat(byService[sv.key], key, sv.key));
+  const ok = etats.filter((e) => e === "ok").length;
+  const usable = etats.filter((e) => !["absent", "lien"].includes(e)).length;
+  const essai = VERIFIE[key];
+  const resume = etats.includes("demo")
+    ? "Données fictives, pour essayer l'API sans compte."
+    : `${usable} services sur ${SERVICES.length} servis par l'API, dont ${ok === 0 ? "aucun vérifié" : `${ok} ${ok > 1 ? "vérifiés" : "vérifié"}`} avec un vrai compte${essai ? ` (${essai.date})` : ""}.`;
+  return el("section", { class: "cov-block" },
+    el("div", { class: "cov-head" }, el("h3", { text: title }), sub ? el("span", { text: sub }) : null),
+    el("p", { class: "cov-summary", text: resume }),
+    el("div", { class: "tiles" }, SERVICES.map((sv) => serviceTile(sv, byService[sv.key], key, detail))));
+}
+
+function loginText(d) {
+  const kind = { cas: "CAS de l'université", demo: "identifiants de démonstration" }[d.login.kind] || d.login.kind;
+  return `Connexion : ${kind}${d.login.mfa ? ", second facteur possible" : ""}`;
 }
 
 function pageCoverage() {
-  const body = el("div", {}, el("p", { class: "empty", "aria-live": "polite" }, el("b", { text: "Chargement" }), "Lecture du détail de chaque université…"));
+  const body = el("div", { class: "stack" }, el("p", { class: "empty", "aria-live": "polite" }, el("b", { text: "Chargement" }), "Lecture du détail de chaque université…"));
   if (state.health && !state.health.ok) body.replaceChildren(empty("API injoignable", "Vérifie l'adresse dans le menu et que tonapi-server tourne."));
   else if (state.health && !state.universities.length) body.replaceChildren(empty("Aucune université servie", "Ajoute un dossier dans universities/ puis lance tonapi validate."));
   else loadDetails().then(() => {
-    const keys = SERVICES.map((s) => s.key);
-    const rows = [];
+    const cards = [];
     for (const u of state.universities) {
       const d = state.details[u.id];
       if (!d) continue;
-      const base = Object.fromEntries(d.services.map((s) => [s.service, s]));
-      rows.push(el("tr", {},
-        el("td", { class: "who" }, el("b", { text: d.name }), el("span", { text: `${d.id} · ${d.status} · ${d.login.kind}${d.login.mfa ? " + 2FA" : ""}${d.portal ? ` · ${d.portal}` : ""}` })),
-        keys.map((k) => el("td", {}, cell(base[k], false, d)))));
-      for (const e of d.establishments || []) {
-        const own = Object.fromEntries(e.services.map((s) => [s.service, s]));
-        rows.push(el("tr", { class: "sub" },
-          el("td", { class: "who" }, el("b", { text: e.name }), el("span", { text: `${e.id}${e.default ? " · par défaut" : ""}` })),
-          keys.map((k) => el("td", {}, cell(own[k], JSON.stringify(own[k]) === JSON.stringify(base[k]), d)))));
-      }
+      const ests = d.establishments || [];
+      // Avec des composantes, chacune est ce qu'un étudiant reçoit vraiment : pas de bloc université.
+      const blocks = ests.length
+        ? ests.map((e) => coverageBlock(e.name, e.default ? "composante par défaut" : "", e.services, `${d.id}/${e.id}`, d))
+        : [coverageBlock("Toute l'université", "", d.services, d.id, d)];
+      cards.push(panel({ title: d.name, sub: `${loginText(d)} · état ${d.status}`, body: el("div", { class: "panel-body stack" }, blocks) }));
     }
-    body.replaceChildren(
-      el("div", { class: "table-wrap" }, el("table", { class: "matrix" },
-        el("thead", {}, el("tr", {}, el("th", { text: "Université ou composante" }), SERVICES.map((s) => el("th", { text: s.label })))),
-        el("tbody", {}, rows))),
-      el("div", { class: "legend" },
-        Object.values(ESSAIS).map((e) => el("span", {}, pill(e.ton, e.court), ` ${e.label}`)),
-        el("span", { text: "Cellule pâle : reprise de l'université." })));
+    body.replaceChildren(...cards);
   });
+  const legend = el("ul", { class: "cov-legend" },
+    ["ok", "vide", "code", "lien", "absent"].map((k) => el("li", {},
+      el("span", { class: `tile-state ${ETATS[k].ton}`, text: ETATS[k].court }),
+      el("span", { text: ETATS[k].long }))));
   return [
-    pageHead("Couverture", "Ce que chaque université et chaque composante propose, lu en direct dans l'API. Le badge indique si le fournisseur a déjà été essayé avec un vrai compte."),
-    panel({ title: "Services par établissement", sub: "Cliquer un fournisseur ouvre sa fiche", body }),
+    pageHead("Couverture", "Ce qu'un étudiant obtient dans chaque établissement, et ce qui a vraiment été vérifié avec un compte de cet établissement."),
+    panel({ title: "Comment lire", body: el("div", { class: "panel-body" }, legend) }),
+    body,
   ];
 }
 
