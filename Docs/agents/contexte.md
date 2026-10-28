@@ -51,6 +51,11 @@ chaque composante après la connexion ; sans correspondance unique, la composant
 cookies et jetons fusionnés ensuite) ; notes et absences ScoDoc y partagent une seule lecture de
 `data.php`. Le client HTTP est partagé par le processus (connexions réutilisées). Mesuré le
 28/10/2026 avec un compte de l'IUT de Béziers : passage complet de la console 3,8 s → 0,86 s.
+Les services d'un même fournisseur passent l'un après l'autre dans l'appel groupé (ADE répond 500
+à deux ouvertures simultanées). Cache en mémoire des seules données communes à tous les étudiants
+(`crates/tonapi-providers/src/shared.rs`) : signatures GWT et arbre ADE (1 h), liens des portlets
+uPortal (6 h, jamais un lien qui pourrait être personnel). Au plus 32 requêtes simultanées par hôte
+et par processus. Paul-Valéry, appel groupé à chaud : 1,6–1,9 s → 0,41 s.
 
 `POST /v1/auth/service-login` ouvre un service qui a son propre compte, après une réponse
 `service_login_required` : ScoDoc derrière le CAS d'une composante (`own-cas`) et Moodle en
