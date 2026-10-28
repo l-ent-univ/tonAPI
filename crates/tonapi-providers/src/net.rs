@@ -98,6 +98,21 @@ impl Net {
         }
     }
 
+    /// Ticket de service CAS non consommé, pour une API qui valide le ticket elle-même.
+    pub async fn service_ticket(&mut self, service: &Url) -> Result<String, Problem> {
+        let Some(cas) = self.cas.clone() else {
+            return Err(Problem::new(ErrorCode::Internal)
+                .detail("ce service demande une université derrière un CAS"));
+        };
+        match cas::service_ticket(&mut self.browser, &cas, service).await {
+            Ok(ticket) => Ok(ticket),
+            Err(CasError::NotAuthenticated) => Err(Problem::new(ErrorCode::SessionExpired)
+                .detail("l'université redemande la connexion : se reconnecter")),
+            Err(CasError::Http(e)) => Err(http_problem(self.provider, &e)),
+            Err(e) => Err(upstream(self.provider, e)),
+        }
+    }
+
     /// Une requête sans suivre de redirection. Renvoie statut, en-têtes et corps.
     pub async fn request(
         &mut self,
@@ -118,8 +133,19 @@ impl Net {
         url: Url,
         headers: HeaderMap,
     ) -> Result<(reqwest::StatusCode, HeaderMap, Vec<u8>), Problem> {
+        self.bytes(Method::GET, url, headers, None).await
+    }
+
+    /// Une requête dont la réponse est un fichier : statut, en-têtes et corps brut.
+    pub async fn bytes(
+        &mut self,
+        method: Method,
+        url: Url,
+        headers: HeaderMap,
+        body: Option<String>,
+    ) -> Result<(reqwest::StatusCode, HeaderMap, Vec<u8>), Problem> {
         self.browser
-            .send_bytes(Method::GET, url, headers, None, None)
+            .send_bytes(method, url, headers, body, None)
             .await
             .map_err(|e| http_problem(self.provider, &e))
     }

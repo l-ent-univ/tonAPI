@@ -597,11 +597,16 @@ pub enum DocumentsService {
         )]
         certificate_url: Option<Url>,
     },
-    /// API ardemat (attestations dématérialisées).
+    /// API ardemat (attestations de réussite dématérialisées) : l'API valide elle-même un ticket
+    /// CAS émis pour son application.
     Ardemat {
         /// Racine de l'API (ex. `https://app.exemple.fr/ardemat-api/`).
         #[serde(rename = "base-url")]
         base_url: Url,
+        /// Service CAS de l'application (ex. `https://app.exemple.fr/ardemat/`), pour lequel le
+        /// ticket est demandé.
+        #[serde(rename = "service-url")]
+        service_url: Url,
         #[serde(default, skip_serializing_if = "ServiceOptions::is_default")]
         options: ServiceOptions,
     },

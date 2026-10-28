@@ -10,6 +10,7 @@
 mod ade_ical;
 mod ade_myplanning;
 mod ade_rest;
+mod ardemat;
 mod bluemind;
 mod demo;
 mod etudiants_api;
@@ -334,9 +335,17 @@ pub async fn documents(ctx: &mut Context<'_>) -> Result<Fetched<Vec<Document>>, 
             etudiants_api::fetch_documents(ctx, base_url, certificate_url.as_ref()).await?,
             "etudiants-api",
         )),
-        Some(DocumentsService::MonDossierWeb { .. } | DocumentsService::Ardemat { .. }) => {
+        Some(DocumentsService::Ardemat {
+            base_url,
+            service_url,
+            ..
+        }) => Ok(fetched(
+            ardemat::fetch_documents(ctx, base_url, service_url).await?,
+            "ardemat",
+        )),
+        Some(DocumentsService::MonDossierWeb { .. }) => {
             Err(Problem::new(ErrorCode::NotImplemented)
-                .detail("ce fournisseur de documents n'est pas encore implémenté"))
+                .detail("le fournisseur `mon-dossier-web` n'est pas encore implémenté"))
         }
         Some(DocumentsService::Link(_) | DocumentsService::None) | None => {
             Err(absent(&services, ServiceKind::Documents))
@@ -353,9 +362,17 @@ pub async fn document(ctx: &mut Context<'_>, id: &str) -> Result<Fetched<Downloa
             etudiants_api::download(ctx, base_url, id).await?,
             "etudiants-api",
         )),
-        Some(DocumentsService::MonDossierWeb { .. } | DocumentsService::Ardemat { .. }) => {
+        Some(DocumentsService::Ardemat {
+            base_url,
+            service_url,
+            ..
+        }) => Ok(fetched(
+            ardemat::download(ctx, base_url, service_url, id).await?,
+            "ardemat",
+        )),
+        Some(DocumentsService::MonDossierWeb { .. }) => {
             Err(Problem::new(ErrorCode::NotImplemented)
-                .detail("ce fournisseur de documents n'est pas encore implémenté"))
+                .detail("le fournisseur `mon-dossier-web` n'est pas encore implémenté"))
         }
         Some(DocumentsService::Link(_) | DocumentsService::None) | None => {
             Err(absent(&services, ServiceKind::Documents))

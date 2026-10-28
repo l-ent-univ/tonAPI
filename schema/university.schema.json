@@ -248,7 +248,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "API ardemat (attestations dématérialisées).",
+          "description": "API ardemat (attestations de réussite dématérialisées) : l'API valide elle-même un ticket\nCAS émis pour son application.",
           "properties": {
             "base-url": {
               "description": "Racine de l'API (ex. `https://app.exemple.fr/ardemat-api/`).",
@@ -261,11 +261,17 @@
             "provider": {
               "const": "ardemat",
               "type": "string"
+            },
+            "service-url": {
+              "description": "Service CAS de l'application (ex. `https://app.exemple.fr/ardemat/`), pour lequel le\nticket est demandé.",
+              "format": "uri",
+              "type": "string"
             }
           },
           "required": [
             "provider",
-            "base-url"
+            "base-url",
+            "service-url"
           ],
           "type": "object"
         },

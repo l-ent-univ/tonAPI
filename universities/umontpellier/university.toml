@@ -57,7 +57,9 @@ provider = "portal"
 [services.profile]
 provider = "portal"
 
-# Attestations dématérialisées. Docs/Montpellier/research/pistes-api.md
+# Attestations de réussite dématérialisées. [vu] 13/10/2026 (Swagger public, front Angular) et
+# 28/10/2026 (service CAS de l'application). Docs/Montpellier/research/pistes-api.md §6.3
 [services.documents]
 provider = "ardemat"
 base-url = "https://app.umontpellier.fr/ardemat-api/"
+service-url = "https://app.umontpellier.fr/ardemat/"
