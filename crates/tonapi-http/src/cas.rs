@@ -139,6 +139,80 @@ pub async fn submit_code(
     walk(browser, cas, page, None, remember_device).await
 }
 
+/// Ticket de service (`ST-…`) pour `service`, obtenu avec la session CAS du navigateur (TGC) sans
+/// être consommé : la chaîne de redirections est suivie tant qu'elle reste sur le CAS et s'arrête
+/// à la redirection vers `service?ticket=…`. Pour un service qui valide lui-même un ticket reçu
+/// dans une requête d'API (ardemat). Sans session ou avec un second facteur : `NotAuthenticated`.
+pub async fn service_ticket(
+    browser: &mut Browser,
+    cas: &CasServer,
+    service: &Url,
+) -> Result<String, CasError> {
+    const MAX_HOPS: usize = 10;
+    let mut url = cas.login_url(Some(service));
+    for _ in 0..MAX_HOPS {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::ACCEPT,
+            reqwest::header::HeaderValue::from_static("text/html"),
+        );
+        let (status, response, body) = browser
+            .send(reqwest::Method::GET, url.clone(), headers, None, None)
+            .await?;
+        let location = response
+            .get(reqwest::header::LOCATION)
+            .and_then(|l| l.to_str().ok())
+            .filter(|_| status.is_redirection());
+        let Some(location) = location else {
+            // Page du CAS : formulaire de connexion ou second facteur, il faut se reconnecter.
+            let page = Page {
+                url: url.clone(),
+                status,
+                content_type: None,
+                body,
+                hops: Vec::new(),
+                stopped_at: None,
+            };
+            return match classify(cas, &page) {
+                Kind::Login(_) | Kind::Otp(_) | Kind::UnknownMfa | Kind::Remember(_) => {
+                    Err(CasError::NotAuthenticated)
+                }
+                _ => Err(CasError::Unexpected(format!(
+                    "pas de ticket pour le service (HTTP {status})"
+                ))),
+            };
+        };
+        let next = url
+            .join(location)
+            .map_err(|_| CasError::Unexpected("Location illisible".into()))?;
+        if same_endpoint(&next, service) {
+            return next
+                .query_pairs()
+                .find(|(k, _)| k == "ticket")
+                .map(|(_, v)| v.into_owned())
+                .filter(|t| !t.is_empty())
+                .ok_or_else(|| CasError::Unexpected("retour au service sans ticket".into()));
+        }
+        if !cas.owns(&next) {
+            return Err(CasError::Unexpected(
+                "le CAS renvoie vers un autre hôte que le service".into(),
+            ));
+        }
+        url = next;
+    }
+    Err(CasError::Unexpected(
+        "trop de redirections sur le CAS".into(),
+    ))
+}
+
+/// Même schéma, hôte, port et chemin (la requête est ignorée).
+fn same_endpoint(a: &Url, b: &Url) -> bool {
+    a.scheme() == b.scheme()
+        && a.host_str() == b.host_str()
+        && a.port_or_known_default() == b.port_or_known_default()
+        && a.path() == b.path()
+}
+
 enum Kind {
     Login(Form),
     Otp(OtpChallenge),
