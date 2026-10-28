@@ -1,6 +1,8 @@
 //! Client HTTP qui se comporte comme un navigateur : cookies, redirections suivies à la main.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use reqwest::header::{self, HeaderMap, HeaderValue};
@@ -72,6 +74,26 @@ pub struct Page {
     pub stopped_at: Option<String>,
 }
 
+/// Clients déjà construits, par certificats supplémentaires et délai.
+type ClientKey = (Vec<PathBuf>, Duration);
+static CLIENTS: LazyLock<Mutex<HashMap<ClientKey, reqwest::Client>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn shared_client(options: &BrowserOptions) -> Result<reqwest::Client, HttpError> {
+    let mut paths = options.extra_ca.clone();
+    paths.sort();
+    let key = (paths, options.timeout);
+    if let Some(client) = CLIENTS.lock().ok().and_then(|m| m.get(&key).cloned()) {
+        return Ok(client);
+    }
+    // Construit hors du verrou ; une construction en double au démarrage est sans effet.
+    let client = Browser::build_client(options)?;
+    if let Ok(mut map) = CLIENTS.lock() {
+        map.entry(key).or_insert_with(|| client.clone());
+    }
+    Ok(client)
+}
+
 /// Navigateur minimal, un par étudiant et par requête.
 pub struct Browser {
     client: reqwest::Client,
@@ -80,9 +102,20 @@ pub struct Browser {
 }
 
 impl Browser {
+    /// Le client HTTP est partagé par tout le processus pour les mêmes réglages : ses connexions
+    /// (TCP, TLS) sont réutilisées d'une requête et d'un étudiant à l'autre. Il ne garde aucun
+    /// cookie : ceux de l'étudiant partent de `jar` dans chaque requête.
+    pub fn new(options: &BrowserOptions, jar: CookieJar) -> Result<Self, HttpError> {
+        Ok(Browser {
+            client: shared_client(options)?,
+            jar,
+            https_only: options.https_only,
+        })
+    }
+
     /// Le TLS passe par la bibliothèque du système (OpenSSL, Security.framework) : certains CAS
     /// n'acceptent que des suites TLS 1.2 sans échange de clé éphémère, que rustls refuse.
-    pub fn new(options: &BrowserOptions, jar: CookieJar) -> Result<Self, HttpError> {
+    fn build_client(options: &BrowserOptions) -> Result<reqwest::Client, HttpError> {
         let mut certs = Vec::new();
         for path in &options.extra_ca {
             let pem = std::fs::read(path)
@@ -105,11 +138,7 @@ impl Browser {
             .default_headers(headers)
             .timeout(options.timeout)
             .build()?;
-        Ok(Browser {
-            client,
-            jar,
-            https_only: options.https_only,
-        })
+        Ok(client)
     }
 
     fn now() -> i64 {
