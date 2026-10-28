@@ -18,6 +18,7 @@ mod moodle;
 #[allow(dead_code)] // utilisé par les fournisseurs réseau au fur et à mesure de leur ajout
 mod net;
 mod scodoc;
+mod shared;
 mod sso;
 mod tiles_portal;
 mod uportal;

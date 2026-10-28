@@ -69,6 +69,8 @@ struct Mock {
     feeds: Vec<String>,
     /// Les demandes de flux renvoient une page HTML (numéros périmés).
     stale_feed: bool,
+    /// Lectures du chargeur GWT (signatures).
+    loader_reads: u32,
 }
 
 type Shared = Arc<Mutex<Mock>>;
@@ -144,12 +146,15 @@ async fn handle(
                 "<html><title>Ade Web MyPlanning</title></html>".to_owned(),
             )
         }
-        "/direct/gwtdirectplanning/gwtdirectplanning.nocache.js" => reply(
-            StatusCode::OK,
-            "text/javascript",
-            None,
-            format!("var a='0000000000000000000000000000000A',b='{PERMUTATION}';"),
-        ),
+        "/direct/gwtdirectplanning/gwtdirectplanning.nocache.js" => {
+            s.loader_reads += 1;
+            reply(
+                StatusCode::OK,
+                "text/javascript",
+                None,
+                format!("var a='0000000000000000000000000000000A',b='{PERMUTATION}';"),
+            )
+        }
         p if p == format!("/direct/gwtdirectplanning/{PERMUTATION}.cache.html") => reply(
             StatusCode::OK,
             "text/html",
@@ -372,5 +377,32 @@ async fn groupes_nommes_par_l_arbre_ade() {
     assert_eq!(
         session.tokens.get(&key).map(String::as_str),
         Some("4141,4242")
+    );
+}
+
+#[tokio::test]
+async fn deuxieme_etudiant_sans_relire_signatures_ni_arbre() {
+    let (state, base) = start().await;
+    let uni = university(&base);
+    for _ in 0..2 {
+        let mut session = session(true);
+        let mut ctx = Context {
+            university: &uni,
+            session: &mut session,
+            now: Utc.with_ymd_and_hms(2026, 10, 5, 8, 0, 0).unwrap(),
+            net: NetSettings { https_only: false },
+        };
+        let groups = timetable_groups(&mut ctx).await.unwrap().data;
+        assert_eq!(groups.len(), 2);
+    }
+    let s = state.lock().unwrap();
+    assert_eq!(s.loader_reads, 1, "signatures GWT lues une fois");
+    assert_eq!(
+        s.calls
+            .iter()
+            .filter(|c| *c == "method4getChildren")
+            .count(),
+        4,
+        "arbre ouvert pour le premier étudiant seulement"
     );
 }

@@ -27,8 +27,14 @@ use tonapi_config::PortalConfig;
 use tonapi_core::{App, ErrorCode, Problem, Profile};
 use url::Url;
 
+use std::time::Duration;
+
 use crate::Context;
 use crate::net::{Net, upstream};
+use crate::shared::Shared;
+
+/// Lien direct de chaque portlet (`None` : pas de lien dans le fragment), par portail et `fname`.
+static PORTLET_LINKS: Shared<Option<String>> = Shared::new(Duration::from_secs(6 * 3600));
 
 /// Nom du logiciel dans les messages d'erreur.
 const PROVIDER: &str = "uportal";
@@ -178,6 +184,13 @@ async fn direct_links(net: &mut Net, portal: &Portal, apps: &mut [App]) {
         })
         .take(MAX_FRAGMENTS);
     for app in pending {
+        let key = format!("{}|{}", portal.base, app.id);
+        if let Some(cached) = PORTLET_LINKS.get(&key) {
+            if let Some(link) = cached {
+                app.url = link;
+            }
+            continue;
+        }
         let Ok(mut url) = route(&portal.base, "api/v4-3/portlet/") else {
             return;
         };
@@ -186,13 +199,35 @@ async fn direct_links(net: &mut Net, portal: &Portal, apps: &mut [App]) {
         };
         segments.pop_if_empty().push(&format!("{}.html", app.id));
         drop(segments);
-        if let Ok((status, body)) = fetch(net, url, "text/html", &portal.base).await
-            && status.is_success()
-            && let Some(link) = fragment_link(&body, &portal.base)
+        let Ok((status, body)) = fetch(net, url, "text/html", &portal.base).await else {
+            continue;
+        };
+        if !status.is_success() {
+            continue;
+        }
+        let link = fragment_link(&body, &portal.base).map(String::from);
+        // Un lien qui pourrait être propre à l'étudiant n'est jamais partagé.
+        if link
+            .as_deref()
+            .is_none_or(|l| shareable(l, &portal.account))
         {
-            app.url = link.into();
+            PORTLET_LINKS.put(key, link.clone());
+        }
+        if let Some(link) = link {
+            app.url = link;
         }
     }
+}
+
+/// Lien sans trace de l'étudiant : ni son identifiant, ni ticket, jeton ou session en paramètre.
+fn shareable(link: &str, account: &str) -> bool {
+    let lower = link.to_ascii_lowercase();
+    let personal = [
+        "ticket", "token", "jeton", "session", "sid=", "key=", "auth",
+    ]
+    .iter()
+    .any(|word| lower.contains(word));
+    !personal && (account.is_empty() || !lower.contains(&account.to_ascii_lowercase()))
 }
 
 /// Lien d'un fragment de portlet : la source de son `<iframe>`, sinon son premier lien `<a>`
@@ -765,6 +800,24 @@ fn userinfo_claims(body: &str) -> Result<Value, Problem> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn lien_partageable_entre_etudiants() {
+        assert!(shareable(
+            "https://app.exemple.test/ent/html/edt.html",
+            "e2100"
+        ));
+        assert!(shareable(
+            "https://app.exemple.test/ent/Apoweb?v=1",
+            "e2100"
+        ));
+        assert!(!shareable(
+            "https://app.exemple.test/x?ticket=ST-1",
+            "e2100"
+        ));
+        assert!(!shareable("https://app.exemple.test/u/E2100/page", "e2100"));
+        assert!(!shareable("https://app.exemple.test/?jsessionid=abc", ""));
+    }
+
     #[test]
     fn lien_du_fragment_de_portlet() {
         let base = Url::parse("https://ent.exemple.test/uPortal/").unwrap();

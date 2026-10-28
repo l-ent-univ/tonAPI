@@ -26,9 +26,17 @@ use reqwest::{Method, StatusCode};
 use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
 use url::Url;
 
+use std::time::Duration;
+
 use crate::Context;
 use crate::ade_ical::{is_calendar, parse_timetable, university_tz};
 use crate::net::{Net, upstream};
+use crate::shared::Shared;
+
+/// Signatures GWT par module : les mêmes pour tous les étudiants, jusqu'à la prochaine version.
+static POLICIES: Shared<Vec<(String, String)>> = Shared::new(Duration::from_secs(3600));
+/// Enfants d'un dossier de l'arbre des ressources (noms des groupes), par module et nœud.
+static CHILDREN: Shared<Vec<TreeNode>> = Shared::new(Duration::from_secs(3600));
 
 const PROVIDER: &str = "ade-myplanning";
 const MODULE: &str = "direct/gwtdirectplanning/";
@@ -204,14 +212,22 @@ async fn groups(
         if opened > MAX_FOLDERS {
             break;
         }
-        let reply = rpc
-            .call(
-                net,
-                "DirectPlanningServiceProxy",
-                &rpc.children_body(&node)?,
-            )
-            .await?;
-        for child in children(reply.text().ok_or_else(bad_tree)?)? {
+        let key = format!("{}|{node}", rpc.module);
+        let nodes = if let Some(nodes) = CHILDREN.get(&key) {
+            nodes
+        } else {
+            let reply = rpc
+                .call(
+                    net,
+                    "DirectPlanningServiceProxy",
+                    &rpc.children_body(&node)?,
+                )
+                .await?;
+            let nodes = children(reply.text().ok_or_else(bad_tree)?)?;
+            CHILDREN.put(key, nodes.clone());
+            nodes
+        };
+        for child in nodes {
             if child.folder && folders.contains(&child.id) {
                 let mut inner = path.clone();
                 // Les numéros négatifs sont les catégories d'ADE, pas des dossiers nommés.
@@ -257,16 +273,31 @@ async fn discover(net: &mut Net, base: &Url, project_id: u32) -> Result<(Rpc, Ve
     let module = base
         .join(MODULE)
         .map_err(|_| upstream(PROVIDER, "adresse ADE illisible"))?;
-    let policies = policies(net, &module).await?;
-    let rpc = Rpc {
+    let cached = POLICIES.get(module.as_str());
+    let reused = cached.is_some();
+    let policies = match cached {
+        Some(policies) => policies,
+        None => fresh_policies(net, &module).await?,
+    };
+    let mut rpc = Rpc {
         module,
         policies,
         client: gwt_long(chrono::Utc::now().timestamp_millis()),
     };
 
-    let login = rpc
+    let login = match rpc
         .call(net, "MyPlanningClientServiceProxy", &rpc.login_body()?)
-        .await?;
+        .await
+    {
+        // Signatures gardées mais refusées : ADE a changé de version, on les relit une fois.
+        Err(problem) if reused && problem.code == ErrorCode::UpstreamChanged => {
+            POLICIES.remove(rpc.module.as_str());
+            rpc.policies = fresh_policies(net, &rpc.module).await?;
+            rpc.call(net, "MyPlanningClientServiceProxy", &rpc.login_body()?)
+                .await?
+        }
+        other => other?,
+    };
     let criteria = login_criteria(&login)?;
     rpc.call(
         net,
@@ -288,6 +319,13 @@ async fn discover(net: &mut Net, base: &Url, project_id: u32) -> Result<(Rpc, Ve
         ));
     }
     Ok((rpc, ids))
+}
+
+/// Signatures relues dans le code public, puis gardées pour les étudiants suivants.
+async fn fresh_policies(net: &mut Net, module: &Url) -> Result<Vec<(String, String)>, Problem> {
+    let found = policies(net, module).await?;
+    POLICIES.put(module.to_string(), found.clone());
+    Ok(found)
 }
 
 /// Signatures (`policy`) de chaque service, lues dans le code de la première permutation
@@ -700,7 +738,7 @@ fn path_folders(text: &str) -> Result<HashSet<i64>, Problem> {
 }
 
 /// Enfant d'un dossier : numéro, dossier ou ressource, nom et texte du nœud.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct TreeNode {
     id: i64,
     folder: bool,
