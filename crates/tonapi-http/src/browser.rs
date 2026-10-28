@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use reqwest::header::{self, HeaderMap, HeaderValue};
@@ -92,6 +92,37 @@ fn shared_client(options: &BrowserOptions) -> Result<reqwest::Client, HttpError>
         map.entry(key).or_insert_with(|| client.clone());
     }
     Ok(client)
+}
+
+/// Requêtes simultanées vers un même hôte, par processus : protège le service de l'université
+/// quand beaucoup d'étudiants arrivent en même temps. Les suivantes attendent leur tour.
+const PER_HOST: usize = 32;
+/// Attente maximale d'une place ; au-delà, le service est considéré comme saturé.
+const HOST_WAIT: Duration = Duration::from_secs(10);
+
+static HOSTS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Semaphore>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+async fn host_permit(url: &Url) -> Result<tokio::sync::OwnedSemaphorePermit, HttpError> {
+    let host = format!(
+        "{}:{}",
+        url.host_str().unwrap_or_default(),
+        url.port_or_known_default().unwrap_or(0)
+    );
+    let semaphore = {
+        let mut map = HOSTS
+            .lock()
+            .map_err(|_| HttpError::Network("verrou des hôtes".to_owned()))?;
+        map.entry(host)
+            .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(PER_HOST)))
+            .clone()
+    };
+    match tokio::time::timeout(HOST_WAIT, semaphore.acquire_owned()).await {
+        Ok(Ok(permit)) => Ok(permit),
+        _ => Err(HttpError::Network(
+            "trop de requêtes simultanées vers ce service".to_owned(),
+        )),
+    }
 }
 
 /// Navigateur minimal, un par étudiant et par requête.
@@ -186,6 +217,8 @@ impl Browser {
         timeout: Option<Duration>,
     ) -> Result<(StatusCode, HeaderMap, Vec<u8>), HttpError> {
         let url = self.secure(url)?;
+        // Tenu jusqu'à la fin de la lecture du corps.
+        let _permit = host_permit(&url).await?;
         let mut request = self.client.request(method, url.clone()).headers(headers);
         if let Some(cookie) = self.jar.header_for(&url, Self::now()) {
             request = request.header(header::COOKIE, cookie);
