@@ -121,6 +121,19 @@ window.TONAPI_FOURNISSEURS = [
     fichiers: ["crates/tonapi-providers/src/zimbra.rs"],
   },
   {
+    id: "ardemat",
+    logiciel: "ardemat (attestations de réussite, Spring Boot)",
+    services: ["documents"],
+    ligne: ["CAS", "ticket non consommé", "api/etudiants/{ticket}", "attestations/download"],
+    essai: "partiel",
+    essais: ["IUT de Béziers (Université de Montpellier), 28/10/2026 : liste 200, aucune attestation"],
+    comment:
+      "L'API valide elle-même un ticket CAS émis pour l'application : tonAPI demande ce ticket avec la session sans l'utiliser, lit le dossier, puis télécharge le PDF avec les jetons de l'attestation. Un ticket neuf par appel ; l'envoi par courriel n'est jamais appelé.",
+    limites: ["Aucune attestation réelle observée : ce que le téléchargement exige en plus des jetons est inconnu."],
+    config: 'provider = "ardemat"\nbase-url = "https://app.exemple.fr/ardemat-api/"\nservice-url = "https://app.exemple.fr/ardemat/"',
+    fichiers: ["crates/tonapi-providers/src/ardemat.rs", "Docs/Montpellier/research/pistes-api.md"],
+  },
+  {
     id: "bluemind",
     logiciel: "BlueMind",
     services: ["mail"],

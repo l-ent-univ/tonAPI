@@ -129,7 +129,34 @@ function upsertAccount(patch) {
   else list.push({ label: "", ...patch });
   saveAccounts(list);
 }
-function forgetAccount(id) { saveAccounts(accounts().filter((a) => a.id !== id)); if (state.accountId === id) state.accountId = null; }
+function forgetAccount(id) { saveAccounts(accounts().filter((a) => a.id !== id)); if (state.accountId === id) state.accountId = null; if (store.get(ACTIVE, null) === id) store.set(ACTIVE, null); }
+
+/// Compte dont la session est ouverte : reprise au rechargement tant que son jeton est valable.
+const ACTIVE = "tonapi.session";
+function usable(a) { return Boolean(a?.token) && a.api === apiBase() && (!a.expiresAt || Date.parse(a.expiresAt) > Date.now()); }
+function resumeAccount(a) {
+  if (!usable(a) || state.running) return;
+  state.accountId = a.id;
+  state.form = { ...state.form, university: a.university, username: a.username, establishment: a.establishment || "", remember: true };
+  state.token = a.token;
+  state.pending = null;
+  store.set(ACTIVE, a.id);
+  upsertAccount({ id: a.id, lastUsed: Date.now() });
+  route();
+  runAll();
+}
+function resumeOnLoad() {
+  const id = store.get(ACTIVE, null);
+  if (!id) return;
+  const a = accounts().find((x) => x.id === id);
+  if (usable(a)) resumeAccount(a);
+  else store.set(ACTIVE, null);
+}
+function endSession() {
+  state.token = null;
+  store.set(ACTIVE, null);
+  renderRail();
+}
 
 /// Anciennes clés de la première console (un jeton par université, sans identifiant).
 (function migrate() {
@@ -391,7 +418,11 @@ function savedPanel() {
     ? el("div", { class: "panel-body accounts-list" }, saved.map((a) =>
       el("button", { type: "button", class: "account-option", "aria-pressed": String(state.accountId === a.id), onclick: () => { state.form = { ...state.form, university: a.university, username: a.username, establishment: a.establishment || "" }; state.accountId = a.id; route(); $("f-password")?.focus(); } },
         el("span", {}, el("b", { text: a.label || a.username || "Compte" }), el("small", { text: `${a.university}${a.username ? ` · ${a.username}` : ""}` })),
-        a.token ? pill("ok", "appareil reconnu") : pill("idle", "sans jeton"))))
+        a.token ? pill("ok", "appareil reconnu") : pill("idle", "sans jeton"))).concat(
+      saved.filter(usable).length
+        ? [el("p", { class: "hint", text: "Session encore ouverte : la reprendre sans mot de passe." }),
+          saved.filter(usable).map((a) => el("button", { type: "button", onclick: () => resumeAccount(a), text: `Reprendre ${a.username || a.university}` }))]
+        : []))
     : empty("Aucun compte mémorisé", "Coche « Mémoriser ce compte » à la connexion pour le retrouver ici.");
   return panel({ title: "Comptes mémorisés", sub: "Un clic remplit le formulaire", actions: el("a", { href: "#/comptes", text: "Gérer" }), body });
 }
@@ -417,6 +448,7 @@ async function login(form, status) {
 function signedIn(data) {
   state.pending = null;
   state.token = data.token;
+  store.set(ACTIVE, state.accountId || null);
   if (state.accountId) {
     const previous = accounts().find((a) => a.id === state.accountId);
     upsertAccount({ id: state.accountId, api: apiBase(), university: state.form.university, username: state.form.username, establishment: state.form.establishment, token: data.token, expiresAt: data.expiresAt, lastUsed: Date.now(), deviceSince: previous?.deviceSince || Date.now(), remember: true });
@@ -580,7 +612,10 @@ async function runAll() {
   if (!me.data) {
     state.results.profile = { problem: me.problem, ms: me.ms };
     state.running = false;
-    if (me.problem?.code === "invalid_token" || me.problem?.code === "session_expired") { state.token = null; renderRail(); }
+    if (me.problem?.code === "invalid_token" || me.problem?.code === "session_expired") {
+      endSession();
+      if (state.accountId) upsertAccount({ id: state.accountId, expiresAt: new Date().toISOString() });
+    }
     return route();
   }
   const info = me.data.data;
@@ -616,7 +651,9 @@ async function refresh() {
 
 async function logout() {
   await call("POST", "/v1/auth/logout");
-  state.token = null;
+  // Le jeton reste pour reconnaître l'appareil (previousToken), plus pour reprendre la session.
+  if (state.accountId) upsertAccount({ id: state.accountId, expiresAt: new Date().toISOString() });
+  endSession();
   state.me = null;
   state.results = {};
   renderRail();
@@ -683,7 +720,8 @@ function pageAccounts() {
             el("li", {}, el("div", {}, el("b", { text: "Second facteur avec « mémoriser cet appareil »" }), el("span", { text: "Le CAS prolonge sa propre session à 30 jours (cookie connect.sid à Montpellier)." }))),
             el("li", {}, el("div", {}, el("b", { text: "Jeton chiffré rendu par l'API" }), el("span", { text: "Les cookies de l'université voyagent chiffrés (AES-256-GCM) dans le jeton, que la console garde pour ce compte." }))),
             el("li", {}, el("div", {}, el("b", { text: "Connexion suivante : previousToken" }), el("span", { text: "La console renvoie l'ancien jeton. Le serveur en reprend les cookies sauf le ticket CAS : le mot de passe reste demandé, l'appareil est reconnu." }))),
-            el("li", {}, el("div", {}, el("b", { text: "Renouvellements" }), el("span", { text: "Une réponse peut renvoyer un jeton à jour (en-tête TonAPI-Session) ; la console remplace celui du compte." }))))),
+            el("li", {}, el("div", {}, el("b", { text: "Renouvellements" }), el("span", { text: "Une réponse peut renvoyer un jeton à jour (en-tête TonAPI-Session) ; la console remplace celui du compte." }))),
+            el("li", {}, el("div", {}, el("b", { text: "Rechargement de la page" }), el("span", { text: "Tant que le jeton du compte est valable (12 h par défaut), la console reprend la session et relance les tests sans mot de passe. « Se déconnecter » ou une session refusée y met fin." }))))),
         }),
         panel({
           title: "Limites et sécurité", sub: "À savoir avant de mémoriser un compte",
@@ -931,3 +969,4 @@ window.addEventListener("hashchange", () => { route(); $("view").focus({ prevent
 renderRail();
 route();
 checkHealth();
+resumeOnLoad();
