@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
+use url::Url;
 
 use crate::SCHEMA_VERSION;
 use crate::diagnostics::locate;
@@ -117,7 +118,7 @@ impl<'a> Checker<'a> {
         for (path, text) in found {
             if is_placeholder(&text) {
                 self.push(Some(&path), Some(&text), "valeur à remplir");
-            } else if text.contains("://") && !text.starts_with("https://") {
+            } else if has_non_https_scheme(&text) {
                 self.push(
                     Some(&path),
                     Some(&text),
@@ -176,6 +177,18 @@ pub fn is_valid_id(id: &str) -> bool {
         && id
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Vrai pour toute valeur qui s'écrit `schéma:…` avec un schéma autre que `https`
+/// (`http://`, `javascript:`, `data:`, `mailto:`…). Une phrase contenant un espace n'en est pas
+/// une. `urn:` reste permis : c'est un identifiant (entityID SAML), jamais ouvert ni appelé.
+fn has_non_https_scheme(text: &str) -> bool {
+    if text.contains("://") {
+        return !text.starts_with("https://");
+    }
+    text.starts_with(|c: char| c.is_ascii_alphabetic())
+        && !text.contains(char::is_whitespace)
+        && Url::parse(text).is_ok_and(|url| !matches!(url.scheme(), "https" | "urn"))
 }
 
 fn walk(value: &Value, path: String, out: &mut Vec<(String, String)>) {

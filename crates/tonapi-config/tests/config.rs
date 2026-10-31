@@ -178,3 +178,36 @@ fn ajouter_un_iut_tient_en_un_petit_fichier() {
         .count();
     assert!(useful < 20, "{useful} lignes utiles");
 }
+
+#[test]
+fn un_lien_hors_https_est_refuse() {
+    let tmp = tempfile::tempdir().unwrap();
+    for (dir, url) in [
+        ("javascript", "javascript:alert(document.domain)"),
+        ("data", "data:text/html;base64,PHNjcmlwdD4="),
+        ("http", "http://exemple.fr/"),
+        ("https", "https://exemple.fr/notes"),
+    ] {
+        let univ = tmp.path().join(dir);
+        fs::create_dir_all(&univ).unwrap();
+        fs::write(
+            univ.join("university.toml"),
+            format!(
+                "id = \"{dir}\"\nname = \"Lien\"\n\n[sso]\nkind = \"cas\"\nbase-url = \"https://cas.exemple.fr/\"\n\n[services.grades]\nprovider = \"link\"\nurl = \"{url}\"\nlabel = \"Notes\"\n"
+            ),
+        )
+        .unwrap();
+    }
+    let (registry, report) = Registry::load(tmp.path());
+    for dir in ["javascript", "data", "http"] {
+        assert!(
+            report
+                .rejected
+                .iter()
+                .any(|i| i.file.ends_with(format!("{dir}/university.toml"))),
+            "{dir} accepté"
+        );
+        assert!(registry.get(dir).is_none());
+    }
+    assert!(registry.get("https").is_some(), "{:#?}", report.rejected);
+}
