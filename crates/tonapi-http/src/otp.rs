@@ -138,7 +138,12 @@ pub async fn push(
             Ok((status, _, _)) => {
                 return Err(CasError::Unexpected(format!("socket OTP : HTTP {status}")));
             }
-            Err(HttpError::Network(_)) => continue, // délai de polling écoulé
+            Err(HttpError::Network(_)) => {
+                // Délai de polling écoulé, ou erreur immédiate : courte pause pour ne pas
+                // relancer en boucle serrée jusqu'à l'échéance.
+                tokio::time::sleep(Duration::from_millis(500).min(remaining)).await;
+                continue;
+            }
             Err(e) => return Err(e.into()),
         };
         for packet in packets(&body) {

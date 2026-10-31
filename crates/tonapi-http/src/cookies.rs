@@ -6,7 +6,13 @@
 
 use chrono::DateTime;
 use tonapi_session::StoredCookie;
-use url::Url;
+use url::{Host, Url};
+
+/// Cookies gardés par domaine : un hôte hostile ne fait pas grossir sans fin la session de
+/// l'étudiant, qui voyage dans un en-tête.
+const MAX_PER_DOMAIN: usize = 50;
+/// Taille maximale d'un cookie (nom + valeur), comme les navigateurs.
+const MAX_COOKIE_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, Default)]
 pub struct CookieJar {
@@ -58,7 +64,7 @@ impl CookieJar {
             return;
         };
         let name = name.trim();
-        if name.is_empty() {
+        if name.is_empty() || name.len() + value.trim().len() > MAX_COOKIE_BYTES {
             return;
         }
         let mut cookie = StoredCookie {
@@ -77,6 +83,10 @@ impl CookieJar {
             match key.to_ascii_lowercase().as_str() {
                 "domain" if !val.is_empty() => {
                     let domain = val.trim_start_matches('.').to_ascii_lowercase();
+                    // `Domain=fr` couvrirait tout un TLD ; une adresse IP n'a pas de domaine parent.
+                    if !domain.contains('.') || !matches!(url.host(), Some(Host::Domain(_))) {
+                        return;
+                    }
                     if host != domain && !host.ends_with(&format!(".{domain}")) {
                         return; // domaine étranger : refusé
                     }
@@ -90,13 +100,16 @@ impl CookieJar {
             }
         }
         if let Some(seconds) = max_age {
-            cookie.expires = Some(now + seconds);
+            cookie.expires = Some(now.saturating_add(seconds));
         }
         self.cookies.retain(|c| {
             !(c.name == cookie.name && c.domain == cookie.domain && c.path == cookie.path)
         });
         if cookie.expires.is_none_or(|e| e > now) {
-            self.cookies.push(cookie);
+            let same_domain = self.cookies.iter().filter(|c| c.domain == cookie.domain);
+            if same_domain.count() < MAX_PER_DOMAIN {
+                self.cookies.push(cookie);
+            }
         }
     }
 
@@ -219,6 +232,69 @@ mod tests {
 
         jar.store(&page, "E=1; Expires=Wed, 21 Oct 2015 07:28:00 GMT", 0);
         assert!(jar.to_stored(1_445_412_480).iter().all(|c| c.name != "E"));
+    }
+
+    #[test]
+    fn domain_sans_point_ou_sur_une_adresse_ip_est_refuse() {
+        let mut jar = CookieJar::default();
+        let page = url("https://cas.univ.fr/login");
+        jar.store(&page, "A=1; Domain=fr", 0);
+        jar.store(&page, "B=1; Domain=.fr", 0);
+        assert!(!jar.has_cookies_for("univ.fr"));
+        assert!(!jar.has_cookies_for("autre.fr"));
+        jar.store(&page, "C=1; Domain=univ.fr", 0);
+        assert!(jar.contains("ent.univ.fr", "C"));
+
+        let ip = url("https://192.0.2.7/login");
+        jar.store(&ip, "D=1; Domain=192.0.2.7", 0);
+        jar.store(&ip, "E=1; Domain=0.2.7", 0);
+        assert!(!jar.has_cookies_for("192.0.2.7"));
+        jar.store(&ip, "F=1", 0);
+        assert!(jar.contains("192.0.2.7", "F"));
+    }
+
+    #[test]
+    fn au_plus_cinquante_cookies_par_domaine() {
+        let mut jar = CookieJar::default();
+        let page = url("https://hostile.example.test/");
+        for i in 0..80 {
+            jar.store(&page, &format!("c{i}=v"), 0);
+        }
+        assert_eq!(jar.to_stored(0).len(), MAX_PER_DOMAIN);
+        let autre = url("https://sain.example.test/");
+        jar.store(&autre, "ok=1", 0);
+        assert!(jar.contains("sain.example.test", "ok"));
+        // Remplacer ou supprimer un cookie existant reste possible au plafond.
+        jar.store(&page, "c3=nouveau", 0);
+        let header = jar.header_for(&page, 0).unwrap();
+        assert_eq!(header.matches("c3=nouveau").count(), 1);
+        jar.store(&page, "c4=; Max-Age=0", 0);
+        assert!(!jar.contains("hostile.example.test", "c4"));
+        jar.store(&page, "c80=v", 0);
+        assert!(jar.contains("hostile.example.test", "c80"));
+    }
+
+    #[test]
+    fn un_cookie_de_plus_de_4096_octets_est_ignore() {
+        let mut jar = CookieJar::default();
+        let page = url("https://notes.iut.fr/");
+        let grand = "x".repeat(MAX_COOKIE_BYTES);
+        jar.store(&page, &format!("gros={grand}"), 0);
+        assert!(!jar.contains("notes.iut.fr", "gros"));
+        let limite = "x".repeat(MAX_COOKIE_BYTES - "ok".len());
+        jar.store(&page, &format!("ok={limite}"), 0);
+        assert!(jar.contains("notes.iut.fr", "ok"));
+    }
+
+    #[test]
+    fn un_max_age_gigantesque_ne_deborde_pas() {
+        let mut jar = CookieJar::default();
+        let page = url("https://notes.iut.fr/");
+        jar.store(&page, "A=1; Max-Age=9223372036854775807", 1_000);
+        jar.store(&page, "B=1; Max-Age=-9223372036854775808", 1_000);
+        assert!(jar.contains("notes.iut.fr", "A"));
+        assert!(!jar.contains("notes.iut.fr", "B"));
+        assert_eq!(jar.to_stored(2_000).len(), 1);
     }
 
     #[test]

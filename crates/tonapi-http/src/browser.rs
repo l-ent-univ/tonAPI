@@ -18,6 +18,8 @@ pub const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Ap
 const ACCEPT_HTML: &str = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 const MAX_REDIRECTS: usize = 15;
 const MAX_BODY: usize = 8 * 1024 * 1024;
+/// Délai pour établir la connexion TCP et TLS ; le délai total reste `BrowserOptions::timeout`.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, thiserror::Error)]
 pub enum HttpError {
@@ -100,8 +102,19 @@ const PER_HOST: usize = 32;
 /// Attente maximale d'une place ; au-delà, le service est considéré comme saturé.
 const HOST_WAIT: Duration = Duration::from_secs(10);
 
-static HOSTS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Semaphore>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// Au-delà de ce nombre d'hôtes suivis, ceux qui n'ont plus de requête en cours sont oubliés.
+const MAX_HOSTS: usize = 10_000;
+
+type HostMap = HashMap<String, Arc<tokio::sync::Semaphore>>;
+
+static HOSTS: LazyLock<Mutex<HostMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Retire les hôtes dont toutes les places sont libres et que personne n'attend.
+fn forget_idle_hosts(map: &mut HostMap) {
+    if map.len() > MAX_HOSTS {
+        map.retain(|_, s| Arc::strong_count(s) > 1 || s.available_permits() < PER_HOST);
+    }
+}
 
 async fn host_permit(url: &Url) -> Result<tokio::sync::OwnedSemaphorePermit, HttpError> {
     let host = format!(
@@ -113,6 +126,7 @@ async fn host_permit(url: &Url) -> Result<tokio::sync::OwnedSemaphorePermit, Htt
         let mut map = HOSTS
             .lock()
             .map_err(|_| HttpError::Network("verrou des hôtes".to_owned()))?;
+        forget_idle_hosts(&mut map);
         map.entry(host)
             .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(PER_HOST)))
             .clone()
@@ -147,6 +161,10 @@ impl Browser {
     /// Le TLS passe par la bibliothèque du système (OpenSSL, Security.framework) : certains CAS
     /// n'acceptent que des suites TLS 1.2 sans échange de clé éphémère, que rustls refuse.
     fn build_client(options: &BrowserOptions) -> Result<reqwest::Client, HttpError> {
+        Ok(Self::client_builder(options)?.build()?)
+    }
+
+    fn client_builder(options: &BrowserOptions) -> Result<reqwest::ClientBuilder, HttpError> {
         let mut certs = Vec::new();
         for path in &options.extra_ca {
             let pem = std::fs::read(path)
@@ -161,15 +179,15 @@ impl Browser {
             header::ACCEPT_LANGUAGE,
             HeaderValue::from_static("fr-FR,fr;q=0.9,en;q=0.5"),
         );
-        let client = reqwest::Client::builder()
+        Ok(reqwest::Client::builder()
             .tls_backend_native()
             .tls_certs_merge(certs)
             .redirect(reqwest::redirect::Policy::none())
             .user_agent(USER_AGENT)
             .default_headers(headers)
-            .timeout(options.timeout)
-            .build()?;
-        Ok(client)
+            .tls_version_min(reqwest::tls::Version::TLS_1_2)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(options.timeout))
     }
 
     fn now() -> i64 {
@@ -229,7 +247,7 @@ impl Browser {
         if let Some(timeout) = timeout {
             request = request.timeout(timeout);
         }
-        let response = request.send().await?;
+        let mut response = request.send().await?;
         let status = response.status();
         let headers = response.headers().clone();
         for value in headers.get_all(header::SET_COOKIE) {
@@ -237,11 +255,20 @@ impl Browser {
                 self.jar.store(&url, value, Self::now());
             }
         }
-        let bytes = response.bytes().await?;
-        if bytes.len() > MAX_BODY {
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_BODY as u64)
+        {
             return Err(HttpError::TooLarge);
         }
-        Ok((status, headers, bytes.to_vec()))
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if bytes.len() + chunk.len() > MAX_BODY {
+                return Err(HttpError::TooLarge);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok((status, headers, bytes))
     }
 
     /// `GET` en suivant les redirections.
@@ -434,8 +461,140 @@ pub fn describe(url: &Url) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::describe;
+    use std::time::Duration;
+
+    use reqwest::Method;
+    use reqwest::header::HeaderMap;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
     use url::Url;
+
+    use std::sync::Arc;
+
+    use super::{
+        Browser, BrowserOptions, HostMap, HttpError, MAX_BODY, MAX_HOSTS, PER_HOST, describe,
+        forget_idle_hosts,
+    };
+    use crate::cookies::CookieJar;
+
+    /// Faux serveur HTTP/1.1 brut : une seule réponse, écrite par `respond` après lecture de la requête.
+    async fn raw_server<F, Fut>(respond: F) -> Url
+    where
+        F: FnOnce(TcpStream) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send,
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            while !request.ends_with(b"\r\n\r\n") {
+                let read = stream.read(&mut buffer).await.unwrap();
+                if read == 0 {
+                    return;
+                }
+                request.extend_from_slice(&buffer[..read]);
+            }
+            respond(stream).await;
+        });
+        url
+    }
+
+    async fn fetch(url: Url) -> Result<usize, HttpError> {
+        let options = BrowserOptions {
+            https_only: false,
+            timeout: Duration::from_secs(10),
+            ..BrowserOptions::default()
+        };
+        let mut browser = Browser::new(&options, CookieJar::default())?;
+        let (_, _, bytes) = tokio::time::timeout(
+            Duration::from_secs(5),
+            browser.send_bytes(Method::GET, url, HeaderMap::new(), None, None),
+        )
+        .await
+        .expect("la lecture aurait dû s'arrêter")?;
+        Ok(bytes.len())
+    }
+
+    #[tokio::test]
+    async fn un_content_length_trop_grand_est_refuse_sans_lire_le_corps() {
+        let url = raw_server(|mut stream| async move {
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                MAX_BODY + 1
+            );
+            stream.write_all(head.as_bytes()).await.unwrap();
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        })
+        .await;
+        assert!(matches!(fetch(url).await, Err(HttpError::TooLarge)));
+    }
+
+    #[tokio::test]
+    async fn un_corps_sans_taille_est_coupe_au_plafond() {
+        let url = raw_server(|mut stream| async move {
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+                .await
+                .unwrap();
+            let chunk = vec![b'a'; 0x10000];
+            while stream.write_all(b"10000\r\n").await.is_ok()
+                && stream.write_all(&chunk).await.is_ok()
+                && stream.write_all(b"\r\n").await.is_ok()
+            {}
+        })
+        .await;
+        assert!(matches!(fetch(url).await, Err(HttpError::TooLarge)));
+    }
+
+    #[tokio::test]
+    async fn un_corps_sous_le_plafond_est_lu_en_entier() {
+        let url = raw_server(|mut stream| async move {
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\nbonjour")
+                .await
+                .unwrap();
+        })
+        .await;
+        assert_eq!(fetch(url).await.unwrap(), 7);
+    }
+
+    #[test]
+    fn les_hotes_inactifs_sont_oublies_au_dela_du_plafond() {
+        let mut map = HostMap::new();
+        let new = || Arc::new(tokio::sync::Semaphore::new(PER_HOST));
+        for i in 0..MAX_HOSTS {
+            map.insert(format!("h{i}:443"), new());
+        }
+        let occupe = new();
+        let _permit = occupe.clone().try_acquire_owned().unwrap();
+        map.insert("occupe:443".to_owned(), occupe);
+        let attendu = new();
+        let _attente = attendu.clone();
+        map.insert("attendu:443".to_owned(), attendu);
+
+        forget_idle_hosts(&mut map);
+        let mut restants: Vec<_> = map.keys().cloned().collect();
+        restants.sort();
+        assert_eq!(restants, ["attendu:443", "occupe:443"]);
+
+        // Sous le plafond, rien n'est retiré.
+        map.insert("libre:443".to_owned(), new());
+        forget_idle_hosts(&mut map);
+        assert_eq!(map.len(), 3);
+    }
+
+    #[test]
+    fn le_client_exige_tls_1_2_et_borne_la_connexion() {
+        let builder = Browser::client_builder(&BrowserOptions::default()).unwrap();
+        let debug = format!("{builder:?}");
+        assert!(
+            debug.contains("tls_version_min: Version(Tls1_2)"),
+            "{debug}"
+        );
+        assert!(debug.contains("connect_timeout: 5s"), "{debug}");
+    }
 
     #[test]
     fn une_adresse_decrite_ne_garde_ni_valeur_ni_identifiant() {
