@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -12,17 +15,20 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      # À faire : épingler les actions par SHA de commit.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --locked --workspace
       - name: Fichiers d'universités valides
-        run: cargo run -q -p tonapi-cli -- validate universities
+        run: cargo run --locked -q -p tonapi-cli -- validate universities
       - name: JSON Schema à jour
-        run: cargo run -q -p tonapi-cli -- schema --check
+        run: cargo run --locked -q -p tonapi-cli -- schema --check
       - name: Rapports sans donnée personnelle
-        run: cargo run -q -p tonapi-cli -- report check reports/*.md
+        run: cargo run --locked -q -p tonapi-cli -- report check reports/*.md
