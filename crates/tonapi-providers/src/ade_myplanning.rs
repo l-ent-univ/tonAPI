@@ -865,7 +865,8 @@ fn login_criteria(login: &GwtResponse) -> Result<Vec<Criterion>, Problem> {
             continue;
         }
         let Ok(n) = usize::try_from(n) else { continue };
-        let mut codes = Vec::with_capacity(n);
+        // Taille annoncée par ADE : jamais au-delà de ce que la réponse contient.
+        let mut codes = Vec::with_capacity(n.min(ints.len() / 2));
         for k in 0..n {
             let at = i + 4 + 2 * k;
             match (ints.get(at), ints.get(at + 1)) {
@@ -896,6 +897,11 @@ fn integer_list(reply: &GwtResponse) -> Result<Vec<u32>, Problem> {
     let start = ints.iter().position(|&v| v == list).ok_or_else(bad)?;
     let n = ints.get(start + 1).copied().ok_or_else(bad)?;
     let n = usize::try_from(n).map_err(|_| bad())?;
+    // Taille annoncée par ADE : refusée si la réponse ne peut pas la contenir (une allocation
+    // impossible arrêterait tout le processus).
+    if n > ints.len() / 2 {
+        return Err(bad());
+    }
     let mut ids = Vec::with_capacity(n);
     for k in 0..n {
         let at = start + 2 + 2 * k;
@@ -929,6 +935,10 @@ fn permutations(script: &str) -> Vec<String> {
             let name = String::from_utf8_lossy(candidate).into_owned();
             if !out.contains(&name) {
                 out.push(name);
+                // Seules les 16 premières sont essayées.
+                if out.len() == 16 {
+                    break;
+                }
             }
             i += 32;
         } else {

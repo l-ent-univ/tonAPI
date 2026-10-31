@@ -473,7 +473,7 @@ fn exam_time(raw: &str) -> Option<NaiveTime> {
     let raw = raw.trim().to_ascii_lowercase();
     let (h, m) = match raw.split_once([':', 'h', '.']) {
         Some((h, m)) => (h, if m.is_empty() { "0" } else { m }),
-        None if raw.len() == 4 => raw.split_at(2),
+        None if raw.len() == 4 => (raw.get(..2)?, raw.get(2..)?),
         None => return None,
     };
     let m = m.get(..2).unwrap_or(m);
@@ -490,7 +490,11 @@ fn minutes(raw: &str) -> Option<u32> {
         } else {
             m.trim().get(..2.min(m.trim().len()))?.parse().ok()?
         };
-        return (m < 60).then_some(h * 60 + m);
+        return if m < 60 {
+            h.checked_mul(60)?.checked_add(m)
+        } else {
+            None
+        };
     }
     raw.parse().ok().filter(|&v| v > 0)
 }

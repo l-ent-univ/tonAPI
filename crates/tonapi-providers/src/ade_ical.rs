@@ -768,10 +768,17 @@ fn unescape(raw: &str) -> String {
 // à Montpellier) : [déduit] du seul flux de l'UM, à ne pas supposer valables ailleurs.
 // ---------------------------------------------------------------------------------------------
 
+/// Au plus autant de salles, enseignants ou groupes par séance : le dédoublonnage reste rapide
+/// même sur un flux hostile.
+const MAX_PER_LIST: usize = 50;
+
 /// Salles : `LOCATION` découpé sur `,` et `;`, sans doublon.
 fn split_rooms(location: &str) -> Vec<String> {
     let mut rooms: Vec<String> = Vec::new();
     for room in location.split([',', ';']).map(str::trim) {
+        if rooms.len() >= MAX_PER_LIST {
+            break;
+        }
         if !room.is_empty() && !rooms.iter().any(|r| r == room) {
             rooms.push(room.to_owned());
         }
@@ -820,7 +827,7 @@ fn describe(description: &str) -> Described {
 }
 
 fn push_unique(list: &mut Vec<String>, value: String) {
-    if !list.contains(&value) {
+    if list.len() < MAX_PER_LIST && !list.contains(&value) {
         list.push(value);
     }
 }

@@ -665,10 +665,15 @@ fn html_redirect(body: &str, from: &Url) -> Option<Url> {
 fn meta_refresh(body: &str) -> Option<&str> {
     let lower = body.to_ascii_lowercase();
     for (start, _) in lower.match_indices("<meta") {
-        let end = lower
+        // Sans `>` plus loin, aucune balise suivante ne se ferme non plus : on s'arrête (sinon
+        // chaque `<meta` relirait toute la fin de la page).
+        let Some(end) = lower
             .get(start..)
             .and_then(|rest| rest.find('>'))
-            .map_or(lower.len(), |e| start + e);
+            .map(|e| start + e)
+        else {
+            break;
+        };
         let Some(tag) = lower.get(start..end) else {
             continue;
         };

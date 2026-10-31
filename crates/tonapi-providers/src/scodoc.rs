@@ -360,12 +360,16 @@ fn at(day: NaiveDate, hours: f64, tz: Tz) -> Result<DateTime<FixedOffset>, Probl
     }
     #[allow(clippy::cast_possible_truncation)] // 0 ≤ hours ≤ 24 : au plus 1 440 minutes
     let minutes = (hours * 60.0).round() as i64;
-    let local = day.and_time(NaiveTime::MIN) + chrono::Duration::minutes(minutes);
+    let local = day
+        .and_time(NaiveTime::MIN)
+        .checked_add_signed(chrono::Duration::minutes(minutes))
+        .ok_or_else(|| bad("date d'absence hors limites"))?;
     tz.from_local_datetime(&local)
         .earliest()
         .or_else(|| {
-            tz.from_local_datetime(&(local + chrono::Duration::hours(1)))
-                .earliest()
+            local
+                .checked_add_signed(chrono::Duration::hours(1))
+                .and_then(|later| tz.from_local_datetime(&later).earliest())
         })
         .map(|instant| instant.fixed_offset())
         .ok_or_else(|| bad("horaire d'absence illisible"))

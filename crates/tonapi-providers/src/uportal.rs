@@ -219,8 +219,16 @@ async fn direct_links(net: &mut Net, portal: &Portal, apps: &mut [App]) {
     }
 }
 
-/// Lien sans trace de l'étudiant : ni son identifiant, ni ticket, jeton ou session en paramètre.
+/// Lien sans trace de l'étudiant : sans paramètre ni fragment (un lien de capacité, comme un
+/// flux iCal ou un numéro étudiant, y passe souvent), sans son identifiant, sans mot évoquant un
+/// ticket, un jeton ou une session.
 fn shareable(link: &str, account: &str) -> bool {
+    let Ok(url) = Url::parse(link) else {
+        return false;
+    };
+    if url.query().is_some() || url.fragment().is_some() {
+        return false;
+    }
     let lower = link.to_ascii_lowercase();
     let personal = [
         "ticket", "token", "jeton", "session", "sid=", "key=", "auth",
@@ -806,9 +814,13 @@ mod tests {
             "https://app.exemple.test/ent/html/edt.html",
             "e2100"
         ));
-        assert!(shareable(
+        assert!(!shareable(
             "https://app.exemple.test/ent/Apoweb?v=1",
             "e2100"
+        ));
+        assert!(!shareable(
+            "https://ade.exemple.test/direct_cal.jsp?data=8241fc",
+            ""
         ));
         assert!(!shareable(
             "https://app.exemple.test/x?ticket=ST-1",

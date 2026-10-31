@@ -139,6 +139,18 @@ fn browser(
         .map_err(|e| Problem::new(ErrorCode::Internal).detail(e.to_string()))
 }
 
+/// Cookies d'une session précédente gardés pour la reconnaissance de l'appareil : ceux du seul
+/// hôte du CAS, sans le TGC. Les cookies des services (ScoDoc, Moodle, mail…) ne passent jamais
+/// d'une session à l'autre.
+fn device_cookies(previous: Vec<StoredCookie>, cas: &CasServer) -> Vec<StoredCookie> {
+    let host = cas.base.host_str().unwrap_or_default().to_ascii_lowercase();
+    previous
+        .into_iter()
+        .filter(|c| !SSO_TICKET_COOKIES.contains(&c.name.as_str()))
+        .filter(|c| c.domain.trim_start_matches('.').eq_ignore_ascii_case(&host))
+        .collect()
+}
+
 fn signed_in(
     mut session: SessionData,
     browser: &Browser,
@@ -172,8 +184,11 @@ async fn prompt(
         OTP_TOKEN.to_owned(),
         serde_json::to_string(challenge).map_err(|_| ErrorCode::Internal)?,
     );
+    // Le délai court depuis la première demande : un code refusé ne le prolonge pas.
+    if !session.pending {
+        session.expires_at = now.timestamp() + PENDING_TTL_SECS;
+    }
     session.pending = true;
-    session.expires_at = now.timestamp() + PENDING_TTL_SECS;
     Ok(LoginOutcome::SecondFactor(
         session,
         MfaPrompt {
@@ -211,11 +226,7 @@ pub async fn login(
     // Les cookies d'une session précédente servent à faire reconnaître l'appareil (pas de second
     // facteur), jamais à se passer du mot de passe : on retire le TGC, et si le CAS laisse quand
     // même passer sans le demander, on recommence avec un pot vide.
-    let previous: Vec<StoredCookie> = input
-        .previous_cookies
-        .into_iter()
-        .filter(|c| !SSO_TICKET_COOKIES.contains(&c.name.as_str()))
-        .collect();
+    let previous = device_cookies(input.previous_cookies, &cas);
     for cookies in [previous, Vec::new()] {
         let mut browser = browser(university, cookies, input.net)?;
         let outcome = cas::open(&mut browser, &cas, entry.clone(), Some(credentials))
@@ -328,5 +339,40 @@ pub async fn refresh(
         Outcome::SignedIn { .. } => Ok(signed_in(session, &browser, now, ttl_secs)),
         Outcome::SecondFactor(_) => Err(Problem::new(ErrorCode::SessionExpired)
             .detail("l'université redemande le second facteur : reconnectez-vous")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cookie(domain: &str, name: &str) -> StoredCookie {
+        StoredCookie {
+            domain: domain.to_owned(),
+            path: "/".to_owned(),
+            name: name.to_owned(),
+            value: "v".to_owned(),
+            host_only: true,
+            expires: None,
+        }
+    }
+
+    #[test]
+    fn seuls_les_cookies_du_cas_reconnaissent_l_appareil() {
+        let cas = CasServer::new(
+            Url::parse("https://cas.exemple.test/cas/").unwrap(),
+            tonapi_config::CasFlavor::default(),
+        );
+        let kept = device_cookies(
+            vec![
+                cookie("cas.exemple.test", "connect.sid"),
+                cookie("cas.exemple.test", "TGC"),
+                cookie("scodoc.exemple.test", "PHPSESSID"),
+                cookie("exemple.test", "MoodleSession"),
+            ],
+            &cas,
+        );
+        let names: Vec<&str> = kept.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["connect.sid"]);
     }
 }

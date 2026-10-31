@@ -182,6 +182,9 @@ fn child_nodes(node: &Value) -> Vec<&Value> {
         .collect()
 }
 
+/// Groupes listés au plus.
+const MAX_GROUPS: usize = 5_000;
+
 fn walk_tree(
     node: &Value,
     path: &mut Vec<String>,
@@ -191,6 +194,10 @@ fn walk_tree(
 ) -> Result<(), Problem> {
     if depth > MAX_DEPTH {
         return Err(upstream(PROVIDER, "arbre des ressources trop profond"));
+    }
+    // Chaque groupe copie son chemin : un arbre démesuré multiplierait la mémoire.
+    if out.len() >= MAX_GROUPS {
+        return Err(upstream(PROVIDER, "arbre des ressources trop grand"));
     }
     let id = node
         .get("id")
@@ -339,6 +346,9 @@ fn participants(event: &Value, categories: &[&str]) -> Vec<String> {
         };
         if !categories.contains(&category.to_ascii_lowercase().as_str()) {
             continue;
+        }
+        if names.len() >= 50 {
+            break;
         }
         if let Some(name) = non_empty_str(participant, "name")
             && !names.iter().any(|n| n == name)

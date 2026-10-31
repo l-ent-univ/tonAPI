@@ -267,6 +267,10 @@ pub(crate) fn parse_tiles(value: &Value, base: &Url) -> Result<Vec<App>, Problem
             .and_then(|raw| base.join(raw.trim()).ok())
             .filter(|url| matches!(url.scheme(), "https" | "http"))
             .map(String::from);
+        // Un portail réel en a une quarantaine ; au-delà, la liste est suspecte et tronquée.
+        if apps.len() >= 500 {
+            break;
+        }
         if apps.iter().any(|app| app.id == id) {
             continue;
         }
