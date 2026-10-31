@@ -4,12 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <title>Banc d'essai tonAPI</title>
-<link rel="stylesheet" href="style.css?v=16">
-<script>
-  // Thème appliqué avant l'affichage, pour éviter un flash du mauvais thème.
-  try { const t = JSON.parse(localStorage.getItem("tonapi.theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
-</script>
+<link rel="stylesheet" href="style.css?v=17">
+<script src="theme.js?v=17"></script>
 </head>
 <body>
 <div class="shell">
@@ -49,7 +47,7 @@
   </aside>
   <main id="view" tabindex="-1"></main>
 </div>
-<script src="donnees.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="donnees.js?v=17"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

@@ -113,6 +113,15 @@ function apiIsSafe() {
   } catch { return false; }
 }
 
+/// Lien venu de l'API : https seulement (http vers cette machine). Sinon null et le texte reste sans lien.
+function safeHref(value) {
+  try {
+    const url = new URL(value);
+    const local = ["127.0.0.1", "localhost"].includes(url.hostname);
+    return url.protocol === "https:" || (url.protocol === "http:" && local) ? url.href : null;
+  } catch { return null; }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Comptes mémorisés : jamais de mot de passe, seulement le jeton chiffré rendu par l'API.
 // ---------------------------------------------------------------------------------------------
@@ -191,9 +200,15 @@ async function call(method, path, { body, auth = true } = {}) {
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const bearer = auth ? state.token : null;
-  if (bearer) headers.Authorization = `Bearer ${bearer}`;
   const started = performance.now();
   const entry = { at: new Date(), method, path: path.replace(/\?.*$/, ""), query: path.includes("?") ? path.slice(path.indexOf("?")) : "", status: 0 };
+  if ((body !== undefined || bearer) && !apiIsSafe()) {
+    entry.ms = 0;
+    entry.code = "unsafe_api";
+    log(entry);
+    return { status: 0, ms: 0, data: null, raw: null, problem: { code: "unsafe_api", title: "Adresse d'API refusée", detail: "Les identifiants et jetons ne partent qu'en https, ou en http vers cette machine." }, headers: new Headers() };
+  }
+  if (bearer) headers.Authorization = `Bearer ${bearer}`;
   let response;
   try {
     response = await fetch(apiBase() + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: "omit", cache: "no-store" });
@@ -542,7 +557,12 @@ function resultsPanel() {
     } else if (result?.problem) {
       line = result.problem.detail || result.problem.title || "";
       detail.push(el("p", { style: "margin:0; color:var(--text-2)" }, result.problem.title || "", result.problem.code ? [" · ", el("code", { text: result.problem.code }), " · ", el("a", { href: `#/erreurs?code=${result.problem.code}`, text: "que faire" })] : null));
-      if (result.problem.link) detail.push(el("a", { href: result.problem.link, target: "_blank", rel: "noopener noreferrer", text: "Ouvrir le service de l'université" }));
+      if (result.problem.link) {
+        const href = safeHref(result.problem.link);
+        detail.push(href
+          ? el("a", { href, target: "_blank", rel: "noopener noreferrer", text: "Ouvrir le service de l'université" })
+          : el("span", { text: `Service de l'université : ${result.problem.link}` }));
+      }
       if (result.problem.code === "service_login_required" && probe.separate) detail.push(serviceLoginForm(probe));
     }
     const open = result?.problem?.code === "service_login_required";
@@ -791,7 +811,8 @@ function serviceTile(service, status, key, detail) {
   ];
   const attrs = { class: `tile ${e}`, title: info.long };
   if (provider) return el("a", { ...attrs, href: `#/fournisseurs?id=${encodeURIComponent(provider)}` }, inner);
-  if (e === "lien") return el("a", { ...attrs, href: status.link, target: "_blank", rel: "noopener noreferrer" }, inner);
+  const href = e === "lien" ? safeHref(status.link) : null;
+  if (href) return el("a", { ...attrs, href, target: "_blank", rel: "noopener noreferrer" }, inner);
   return el("div", attrs, inner);
 }
 
@@ -1017,7 +1038,26 @@ for (const b of document.querySelectorAll(".theme button")) {
 applyTheme(store.get("tonapi.theme", "auto"));
 
 $("api").value = state.api;
-$("api").addEventListener("change", (e) => { state.api = e.target.value.trim(); store.set("tonapi.api", state.api); state.details = {}; state.openapi = null; checkHealth(); });
+$("api").addEventListener("change", (e) => {
+  const next = e.target.value.trim();
+  let protocol = null;
+  try { protocol = new URL(next).protocol; } catch { /* adresse invalide : refusée ci-dessous */ }
+  if (protocol !== "http:" && protocol !== "https:") {
+    e.target.value = state.api;
+    state.health = { ok: false, title: "Adresse refusée : http ou https seulement." };
+    renderRail();
+    return;
+  }
+  state.api = next;
+  store.set("tonapi.api", state.api);
+  state.details = {};
+  state.openapi = null;
+  state.token = null;
+  state.accountId = null;
+  state.me = null;
+  state.pending = null;
+  checkHealth();
+});
 window.addEventListener("hashchange", () => { route(); $("view").focus({ preventScroll: true }); });
 renderRail();
 route();
