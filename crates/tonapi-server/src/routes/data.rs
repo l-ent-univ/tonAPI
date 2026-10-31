@@ -38,6 +38,11 @@ pub(crate) fn resolve_range(
     );
     let monday = today - Duration::days(i64::from(today.weekday().num_days_from_monday()));
     let from = range.from.unwrap_or(monday);
+    // Dates extrêmes acceptées par le format : refusées avant tout calcul (débordement).
+    let plausible = |d: NaiveDate| (1900..=2200).contains(&d.year());
+    if !plausible(from) || range.to.is_some_and(|to| !plausible(to)) {
+        return Err(invalid("dates entre 1900 et 2200 seulement"));
+    }
     let to = range.to.unwrap_or(from + Duration::days(6));
     if to < from {
         return Err(invalid("`to` précède `from`"));

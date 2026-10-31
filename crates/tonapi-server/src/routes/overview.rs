@@ -218,10 +218,13 @@ async fn run_all(
     to: NaiveDate,
 ) -> Result<(Vec<OverviewItem>, Vec<SessionData>), ApiError> {
     let mut tasks = JoinSet::new();
+    // Membres de chaque tâche : si elle panique, seuls ses services passent en erreur.
+    let mut members_of = std::collections::HashMap::new();
     for members in groups {
         let registry = registry.clone();
         let mut copy = session.clone();
-        tasks.spawn(async move {
+        let spawned_members = members.clone();
+        let handle = tasks.spawn(async move {
             let mut results: Vec<Outcome> = Vec::with_capacity(members.len());
             let Some(university) = registry.get(&copy.university) else {
                 for (index, key) in members {
@@ -262,12 +265,23 @@ async fn run_all(
             }
             (results, copy)
         });
+        members_of.insert(handle.id(), spawned_members);
     }
     let mut items: Vec<(usize, OverviewItem)> = Vec::new();
     let mut sessions = Vec::new();
-    while let Some(joined) = tasks.join_next().await {
-        let (results, copy) = joined.map_err(|_| ErrorCode::Internal)?;
-        sessions.push(copy);
+    while let Some(joined) = tasks.join_next_with_id().await {
+        let results = match joined {
+            Ok((_, (results, copy))) => {
+                sessions.push(copy);
+                results
+            }
+            Err(error) => members_of
+                .remove(&error.id())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(index, key)| (index, key, Err(Problem::new(ErrorCode::Internal)), 0))
+                .collect(),
+        };
         for (index, key, result, ms) in results {
             let (provider, data, problem) = match result {
                 Ok((data, provider)) => (Some(provider.to_owned()), Some(data), None),

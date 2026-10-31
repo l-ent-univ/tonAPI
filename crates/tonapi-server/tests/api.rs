@@ -22,6 +22,8 @@ fn server() -> Router {
         Settings {
             universities_dir: dir,
             session_ttl_secs: 3600,
+            trust_proxy: false,
+            docs: true,
         },
     ))
 }

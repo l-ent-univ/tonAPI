@@ -1,5 +1,9 @@
 //! Limite des échecs de connexion par compte : protège l'étudiant d'un verrouillage par son
 //! université quand un client réessaie en boucle un mauvais mot de passe.
+//!
+//! Un essai réserve sa place **avant** d'appeler l'université : des requêtes parallèles ne
+//! passent pas toutes le contrôle avant que le premier échec soit compté. La table est propre à
+//! chaque processus ; avec plusieurs instances, la limite réelle est multipliée par leur nombre.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -9,42 +13,91 @@ use tonapi_core::{ErrorCode, Problem};
 
 const WINDOW: Duration = Duration::from_secs(15 * 60);
 const MAX_FAILURES: usize = 5;
+/// Au-delà, les comptes sans échec récent ni essai en cours sont retirés de la table.
+const MAX_KEYS: usize = 100_000;
+
+#[derive(Default)]
+struct Entry {
+    failures: Vec<Instant>,
+    in_flight: usize,
+}
 
 #[derive(Default)]
 pub struct LoginLimiter {
-    failures: Mutex<HashMap<String, Vec<Instant>>>,
+    entries: Mutex<HashMap<String, Entry>>,
+}
+
+/// Essai en cours ; libère sa place quand il est abandonné. [`Attempt::failed`] compte l'échec.
+pub struct Attempt<'a> {
+    limiter: &'a LoginLimiter,
+    key: String,
+}
+
+impl Attempt<'_> {
+    /// L'université a refusé les identifiants ou le code.
+    pub fn failed(self) {
+        self.limiter.with(|map| {
+            map.entry(self.key.clone())
+                .or_default()
+                .failures
+                .push(Instant::now());
+        });
+    }
+}
+
+impl Drop for Attempt<'_> {
+    fn drop(&mut self) {
+        self.limiter.with(|map| {
+            if let Some(entry) = map.get_mut(&self.key) {
+                entry.in_flight = entry.in_flight.saturating_sub(1);
+            }
+        });
+    }
+}
+
+/// Clé de limite : préfixe, université et identifiant normalisé (espaces retirés, minuscules).
+#[must_use]
+pub fn key(prefix: &str, university: &str, username: &str) -> String {
+    format!("{prefix}:{university}:{}", username.trim().to_lowercase())
 }
 
 impl LoginLimiter {
-    fn recent(&self, key: &str, now: Instant) -> usize {
+    fn with<T>(&self, f: impl FnOnce(&mut HashMap<String, Entry>) -> T) -> T {
         let mut map = self
-            .failures
+            .entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.retain(|_, times| {
-            times.retain(|t| now.duration_since(*t) < WINDOW);
-            !times.is_empty()
-        });
-        map.get(key).map_or(0, Vec::len)
+        f(&mut map)
     }
 
-    /// Refuse si le compte a déjà trop d'échecs récents.
-    pub fn check(&self, key: &str) -> Result<(), Problem> {
-        if self.recent(key, Instant::now()) >= MAX_FAILURES {
+    /// Réserve un essai, ou refuse si le compte a déjà trop d'échecs et d'essais en cours.
+    pub fn begin(&self, key: &str) -> Result<Attempt<'_>, Problem> {
+        let now = Instant::now();
+        let allowed = self.with(|map| {
+            if map.len() >= MAX_KEYS {
+                map.retain(|_, e| {
+                    e.failures.retain(|t| now.duration_since(*t) < WINDOW);
+                    e.in_flight > 0 || !e.failures.is_empty()
+                });
+            }
+            let entry = map.entry(key.to_owned()).or_default();
+            entry.failures.retain(|t| now.duration_since(*t) < WINDOW);
+            if entry.failures.len() + entry.in_flight >= MAX_FAILURES {
+                return false;
+            }
+            entry.in_flight += 1;
+            true
+        });
+        if !allowed {
             return Err(Problem::new(ErrorCode::RateLimited).detail(format!(
                 "{MAX_FAILURES} échecs de connexion en {} minutes : réessayez plus tard",
                 WINDOW.as_secs() / 60
             )));
         }
-        Ok(())
-    }
-
-    pub fn record_failure(&self, key: &str) {
-        let mut map = self
-            .failures
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.entry(key.to_owned()).or_default().push(Instant::now());
+        Ok(Attempt {
+            limiter: self,
+            key: key.to_owned(),
+        })
     }
 }
 
@@ -56,13 +109,31 @@ mod tests {
     fn cinq_echecs_bloquent_le_compte_seulement() {
         let limiter = LoginLimiter::default();
         for _ in 0..MAX_FAILURES {
-            assert!(limiter.check("u:a").is_ok());
-            limiter.record_failure("u:a");
+            limiter.begin("u:a").unwrap().failed();
         }
         assert_eq!(
-            limiter.check("u:a").unwrap_err().code,
+            limiter.begin("u:a").err().unwrap().code,
             ErrorCode::RateLimited
         );
-        assert!(limiter.check("u:b").is_ok());
+        assert!(limiter.begin("u:b").is_ok());
+    }
+
+    #[test]
+    fn essais_paralleles_comptes_avant_la_reponse() {
+        let limiter = LoginLimiter::default();
+        let running: Vec<_> = (0..MAX_FAILURES)
+            .map(|_| limiter.begin("u:a").unwrap())
+            .collect();
+        assert!(limiter.begin("u:a").is_err(), "le 6e attend une place");
+        drop(running);
+        assert!(
+            limiter.begin("u:a").is_ok(),
+            "un essai réussi libère sa place"
+        );
+    }
+
+    #[test]
+    fn identifiant_normalise() {
+        assert_eq!(key("login", "u", " Alice "), key("login", "u", "alice"));
     }
 }

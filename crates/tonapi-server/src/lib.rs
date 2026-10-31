@@ -2,6 +2,7 @@
 
 mod auth;
 mod error;
+mod guard;
 mod limit;
 mod reload;
 mod respond;
@@ -34,6 +35,11 @@ pub struct Settings {
     pub universities_dir: PathBuf,
     /// Durée de vie d'une session, en secondes.
     pub session_ttl_secs: i64,
+    /// Derrière un répartiteur de confiance : l'adresse du client est la dernière de
+    /// `X-Forwarded-For`. Sinon, celle de la connexion TCP.
+    pub trust_proxy: bool,
+    /// Sert `/docs` et `/openapi.json`.
+    pub docs: bool,
 }
 
 /// État partagé par toutes les requêtes.
@@ -44,6 +50,7 @@ pub struct AppState {
     pub keys: Arc<SessionKeys>,
     pub settings: Arc<Settings>,
     login_limiter: Arc<limit::LoginLimiter>,
+    ip_limiter: Arc<guard::IpLimiter>,
 }
 
 impl AppState {
@@ -54,6 +61,7 @@ impl AppState {
             keys: Arc::new(keys),
             settings: Arc::new(settings),
             login_limiter: Arc::default(),
+            ip_limiter: Arc::default(),
         }
     }
 }
@@ -120,13 +128,23 @@ pub fn app(state: AppState) -> Router {
         .allow_methods([Method::GET, Method::POST, Method::PUT])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
         .expose_headers([HeaderName::from_static(SESSION_HEADER)]);
+    let docs = state.settings.docs;
+    let router = if docs {
+        router
+            .route(
+                "/openapi.json",
+                axum::routing::get(move || async move { axum::Json(spec) }),
+            )
+            .merge(Scalar::with_url("/docs", api))
+    } else {
+        router
+    };
     router
-        .route(
-            "/openapi.json",
-            axum::routing::get(move || async move { axum::Json(spec) }),
-        )
-        .merge(Scalar::with_url("/docs", api))
         .fallback(error::not_found)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            guard::protect,
+        ))
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

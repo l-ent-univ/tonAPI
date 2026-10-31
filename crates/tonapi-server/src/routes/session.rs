@@ -16,10 +16,10 @@ use tonapi_session::SessionData;
 use utoipa::ToSchema;
 
 use super::establishment_choice;
-use crate::AppState;
 use crate::auth::AuthSession;
 use crate::error::{ApiError, invalid};
 use crate::respond::no_store;
+use crate::{AppState, limit};
 
 /// Un ancien jeton reste utilisable pour reprendre ses cookies pendant ce délai après expiration :
 /// l'appareil mémorisé par le CAS vaut 30 jours.
@@ -226,10 +226,11 @@ pub async fn login(
     payload: Result<Json<LoginRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(request) = payload.map_err(|e| invalid(e.body_text()))?;
+    check_lengths(&request.username, &request.password)?;
     let registry = state.registry.load_full();
     let university = university(&registry, &request.university)?;
-    let limit_key = format!("{}:{}", request.university, request.username.to_lowercase());
-    state.login_limiter.check(&limit_key)?;
+    let limit_key = limit::key("login", &request.university, &request.username);
+    let attempt = state.login_limiter.begin(&limit_key)?;
 
     let now = Utc::now();
     let previous_cookies = request
@@ -241,14 +242,23 @@ pub async fn login(
                 .open_with_grace(t, now.timestamp(), PREVIOUS_TOKEN_GRACE_SECS)
                 .ok()
         })
-        .filter(|previous| previous.university == request.university)
+        // Même université et même compte seulement : les cookies d'un autre étudiant ne doivent
+        // jamais entrer dans cette session.
+        .filter(|previous| {
+            previous.university == request.university
+                && !previous.pending
+                && previous
+                    .username
+                    .trim()
+                    .eq_ignore_ascii_case(request.username.trim())
+        })
         .map(|previous| previous.cookies)
         .unwrap_or_default();
 
     let result = tonapi_providers::login(
         university,
         LoginInput {
-            username: &request.username,
+            username: request.username.trim(),
             password: &request.password,
             establishment: request.establishment.as_deref(),
             previous_cookies,
@@ -262,7 +272,7 @@ pub async fn login(
         Ok(outcome) => outcome_response(&state, university, outcome),
         Err(problem) => {
             if problem.code == ErrorCode::InvalidCredentials {
-                state.login_limiter.record_failure(&limit_key);
+                attempt.failed();
             }
             Err(problem.into())
         }
@@ -307,6 +317,10 @@ pub async fn mfa(
     };
     let registry = state.registry.load_full();
     let university = university(&registry, &pending.university)?;
+    // Codes refusés et notifications non validées comptent : ni essais sans fin, ni
+    // notifications en boucle sur le téléphone de l'étudiant.
+    let limit_key = limit::key("mfa", &pending.university, &pending.username);
+    let attempt = state.login_limiter.begin(&limit_key)?;
     let outcome = tonapi_providers::complete_mfa(
         university,
         pending,
@@ -316,16 +330,27 @@ pub async fn mfa(
         state.settings.session_ttl_secs,
     )
     .await?;
+    if matches!(outcome, LoginOutcome::SecondFactor(..)) {
+        attempt.failed();
+    }
     outcome_response(&state, university, outcome)
+}
+
+/// Identifiant et mot de passe de taille raisonnable : un identifiant démesuré gonflerait les
+/// tables du limiteur et partirait tel quel au CAS.
+fn check_lengths(username: &str, password: &str) -> Result<(), ApiError> {
+    if username.trim().is_empty() || username.len() > 256 || password.len() > 1024 {
+        return Err(invalid(
+            "identifiant (256 caractères au plus) ou mot de passe (1024 au plus) invalide",
+        ));
+    }
+    Ok(())
 }
 
 /// Clé du limiteur pour un compte de service : distincte de celle du compte universitaire, et
 /// commune aux services servis par le même fournisseur (notes et absences ScoDoc).
 fn service_limit_key(university: &str, provider: &str, username: &str) -> String {
-    format!(
-        "service:{university}:{provider}:{}",
-        username.to_lowercase()
-    )
+    limit::key("service", &format!("{university}:{provider}"), username)
 }
 
 /// Connexion à un service qui a son propre compte, après une réponse `service_login_required`
@@ -353,6 +378,7 @@ pub async fn service_login(
     payload: Result<Json<ServiceLoginRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(request) = payload.map_err(|e| invalid(e.body_text()))?;
+    check_lengths(&request.username, &request.password)?;
     let kind = request.service.kind();
     let registry = state.registry.load_full();
     let university = university(&registry, &session.university)?;
@@ -366,7 +392,7 @@ pub async fn service_login(
         })
         .unwrap_or_default();
     let limit_key = service_limit_key(&session.university, &provider, &request.username);
-    state.login_limiter.check(&limit_key)?;
+    let attempt = state.login_limiter.begin(&limit_key)?;
 
     let mut updated = session;
     let mut ctx = Context {
@@ -379,7 +405,7 @@ pub async fn service_login(
         tonapi_providers::service_login(&mut ctx, kind, &request.username, &request.password).await;
     if let Err(problem) = result {
         if problem.code == ErrorCode::InvalidCredentials {
-            state.login_limiter.record_failure(&limit_key);
+            attempt.failed();
         }
         return Err(problem.into());
     }
