@@ -108,7 +108,8 @@ function apiBase() { return state.api.replace(/\/+$/, ""); }
 function apiIsSafe() {
   try {
     const url = new URL(apiBase());
-    const local = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+    // Même liste que la politique de sécurité de index.html (qui n'accepte pas d'adresse IPv6).
+    const local = ["127.0.0.1", "localhost"].includes(url.hostname);
     return url.protocol === "https:" || (url.protocol === "http:" && local);
   } catch { return false; }
 }
