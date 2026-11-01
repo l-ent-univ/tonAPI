@@ -14,13 +14,13 @@ quoi exploiter le service (journaux, métriques, conteneur, sondes) et l'accord 
 |---|---|---|
 | `previousToken` d'un autre compte recopiait ses cookies de service (mail, Moodle, ScoDoc) dans la session d'un autre étudiant | haute | même compte exigé ; seuls les cookies de l'hôte du CAS sont repris |
 | Une taille de liste annoncée par ADE pouvait arrêter tout le processus (allocation impossible) | critique | taille bornée par la réponse |
-| Connexions inventées en rafale : places du CAS saturées, IP de tonAPI bannie | haute | 20 demandes par minute et par adresse sur `/v1/auth/*` |
+| Connexions inventées en rafale : places du CAS saturées, IP de tonAPI bannie | haute | 120 demandes par minute et par adresse (réglable, IPv6 par /64) sur la connexion, le second facteur et la connexion aux services, avec `Retry-After` |
 | Limiteur d'échecs dépassé par des requêtes parallèles ; aucune limite sur le second facteur ; jeton `pending` prolongé à chaque code | moyenne | réservation atomique avant l'appel au CAS ; codes et notifications comptés ; délai fixé à la première demande |
 | Corps de réponse lu en entier avant la limite de 8 Mo | moyenne | lecture par morceaux, refus au-delà |
 | Lien de portlet personnel partagé à d'autres étudiants par le cache | moyenne | seuls les liens sans paramètre sont partagés |
 | Liens `javascript:` ou `data:` acceptés dans la configuration et affichés par la console | moyenne | `https` exigé ; la console ne pose que des liens sûrs |
 | Plantages sur données distantes, dates extrêmes, traitements quadratiques, boucle serrée du second facteur | moyenne | lectures sûres, dates 1900–2200, listes bornées, pause entre deux essais |
-| Aucun délai global ; une panne d'un service faisait échouer tout l'appel groupé | moyenne | 30 s par requête (120 s pour le second facteur) ; erreur limitée au service en panne |
+| Aucun délai global ; une panne d'un service faisait échouer tout l'appel groupé | moyenne | 30 s par requête, 60 s pour l'appel groupé et les documents, 120 s pour le second facteur ; dans l'appel groupé, 50 s par fournisseur : un service lent ou en panique ne fait échouer que lui |
 | Démarrage sans clés de session ; arrêt seulement sur Ctrl+C | bloquant | clés obligatoires hors `TONAPI_ENV=dev` ; arrêt propre sur SIGTERM |
 | Cookies : `Domain` trop large, nombre et taille sans limite ; TLS 1.0 possible | basse | domaines sans point refusés, 50 cookies par domaine, 4 Ko par cookie ; TLS 1.2 minimum |
 | Console sans politique de sécurité ; jeton envoyé à une adresse non sûre | basse | CSP, script de thème séparé, envoi refusé si l'adresse n'est pas sûre |
@@ -37,7 +37,7 @@ Vérifié : fmt, clippy, 314 tests, `validate`, `schema --check`, `report check`
 | A3 | Dockerfile multi-étapes (bookworm-slim, libssl3, ca-certificates, utilisateur non root, `TONAPI_ADDR=0.0.0.0:8080`), configuration dans l'image, compilateur figé dans `rust-toolchain.toml`, image construite en CI | rien n'existe pour déployer | 4–6 h |
 | A4 | `/readyz` distinct de `/healthz`, à 503 pendant l'arrêt ; sondes qui n'interrogent jamais une université | un redéploiement couperait des connexions en cours | 1–2 h |
 | A5 | Mesurer la taille réelle du jeton (Béziers, Paul-Valéry) ; régler le répartiteur (en-têtes ≥ 32 Ko) | jeton estimé à 4–12 Ko : erreurs 400/502 avec les valeurs par défaut de nginx | 2 h |
-| A6 | Délai du répartiteur ≥ 110 s sur `/v1/auth/mfa`, ou attente de notification à 50 s avec relance par le client | sinon 504 puis seconde notification sur le téléphone | 1 h |
+| A6 | Délai du répartiteur ≥ 130 s sur `/v1/auth/mfa` et ≥ 70 s sur `/v1/overview`, ou attente de notification à 50 s avec relance par le client | sinon le répartiteur coupe (504) avant la réponse, puis seconde notification sur le téléphone | 1 h |
 | A7 | Clés de session dans un gestionnaire de secrets, sauvegardées ; procédure de rotation (nouvelle clé en 2e position, puis 1re, ancienne retirée après 35 jours) | perdre les clés déconnecte tout le monde et relance le second facteur | 3 h |
 | A8 | `TONAPI_DOCS=0` en production (la page `/docs` charge Scalar depuis un CDN sans version fixée) et `TONAPI_TRUST_PROXY=1` derrière le répartiteur | sinon la limite par adresse voit l'IP du répartiteur pour tous | 0,5 h |
 | A9 | Accord de chaque DSI : IP de sortie fixe, plafond de requêtes convenu par hôte, contact en cas d'incident, User-Agent identifiable | tout le trafic sort de quelques adresses : un blocage côté université coupe 100 % de ses étudiants | hors code |

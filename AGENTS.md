@@ -53,7 +53,7 @@ cargo run -q -p tonapi-cli -- providers
 cargo run -q -p tonapi-cli -- openapi
 cargo run -q -p tonapi-cli -- new university <id>
 cargo run -q -p tonapi-cli -- new establishment <universite> <id>
-cargo run -p tonapi-server
+TONAPI_ENV=dev cargo run -p tonapi-server
 ```
 
 Le serveur écoute par défaut sur `127.0.0.1:8080` ; sa documentation est à `/docs`.
