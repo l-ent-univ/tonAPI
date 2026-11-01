@@ -25,7 +25,11 @@ struct Entry {
 #[derive(Default)]
 pub struct LoginLimiter {
     entries: Mutex<HashMap<String, Entry>>,
+    /// Dernière purge complète : au plus une toutes les 10 s, même table pleine.
+    last_purge: Mutex<Option<Instant>>,
 }
+
+const PURGE_EVERY: Duration = Duration::from_secs(10);
 
 /// Essai en cours ; libère sa place quand il est abandonné. [`Attempt::failed`] compte l'échec.
 pub struct Attempt<'a> {
@@ -70,11 +74,23 @@ impl LoginLimiter {
         f(&mut map)
     }
 
+    fn purge_due(&self, now: Instant) -> bool {
+        let mut last = self
+            .last_purge
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let due = last.is_none_or(|t| now.duration_since(t) >= PURGE_EVERY);
+        if due {
+            *last = Some(now);
+        }
+        due
+    }
+
     /// Réserve un essai, ou refuse si le compte a déjà trop d'échecs et d'essais en cours.
     pub fn begin(&self, key: &str) -> Result<Attempt<'_>, Problem> {
         let now = Instant::now();
         let allowed = self.with(|map| {
-            if map.len() >= MAX_KEYS {
+            if map.len() >= MAX_KEYS && self.purge_due(now) {
                 map.retain(|_, e| {
                     e.failures.retain(|t| now.duration_since(*t) < WINDOW);
                     e.in_flight > 0 || !e.failures.is_empty()

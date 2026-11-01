@@ -10,6 +10,7 @@
 //! - `TONAPI_TRUST_PROXY=1` : derrière un répartiteur de confiance, l'adresse du client est la
 //!   dernière de `X-Forwarded-For` (limite des connexions par adresse)
 //! - `TONAPI_DOCS=0` : ne pas servir `/docs` ni `/openapi.json`
+//! - `TONAPI_AUTH_PER_IP` (défaut 120) : demandes de connexion par adresse et par minute
 //! - `RUST_LOG` (défaut `info`)
 
 use std::net::SocketAddr;
@@ -17,7 +18,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use tonapi_config::Registry;
-use tonapi_server::{AppState, Settings, app, watch};
+use tonapi_server::{AppState, DEFAULT_AUTH_PER_IP, Settings, app, watch};
 use tonapi_session::SessionKeys;
 use tracing_subscriber::EnvFilter;
 
@@ -72,6 +73,10 @@ async fn main() -> Result<()> {
             session_ttl_secs: ttl,
             trust_proxy: flag("TONAPI_TRUST_PROXY", false),
             docs: flag("TONAPI_DOCS", true),
+            auth_per_ip: match std::env::var("TONAPI_AUTH_PER_IP") {
+                Ok(v) => v.parse().context("TONAPI_AUTH_PER_IP")?,
+                Err(_) => DEFAULT_AUTH_PER_IP,
+            },
         },
     );
     let _watcher = watch(dir, state.registry.clone()).context("surveillance des universités")?;
@@ -97,10 +102,12 @@ async fn shutdown() {
     };
     #[cfg(unix)]
     let terminate = async {
-        if let Ok(mut signal) =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        {
-            signal.recv().await;
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            // Sans SIGTERM, seul Ctrl+C arrête le serveur : ne jamais s'arrêter dès le départ.
+            Err(_) => std::future::pending::<()>().await,
         }
     };
     #[cfg(not(unix))]

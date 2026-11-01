@@ -23,6 +23,7 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_scalar::{Scalar, Servable};
 
+pub use guard::AUTH_PER_IP as DEFAULT_AUTH_PER_IP;
 pub use reload::watch;
 
 /// En-tête qui porte un jeton mis à jour (composante changée, cookies renouvelés…).
@@ -40,6 +41,8 @@ pub struct Settings {
     pub trust_proxy: bool,
     /// Sert `/docs` et `/openapi.json`.
     pub docs: bool,
+    /// Demandes de connexion par adresse IP et par minute.
+    pub auth_per_ip: u32,
 }
 
 /// État partagé par toutes les requêtes.
@@ -56,12 +59,13 @@ pub struct AppState {
 impl AppState {
     #[must_use]
     pub fn new(registry: Registry, keys: SessionKeys, settings: Settings) -> Self {
+        let ip_limiter = Arc::new(guard::IpLimiter::new(settings.auth_per_ip));
         AppState {
             registry: Arc::new(ArcSwap::from_pointee(registry)),
             keys: Arc::new(keys),
             settings: Arc::new(settings),
             login_limiter: Arc::default(),
-            ip_limiter: Arc::default(),
+            ip_limiter,
         }
     }
 }

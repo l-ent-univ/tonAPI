@@ -24,6 +24,7 @@ fn server() -> Router {
             session_ttl_secs: 3600,
             trust_proxy: false,
             docs: true,
+            auth_per_ip: 120,
         },
     ))
 }

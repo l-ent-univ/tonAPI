@@ -246,13 +246,22 @@ async fn run_all(
             // Notes et absences d'une même passerelle : une seule lecture (ScoDoc).
             let absences = members.iter().find(|(_, k)| *k == "absences").copied();
             let paired = absences.is_some() && members.iter().any(|(_, k)| *k == "grades");
+            let group_start = Instant::now();
             for (index, key) in members {
                 let started = Instant::now();
                 if paired && key == "absences" {
                     continue;
                 }
+                // Temps restant du groupe : un service lent ne fait échouer que lui et les
+                // suivants du même fournisseur, jamais toute la réponse.
+                let remaining = GROUP_BUDGET.saturating_sub(group_start.elapsed());
                 if paired && key == "grades" {
-                    let (g, a) = tonapi_providers::grades_and_absences(&mut ctx).await;
+                    let (g, a) = tokio::time::timeout(
+                        remaining,
+                        tonapi_providers::grades_and_absences(&mut ctx),
+                    )
+                    .await
+                    .unwrap_or_else(|_| (Err(too_slow()), Err(too_slow())));
                     let ms = elapsed(started);
                     results.push((index, key, g.and_then(value), ms));
                     if let Some((at, name)) = absences {
@@ -260,7 +269,9 @@ async fn run_all(
                     }
                     continue;
                 }
-                let result = fetch(key, &mut ctx, from, to).await;
+                let result = tokio::time::timeout(remaining, fetch(key, &mut ctx, from, to))
+                    .await
+                    .unwrap_or_else(|_| Err(too_slow()));
                 results.push((index, key, result, elapsed(started)));
             }
             (results, copy)
@@ -301,6 +312,14 @@ async fn run_all(
     }
     items.sort_by_key(|(index, _)| *index);
     Ok((items.into_iter().map(|(_, item)| item).collect(), sessions))
+}
+
+/// Temps accordé aux services d'un même fournisseur, sous le délai de la route (60 s).
+const GROUP_BUDGET: std::time::Duration = std::time::Duration::from_secs(50);
+
+fn too_slow() -> Problem {
+    Problem::new(ErrorCode::ServiceUnavailable)
+        .detail("le service de l'université n'a pas répondu à temps")
 }
 
 fn elapsed(started: Instant) -> u64 {

@@ -19,37 +19,70 @@ use tonapi_core::{ErrorCode, Problem};
 use crate::AppState;
 use crate::error::ApiError;
 
-/// Délai maximal d'une requête ; l'attente d'une notification de second facteur dure plus.
+/// Délai maximal d'une requête. L'appel groupé enchaîne plusieurs services d'un même
+/// fournisseur (chacun borné dans `routes/overview.rs`), le second facteur attend la notification.
 const DEADLINE: Duration = Duration::from_secs(30);
+const LONG_DEADLINE: Duration = Duration::from_secs(60);
 const MFA_DEADLINE: Duration = Duration::from_secs(120);
-/// Requêtes vers `/v1/auth/*` par adresse IP et par fenêtre.
-const AUTH_PER_IP: u32 = 20;
+/// Routes comptées par adresse : celles qui envoient un mot de passe ou un code. `refresh` et
+/// `logout` n'en font pas partie (un campus entier peut partager une adresse).
+const COUNTED: [&str; 3] = ["/v1/auth/login", "/v1/auth/mfa", "/v1/auth/service-login"];
+/// Demandes par adresse et par fenêtre, par défaut. Réglable : `TONAPI_AUTH_PER_IP`.
+pub const AUTH_PER_IP: u32 = 120;
 const AUTH_WINDOW: Duration = Duration::from_secs(60);
-/// Au-delà, les fenêtres terminées sont retirées.
+/// Au-delà, les fenêtres terminées sont retirées (au plus une fois toutes les 10 s).
 const MAX_IPS: usize = 100_000;
+const PURGE_EVERY: Duration = Duration::from_secs(10);
 
-/// Compteur à fenêtre fixe par adresse IP.
-#[derive(Default)]
+/// Fenêtres en cours (début, nombre de demandes) et date de la dernière purge.
+type Windows = (HashMap<IpAddr, (Instant, u32)>, Option<Instant>);
+
+/// Compteur à fenêtre fixe par adresse IP (IPv6 regroupée par /64, la taille d'un abonnement).
 pub struct IpLimiter {
-    windows: Mutex<HashMap<IpAddr, (Instant, u32)>>,
+    per_window: u32,
+    windows: Mutex<Windows>,
+}
+
+impl Default for IpLimiter {
+    fn default() -> Self {
+        IpLimiter::new(AUTH_PER_IP)
+    }
 }
 
 impl IpLimiter {
+    #[must_use]
+    pub fn new(per_window: u32) -> Self {
+        IpLimiter {
+            per_window,
+            windows: Mutex::new((HashMap::new(), None)),
+        }
+    }
+
     fn allow(&self, ip: IpAddr, now: Instant) -> bool {
-        let mut map = self
+        let ip = match ip {
+            IpAddr::V6(v6) => {
+                let mut s = v6.segments();
+                s[4..].fill(0);
+                IpAddr::from(s)
+            }
+            v4 @ IpAddr::V4(_) => v4,
+        };
+        let mut guard = self
             .windows
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if map.len() >= MAX_IPS {
+        let (map, last_purge) = &mut *guard;
+        if map.len() >= MAX_IPS && last_purge.is_none_or(|t| now.duration_since(t) >= PURGE_EVERY) {
             map.retain(|_, (start, _)| now.duration_since(*start) < AUTH_WINDOW);
+            *last_purge = Some(now);
         }
         let (start, count) = map.entry(ip).or_insert((now, 0));
         if now.duration_since(*start) >= AUTH_WINDOW {
             *start = now;
             *count = 0;
         }
-        *count += 1;
-        *count <= AUTH_PER_IP
+        *count = count.saturating_add(1);
+        *count <= self.per_window
     }
 }
 
@@ -62,7 +95,12 @@ fn client_ip(request: &Request, trust_proxy: bool) -> Option<IpAddr> {
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.rsplit(',').next())
-            .and_then(|v| v.trim().parse().ok())
+            .map(str::trim)
+            .and_then(|v| {
+                v.parse::<IpAddr>()
+                    .ok()
+                    .or_else(|| v.parse::<SocketAddr>().ok().map(|a| a.ip()))
+            })
     {
         return Some(ip);
     }
@@ -74,17 +112,23 @@ fn client_ip(request: &Request, trust_proxy: bool) -> Option<IpAddr> {
 
 pub async fn protect(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let path = request.uri().path().to_owned();
-    if path.starts_with("/v1/auth/")
+    if COUNTED.contains(&path.as_str())
         && let Some(ip) = client_ip(&request, state.settings.trust_proxy)
         && !state.ip_limiter.allow(ip, Instant::now())
     {
-        return ApiError::from(Problem::new(ErrorCode::RateLimited).detail(format!(
-            "plus de {AUTH_PER_IP} demandes de connexion par minute depuis cette adresse"
-        )))
+        let mut response = ApiError::from(Problem::new(ErrorCode::RateLimited).detail(
+            "trop de demandes de connexion depuis cette adresse : réessayer dans une minute",
+        ))
         .into_response();
+        response
+            .headers_mut()
+            .insert(header::RETRY_AFTER, HeaderValue::from_static("60"));
+        return response;
     }
     let deadline = if path == "/v1/auth/mfa" {
         MFA_DEADLINE
+    } else if path == "/v1/overview" || path.starts_with("/v1/documents/") {
+        LONG_DEADLINE
     } else {
         DEADLINE
     };
@@ -112,6 +156,15 @@ pub async fn protect(State(state): State<AppState>, request: Request, next: Next
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ipv6_regroupee_par_64() {
+        let limiter = IpLimiter::new(1);
+        let now = Instant::now();
+        assert!(limiter.allow("2001:db8:1:2::1".parse().unwrap(), now));
+        assert!(!limiter.allow("2001:db8:1:2::ffff".parse().unwrap(), now));
+        assert!(limiter.allow("2001:db8:1:3::1".parse().unwrap(), now));
+    }
 
     #[test]
     fn fenetre_par_adresse() {
