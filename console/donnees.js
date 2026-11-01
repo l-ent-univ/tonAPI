@@ -3,8 +3,8 @@
 // de `Docs/agents/contexte.md`. À mettre à jour quand un fournisseur ou un essai change.
 "use strict";
 
-/// État d'essai d'un fournisseur : `reel` (essayé avec un compte réel), `faux` (faux serveurs
-/// seulement), `partiel` (une partie essayée), `aucun` (pas de données distantes).
+// État d'essai d'un fournisseur : `reel` (essayé avec un compte réel), `faux` (faux serveurs
+// seulement), `partiel` (une partie essayée), `aucun` (pas de données distantes).
 window.TONAPI_FOURNISSEURS = [
   {
     id: "ade-ical-link",
@@ -20,7 +20,7 @@ window.TONAPI_FOURNISSEURS = [
       "Le lien change quand l'étudiant modifie ses groupes : il est relu une fois si le flux devient illisible.",
     ],
     config: 'provider = "ade-ical-link"\nlink-page = "https://app.exemple.fr/prose-etudiant/protected/ical"\nfeed-host = "ade.exemple.fr"',
-    fichiers: ["crates/tonapi-providers/src/ade_ical.rs", "Docs/Montpellier/emploi-du-temps.md"],
+    fichiers: ["crates/tonapi-providers/src/ade_ical.rs", "Docs/recherche/Montpellier/emploi-du-temps.md"],
   },
   {
     id: "ade-myplanning",
@@ -49,7 +49,7 @@ window.TONAPI_FOURNISSEURS = [
       "Ouvre le portail ADE derrière le CAS, obtient un jeton (accessToken, ssologin, refreshtoken), lit la sélection de groupes puis les événements de chaque ressource.",
     limites: ["Format réel de la sélection personnelle inconnu.", "Jamais essayé avec un vrai compte."],
     config: 'provider = "ade-portal-rest"\nbase-url = "https://planning.exemple.fr/portal/"',
-    fichiers: ["crates/tonapi-providers/src/ade_rest.rs", "Docs/Rennes/emploi-du-temps.md"],
+    fichiers: ["crates/tonapi-providers/src/ade_rest.rs", "Docs/recherche/Rennes/emploi-du-temps.md"],
   },
   {
     id: "scodoc-gateway",
@@ -62,7 +62,7 @@ window.TONAPI_FOURNISSEURS = [
       "Lit dataPremièreConnexion de la passerelle. Avec un CAS propre à la composante, l'étudiant se connecte une fois au service ; seuls les cookies du service restent dans la session.",
     limites: ["Semestre courant seulement.", "La variante par le CAS de l'université n'a pas été essayée en réel."],
     config: 'provider = "scodoc-gateway"\nbase-url = "https://scodoc.exemple.fr/"\nsign-in = { kind = "university-cas" }',
-    fichiers: ["crates/tonapi-providers/src/scodoc.rs", "Docs/Montpellier/scodoc.md"],
+    fichiers: ["crates/tonapi-providers/src/scodoc.rs", "Docs/recherche/Montpellier/scodoc.md"],
   },
   {
     id: "etudiants-api",
@@ -92,7 +92,7 @@ window.TONAPI_FOURNISSEURS = [
       "Entre dans Moodle par le CAS, lit le sesskey de la page, puis appelle core_calendar_get_action_events_by_timesort. Un seul nouvel essai si Moodle signale une session perdue.",
     limites: ["Seuls les devoirs à faire apparaissent.", "L'entrée Shibboleth (Rennes) n'a pas été essayée en réel."],
     config: 'provider = "moodle-ajax"\nbase-url = "https://moodle.exemple.fr/"\nentry = "cas"',
-    fichiers: ["crates/tonapi-providers/src/moodle.rs", "Docs/Montpellier/moodle.md"],
+    fichiers: ["crates/tonapi-providers/src/moodle.rs", "Docs/recherche/Montpellier/moodle.md"],
   },
   {
     id: "moodle-webservice",
@@ -131,7 +131,7 @@ window.TONAPI_FOURNISSEURS = [
       "L'API valide elle-même un ticket CAS émis pour l'application : tonAPI demande ce ticket avec la session sans l'utiliser, lit le dossier, puis télécharge le PDF avec les jetons de l'attestation. Un ticket neuf par appel ; l'envoi par courriel n'est jamais appelé.",
     limites: ["Aucune attestation réelle observée : ce que le téléchargement exige en plus des jetons est inconnu."],
     config: 'provider = "ardemat"\nbase-url = "https://app.exemple.fr/ardemat-api/"\nservice-url = "https://app.exemple.fr/ardemat/"',
-    fichiers: ["crates/tonapi-providers/src/ardemat.rs", "Docs/Montpellier/research/pistes-api.md"],
+    fichiers: ["crates/tonapi-providers/src/ardemat.rs", "Docs/recherche/Montpellier/research/pistes-api.md"],
   },
   {
     id: "bluemind",
@@ -157,7 +157,7 @@ window.TONAPI_FOURNISSEURS = [
       "Entre par le client CAS du portail. Le profil et les signaux de composante viennent des attributs CAS, les applications des tuiles.",
     limites: ["Logiciel non identifié."],
     config: '[portal]\nkind = "tiles-portal"\nbase-url = "https://ent.exemple.fr/"',
-    fichiers: ["crates/tonapi-providers/src/tiles_portal.rs", "Docs/Montpellier/ent.md"],
+    fichiers: ["crates/tonapi-providers/src/tiles_portal.rs", "Docs/recherche/Montpellier/ent.md"],
   },
   {
     id: "portal",
@@ -193,10 +193,10 @@ window.TONAPI_ESSAIS = {
   aucun: { label: "Sans service distant", court: "démo", ton: "idle" },
 };
 
-/// Essais réels par établissement (`université` ou `université/composante`), service par service :
-/// « ok » = données réelles reçues ; « vide » = le service a répondu, mais le compte n'avait encore
-/// rien (aucune note publiée…), donc le format reste à confirmer. Un essai ne vaut que pour
-/// l'établissement où il a eu lieu, même si le logiciel est le même ailleurs.
+// Essais réels par établissement (`université` ou `université/composante`), service par service :
+// « ok » = données réelles reçues ; « vide » = le service a répondu, mais le compte n'avait encore
+// rien (aucune note publiée…), donc le format reste à confirmer. Un essai ne vaut que pour
+// l'établissement où il a eu lieu, même si le logiciel est le même ailleurs.
 window.TONAPI_VERIFIE = {
   "univ-montp3": {
     date: "27 et 28/10/2026",
@@ -220,21 +220,24 @@ window.TONAPI_SERVICES = [
   { key: "documents", label: "Documents" },
 ];
 
-/// Codes d'erreur stables (`crates/tonapi-core/src/problem.rs`) et conduite à tenir.
+// Codes d'erreur stables (`crates/tonapi-core/src/problem.rs`) et conduite à tenir.
+// Les valeurs chiffrées viennent du serveur : 5 échecs de connexion en 15 minutes dans
+// `crates/tonapi-server/src/limit.rs`, durée de session de 12 h (reprise par app.js) dans
+// `crates/tonapi-server/src/main.rs`. À mettre à jour avec eux.
 window.TONAPI_ERREURS = [
-  { code: "invalid_request", status: 400, titre: "Requête invalide", cause: "Paramètre manquant ou mal formé, service sans connexion séparée.", faire: "Relire le corps et les paramètres ; le détail nomme le champ." },
-  { code: "not_found", status: 404, titre: "Introuvable", cause: "Route inexistante.", faire: "Vérifier le chemin dans l'explorateur ou /docs." },
-  { code: "invalid_credentials", status: 401, titre: "Identifiant ou mot de passe incorrect", cause: "Le CAS ou le service a refusé les identifiants.", faire: "Ne pas réessayer en boucle : le limiteur bloque après 5 échecs en 15 minutes." },
-  { code: "invalid_token", status: 401, titre: "Jeton de session invalide", cause: "Jeton modifié, d'une autre clé serveur, ou jeton provisoire du second facteur.", faire: "Se reconnecter. Avec une clé temporaire, chaque redémarrage du serveur invalide les jetons." },
-  { code: "session_expired", status: 401, titre: "Session expirée", cause: "Jeton expiré, ou l'université redemande le mot de passe ou le second facteur.", faire: "Se reconnecter ; l'appareil reconnu évite le second facteur." },
-  { code: "account_action_required", status: 403, titre: "Action requise sur le compte universitaire", cause: "Mot de passe expiré ou compte à confirmer.", faire: "L'étudiant agit sur le site de son université." },
-  { code: "service_login_required", status: 403, titre: "Connexion au service requise", cause: "Service à compte propre (ScoDoc d'un CAS de composante, Moodle local).", faire: "POST /v1/auth/service-login avec les identifiants du service." },
-  { code: "unknown_university", status: 404, titre: "Université inconnue", cause: "Identifiant absent de universities/.", faire: "GET /v1/universities pour la liste." },
-  { code: "unknown_establishment", status: 404, titre: "Composante inconnue", cause: "Composante absente de l'université.", faire: "Voir les composantes dans /v1/universities/{id}." },
-  { code: "service_absent", status: 404, titre: "Service non proposé", cause: "Service absent ou configuré en simple lien.", faire: "Suivre `link` quand il est présent." },
-  { code: "not_implemented", status: 501, titre: "Pas encore pris en charge", cause: "Fonction que le fournisseur ne sait pas assurer.", faire: "Voir les limites du fournisseur." },
-  { code: "service_unavailable", status: 502, titre: "Service de l'université indisponible", cause: "Serveur distant en panne, injoignable ou en erreur 5xx.", faire: "Réessayer plus tard ; vérifier l'hôte avec la trace HTTP." },
-  { code: "upstream_changed", status: 502, titre: "Réponse inattendue du service de l'université", cause: "Format ou parcours changé (mise à jour d'un ENT, page inconnue).", faire: "Lancer le serveur avec RUST_LOG=tonapi_http=debug,tonapi_providers=debug et lire la trace." },
-  { code: "rate_limited", status: 429, titre: "Trop de requêtes", cause: "5 échecs de connexion en 15 minutes pour ce compte.", faire: "Attendre (Retry-After) puis vérifier les identifiants." },
-  { code: "internal", status: 500, titre: "Erreur interne", cause: "Configuration ou bogue de tonAPI.", faire: "Lire les journaux du serveur." },
+  { code: "invalid_request", status: 400, titre: "Requête invalide", cause: "Paramètre manquant ou mal formé, service sans connexion séparée.", faire: "Relis le corps et les paramètres ; le détail nomme le champ." },
+  { code: "not_found", status: 404, titre: "Introuvable", cause: "Route inexistante.", faire: "Vérifie le chemin dans l'explorateur ou sur /docs." },
+  { code: "invalid_credentials", status: 401, titre: "Identifiant ou mot de passe incorrect", cause: "Le CAS ou le service a refusé les identifiants.", faire: "Ne réessaie pas en boucle : le limiteur bloque après 5 échecs en 15 minutes." },
+  { code: "invalid_token", status: 401, titre: "Jeton de session invalide", cause: "Jeton modifié, d'une autre clé serveur, ou jeton provisoire du second facteur.", faire: "Reconnecte-toi. Avec une clé temporaire, chaque redémarrage du serveur invalide les jetons." },
+  { code: "session_expired", status: 401, titre: "Session expirée", cause: "Jeton expiré, ou l'université redemande le mot de passe ou le second facteur.", faire: "Reconnecte-toi ; l'appareil reconnu évite le second facteur." },
+  { code: "account_action_required", status: 403, titre: "Action requise sur le compte universitaire", cause: "Mot de passe expiré ou compte à confirmer.", faire: "Fais l'action demandée sur le site de ton université." },
+  { code: "service_login_required", status: 403, titre: "Connexion au service requise", cause: "Service à compte propre (ScoDoc d'un CAS de composante, Moodle local).", faire: "Envoie les identifiants du service à POST /v1/auth/service-login." },
+  { code: "unknown_university", status: 404, titre: "Université inconnue", cause: "Identifiant absent de universities/.", faire: "Consulte la liste avec GET /v1/universities." },
+  { code: "unknown_establishment", status: 404, titre: "Composante inconnue", cause: "Composante absente de l'université.", faire: "Consulte les composantes dans /v1/universities/{id}." },
+  { code: "service_absent", status: 404, titre: "Service non proposé", cause: "Service absent ou configuré en simple lien.", faire: "Suis `link` quand il est présent." },
+  { code: "not_implemented", status: 501, titre: "Pas encore pris en charge", cause: "Fonction que le fournisseur ne sait pas assurer.", faire: "Consulte les limites du fournisseur." },
+  { code: "service_unavailable", status: 502, titre: "Service de l'université indisponible", cause: "Serveur distant en panne, injoignable ou en erreur 5xx.", faire: "Réessaie plus tard ; vérifie l'hôte avec la trace HTTP." },
+  { code: "upstream_changed", status: 502, titre: "Réponse inattendue du service de l'université", cause: "Format ou parcours changé (mise à jour d'un ENT, page inconnue).", faire: "Lance le serveur avec RUST_LOG=tonapi_http=debug,tonapi_providers=debug et lis la trace." },
+  { code: "rate_limited", status: 429, titre: "Trop de requêtes", cause: "5 échecs de connexion en 15 minutes pour ce compte.", faire: "Attends (Retry-After) puis vérifie les identifiants." },
+  { code: "internal", status: 500, titre: "Erreur interne", cause: "Configuration ou bogue de tonAPI.", faire: "Lis les journaux du serveur." },
 ];

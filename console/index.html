@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
-<title>Banc d'essai tonAPI</title>
-<link rel="stylesheet" href="style.css?v=17">
-<script src="theme.js?v=17"></script>
+<title>Banc d'essai · tonAPI</title>
+<link rel="stylesheet" href="style.css?v=22">
+<script src="theme.js?v=22"></script>
 </head>
 <body>
+<a class="skip" href="#view" id="skip">Aller au contenu</a>
 <div class="shell">
   <aside class="rail">
     <div class="brand">
@@ -27,27 +28,34 @@
       <a href="#/erreurs" data-page="erreurs"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 1.8 13h12.4z M8 6.5v3 M8 11.3v.2"/></svg>Codes d'erreur</a>
     </nav>
     <div class="rail-push"></div>
-    <div class="rail-block keep">
-      <label class="rail-label" for="api">Adresse de l'API</label>
-      <input id="api" type="url" spellcheck="false" autocomplete="off">
+    <div class="rail-block">
       <div class="health" id="health" aria-live="polite"><span class="dot"></span>Vérification…</div>
     </div>
-    <div class="rail-block">
+    <div class="rail-block session-block">
       <span class="rail-label">Session</span>
       <div id="active-account"></div>
     </div>
-    <div class="rail-block keep">
-      <span class="rail-label" id="theme-label">Thème</span>
-      <div class="segmented theme" role="group" aria-labelledby="theme-label">
-        <button type="button" data-theme="auto">Auto</button>
-        <button type="button" data-theme="light">Clair</button>
-        <button type="button" data-theme="dark">Sombre</button>
+    <details class="settings" id="settings" open>
+      <summary>Réglages<svg class="icon chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></summary>
+      <div class="settings-body">
+        <div class="rail-block">
+          <label class="rail-label" for="api">Adresse de l'API</label>
+          <input id="api" type="url" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="rail-block">
+          <span class="rail-label" id="theme-label">Thème</span>
+          <div class="segmented theme" role="group" aria-labelledby="theme-label">
+            <button type="button" data-theme="auto">Auto</button>
+            <button type="button" data-theme="light">Clair</button>
+            <button type="button" data-theme="dark">Sombre</button>
+          </div>
+        </div>
       </div>
-    </div>
+    </details>
   </aside>
   <main id="view" tabindex="-1"></main>
 </div>
-<script src="donnees.js?v=17"></script>
-<script src="app.js?v=17"></script>
+<script src="donnees.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

@@ -6,9 +6,7 @@ const ESSAIS = window.TONAPI_ESSAIS;
 const SERVICES = window.TONAPI_SERVICES;
 const ERREURS = window.TONAPI_ERREURS;
 
-// ---------------------------------------------------------------------------------------------
 // Outils
-// ---------------------------------------------------------------------------------------------
 
 const $ = (id) => document.getElementById(id);
 function el(tag, attrs = {}, ...children) {
@@ -27,7 +25,6 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
-/// Chevron des lignes repliables (indique qu'une ligne s'ouvre).
 function chevron() {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
@@ -40,7 +37,7 @@ function chevron() {
   return svg;
 }
 
-/// Stockage local : la page reste utilisable s'il est bloqué (navigation privée…).
+// Stockage local : la page reste utilisable s'il est bloqué (navigation privée…).
 const store = {
   get(key, fallback) {
     try { const raw = localStorage.getItem(key); return raw === null ? fallback : JSON.parse(raw); } catch { return fallback; }
@@ -82,10 +79,21 @@ function panel({ title, sub, actions, body, cls }) {
 }
 const pill = (tone, text) => el("span", { class: `pill ${tone}`, text });
 const empty = (title, text) => el("p", { class: "empty" }, el("b", { text: title }), text);
+// « 0 absence », « 1 absence », « 2 absences » : le pluriel commence à deux.
+const plural = (n, singulier, pluriel) => `${n} ${n >= 2 ? pluriel : singulier}`;
 
-// ---------------------------------------------------------------------------------------------
+// Erreur bloquante : annoncée aux lecteurs d'écran, avec de quoi relancer la vérification.
+function errorNotice(text) {
+  return el("div", { class: "notice bad with-action", role: "alert" },
+    el("span", { text }),
+    el("button", { type: "button", id: "retry-health", onclick: retryHealth, text: "Réessayer" }));
+}
+async function retryHealth() {
+  await checkHealth();
+  ($("retry-health") || $("view")).focus({ preventScroll: true });
+}
+
 // État
-// ---------------------------------------------------------------------------------------------
 
 const state = {
   api: store.get("tonapi.api", "http://127.0.0.1:8080"),
@@ -101,6 +109,8 @@ const state = {
   running: false,
   week: mondayOf(new Date()),
   journal: [],
+  // État ouvert/fermé choisi par l'utilisateur pour les lignes repliables, qui survit aux nouveaux rendus.
+  open: {},
   form: { university: "", establishment: "", username: "", remember: true },
 };
 
@@ -114,7 +124,7 @@ function apiIsSafe() {
   } catch { return false; }
 }
 
-/// Lien venu de l'API : https seulement (http vers cette machine). Sinon null et le texte reste sans lien.
+// Lien venu de l'API : https seulement (http vers cette machine). Sinon null et le texte reste sans lien.
 function safeHref(value) {
   try {
     const url = new URL(value);
@@ -123,9 +133,7 @@ function safeHref(value) {
   } catch { return null; }
 }
 
-// ---------------------------------------------------------------------------------------------
 // Comptes mémorisés : jamais de mot de passe, seulement le jeton chiffré rendu par l'API.
-// ---------------------------------------------------------------------------------------------
 
 const ACCOUNTS = "tonapi.comptes";
 function accounts() { return store.get(ACCOUNTS, []); }
@@ -141,7 +149,7 @@ function upsertAccount(patch) {
 }
 function forgetAccount(id) { saveAccounts(accounts().filter((a) => a.id !== id)); if (state.accountId === id) state.accountId = null; if (store.get(ACTIVE, null) === id) store.set(ACTIVE, null); }
 
-/// Compte dont la session est ouverte : reprise au rechargement tant que son jeton est valable.
+// Compte dont la session est ouverte : reprise au rechargement tant que son jeton est valable.
 const ACTIVE = "tonapi.session";
 function usable(a) { return Boolean(a?.token) && a.api === apiBase() && (!a.expiresAt || Date.parse(a.expiresAt) > Date.now()); }
 function resumeAccount(a, run = true) {
@@ -169,7 +177,7 @@ function endSession() {
   renderRail();
 }
 
-/// Anciennes clés de la première console (un jeton par université, sans identifiant).
+// Anciennes clés de la première console (un jeton par université, sans identifiant).
 (function migrate() {
   try {
     const list = accounts();
@@ -193,16 +201,17 @@ function setToken(token, extra = {}) {
   if (account && account.remember !== false) upsertAccount({ id: state.accountId, token, ...extra });
 }
 
-// ---------------------------------------------------------------------------------------------
 // Appels à l'API, tous journalisés (sans corps : le journal peut contenir des données de compte).
-// ---------------------------------------------------------------------------------------------
+
+let journalCount = 0;
 
 async function call(method, path, { body, auth = true } = {}) {
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const bearer = auth ? state.token : null;
   const started = performance.now();
-  const entry = { at: new Date(), method, path: path.replace(/\?.*$/, ""), query: path.includes("?") ? path.slice(path.indexOf("?")) : "", status: 0 };
+  const entry = { id: ++journalCount, at: new Date(), method, path: path.replace(/\?.*$/, ""), query: path.includes("?") ? path.slice(path.indexOf("?")) : "", status: 0 };
+  // Refus avant tout envoi : un corps (mot de passe) ou un jeton ne part qu'en https, ou en http vers cette machine.
   if ((body !== undefined || bearer) && !apiIsSafe()) {
     entry.ms = 0;
     entry.code = "unsafe_api";
@@ -217,11 +226,13 @@ async function call(method, path, { body, auth = true } = {}) {
     entry.ms = Math.round(performance.now() - started);
     entry.code = "network";
     log(entry);
-    return { status: 0, ms: entry.ms, data: null, raw: null, problem: { code: "network", title: "API injoignable", detail: "Vérifier l'adresse et que tonapi-server tourne." }, headers: new Headers() };
+    return { status: 0, ms: entry.ms, data: null, raw: null, problem: { code: "network", title: "API injoignable", detail: "Vérifie l'adresse et que tonapi-server tourne." }, headers: new Headers() };
   }
   entry.ms = Math.round(performance.now() - started);
   entry.status = response.status;
   const renewed = response.headers.get("TonAPI-Session");
+  // Le jeton renouvelé ne remplace celui de la session que si la requête portait le jeton courant :
+  // la réponse d'un appel sans jeton, ou lancé avant un changement de session, ne doit pas l'écraser.
   if (renewed && bearer && bearer === state.token) { setToken(renewed); entry.renewed = true; }
   const text = await response.text();
   entry.size = text.length;
@@ -242,24 +253,24 @@ function log(entry) {
 
 function journalItem(e) {
   const cls = `s${String(e.status)[0] || 0}`;
-  return el("li", {},
-    el("details", {},
-      el("summary", {},
+  const details = el("details", { open: Boolean(state.open[`journal:${e.id}`]) },
+      el("summary", { onclick: () => { state.open[`journal:${e.id}`] = !details.open; } },
         el("span", { class: cls, text: e.status || "réseau" }),
         el("span", { class: "t", text: e.at.toLocaleTimeString("fr-FR") }),
         el("span", { class: "m", text: e.method }),
         el("span", { class: "path", text: `${e.path}${e.renewed ? "  · jeton renouvelé" : ""}${e.code ? `  · ${e.code}` : ""}` }),
         el("span", { class: "ms", text: `${e.ms} ms` })),
-      el("pre", { class: "code", text: JSON.stringify({ requête: `${e.method} ${e.path}${e.query}`, statut: e.status, code: e.code ?? null, durée_ms: e.ms, octets: e.size ?? null, jeton_renouvelé: !!e.renewed }, null, 2) })));
+      el("pre", { class: "code", text: JSON.stringify({ requête: `${e.method} ${e.path}${e.query}`, statut: e.status, code: e.code ?? null, durée_ms: e.ms, octets: e.size ?? null, jeton_renouvelé: !!e.renewed }, null, 2) }));
+  return el("li", {}, details);
 }
 
-// ---------------------------------------------------------------------------------------------
 // Rail
-// ---------------------------------------------------------------------------------------------
 
 async function checkHealth() {
+  if (state.health) { state.health = null; renderRail(); route(); }
   const r = await call("GET", "/healthz", { auth: false });
   state.health = r.data ? { ok: true, universities: r.data.universities } : { ok: false, title: r.problem?.title };
+  state.universities = [];
   if (r.data) {
     const list = await call("GET", "/v1/universities", { auth: false });
     state.universities = Array.isArray(list.data) ? list.data : [];
@@ -273,45 +284,41 @@ function renderRail() {
   if (h) {
     const ok = state.health?.ok;
     h.replaceChildren(el("span", { class: `dot ${ok ? "ok" : state.health ? "bad" : ""}` }),
-      ok ? `En ligne · ${state.health.universities} université(s)` : state.health ? state.health.title || "API injoignable" : "Vérification…");
+      ok ? `En ligne · ${plural(state.health.universities, "université", "universités")}` : state.health ? state.health.title || "API injoignable" : "Vérification…");
   }
   const chip = $("active-account");
   if (chip) {
     const a = accounts().find((x) => x.id === state.accountId);
     chip.replaceChildren(state.token
       ? el("div", { class: "account-chip" }, el("b", { text: a?.label || a?.username || "Session active" }), el("span", { text: a ? a.university : "non mémorisée" }))
-      : el("div", { class: "account-chip" }, el("b", { text: "Aucune session" }), el("span", { text: `${accounts().length} compte(s) mémorisé(s)` })));
+      : el("div", { class: "account-chip" }, el("b", { text: "Aucune session" }), el("span", { text: plural(accounts().length, "compte mémorisé", "comptes mémorisés") })));
   }
   const count = $("count-accounts");
   if (count) count.textContent = String(accounts().length);
 }
 
-// ---------------------------------------------------------------------------------------------
 // Fournisseurs : parcours et libellés
-// ---------------------------------------------------------------------------------------------
 
 function fournisseur(id) { return FOURNISSEURS.find((f) => f.id === id); }
 function serviceLabel(key) {
   if (key === "timetable-groups") return "groupes";
   return (SERVICES.find((s) => s.key === key)?.label || key).toLowerCase();
 }
-/// Étapes d'un fournisseur, de l'entrée aux données ; le séparateur indique le sens de l'appel.
+// Étapes d'un fournisseur, de l'entrée aux données ; le séparateur indique le sens de l'appel.
 function routeOf(providerId) {
   const f = fournisseur(providerId);
   if (!f) return null;
   const parts = [];
   f.ligne.forEach((step, i) => { if (i) parts.push(el("span", { class: "sep", "aria-hidden": "true", text: "›" })); parts.push(el("span", { class: "step", text: step })); });
-  return el("div", { class: "route", "aria-label": `Parcours : ${f.ligne.join(", puis ")}` }, parts);
+  return el("div", { class: "route" }, parts);
 }
-/// `portal` désigne le portail de l'université : son logiciel est dans le détail (`portal`).
+// `portal` désigne le portail de l'université : son logiciel est dans le détail (`portal`).
 function providerFor(status, detail) {
   if (status.provider === "portal" && detail?.portal === "tiles-portal") return "tiles-portal";
   return status.provider;
 }
 
-// ---------------------------------------------------------------------------------------------
 // Page : banc d'essai
-// ---------------------------------------------------------------------------------------------
 
 const PROBLEMS = {
   service_absent: ["idle", "Non proposé"],
@@ -345,15 +352,15 @@ const grade = (g) => (g ? `${g.value}/${g.outOf}` : "non publiée");
 function summarize(key, data) {
   switch (key) {
     case "profile": return { line: data.displayName || data.username, items: [data.email, data.studentNumber && `n° ${data.studentNumber}`, data.program].filter(Boolean) };
-    case "timetable": return { line: `${data.length} séance(s) du ${when(state.week, tz(), false)} au ${when(addDays(state.week, 6), tz(), false)}`, items: data.slice(0, 8).map((c) => `${when(c.start, tz())} · ${c.title}${c.rooms?.length ? ` · ${c.rooms.join(", ")}` : ""}`) };
-    case "timetable-groups": { const s = data.filter((g) => g.selected); return { line: `${data.length} groupe(s), ${s.length} sélectionné(s)`, items: s.slice(0, 6).map((g) => g.path?.length ? g.path.join(" › ") : g.name) }; }
-    case "grades": { const ss = data.semesters || []; return { line: ss.length ? `${ss.length} semestre(s)` : "Aucune note publiée", items: ss.map((s) => `${s.name} · moyenne ${grade(s.average)} · ${s.modules?.length || 0} module(s)`) }; }
-    case "absences": { const t = data.totals || {}; return { line: `${(data.absences || []).length} absence(s), ${t.unjustified ?? 0} non justifiée(s)`, items: (data.absences || []).slice(0, 5).map((a) => `${when(a.start, tz())}${a.module ? ` · ${a.module}` : ""}`) }; }
-    case "homework": return { line: `${data.length} devoir(s)`, items: [...data].sort((a, b) => String(a.due).localeCompare(String(b.due))).slice(0, 6).map((h) => `${when(h.due, tz())} · ${h.title}`) };
-    case "mail": return { line: `${(data.messages || []).length} message(s), ${data.unread ?? 0} non lu(s)`, items: (data.messages || []).slice(0, 5).map((m) => `${when(m.date, tz())} · ${m.from?.name || m.from?.address || "?"} · ${m.subject || "(sans objet)"}`) };
-    case "apps": return { line: `${data.length} application(s)`, items: data.slice(0, 8).map((a) => a.title) };
-    case "exams": return { line: data.length ? `${data.length} épreuve(s)` : "Aucune épreuve publiée", items: data.slice(0, 6).map((e) => `${e.start ? when(e.start, tz()) : "date à venir"} · ${e.title}${e.room ? ` · ${e.room}` : ""}`) };
-    case "documents": return { line: `${data.length} document(s), ${data.filter((d) => d.downloadable).length} téléchargeable(s)`, items: data.slice(0, 6).map((d) => `${d.title}${d.year ? ` · ${d.year}` : ""}${d.downloadable ? "" : " · lien"}`) };
+    case "timetable": return { line: `${plural(data.length, "séance", "séances")} du ${when(state.week, tz(), false)} au ${when(addDays(state.week, 6), tz(), false)}`, items: data.slice(0, 8).map((c) => `${when(c.start, tz())} · ${c.title}${c.rooms?.length ? ` · ${c.rooms.join(", ")}` : ""}`) };
+    case "timetable-groups": { const s = data.filter((g) => g.selected); return { line: `${plural(data.length, "groupe", "groupes")}, ${plural(s.length, "sélectionné", "sélectionnés")}`, items: s.slice(0, 6).map((g) => g.path?.length ? g.path.join(" › ") : g.name) }; }
+    case "grades": { const ss = data.semesters || []; return { line: ss.length ? plural(ss.length, "semestre", "semestres") : "Aucune note publiée", items: ss.map((s) => `${s.name} · moyenne ${grade(s.average)} · ${plural(s.modules?.length || 0, "module", "modules")}`) }; }
+    case "absences": { const t = data.totals || {}; return { line: `${plural((data.absences || []).length, "absence", "absences")}, ${plural(t.unjustified ?? 0, "non justifiée", "non justifiées")}`, items: (data.absences || []).slice(0, 5).map((a) => `${when(a.start, tz())}${a.module ? ` · ${a.module}` : ""}`) }; }
+    case "homework": return { line: plural(data.length, "devoir", "devoirs"), items: [...data].sort((a, b) => String(a.due).localeCompare(String(b.due))).slice(0, 6).map((h) => `${when(h.due, tz())} · ${h.title}`) };
+    case "mail": return { line: `${plural((data.messages || []).length, "message", "messages")}, ${plural(data.unread ?? 0, "non lu", "non lus")}`, items: (data.messages || []).slice(0, 5).map((m) => `${when(m.date, tz())} · ${m.from?.name || m.from?.address || "?"} · ${m.subject || "(sans objet)"}`) };
+    case "apps": return { line: plural(data.length, "application", "applications"), items: data.slice(0, 8).map((a) => a.title) };
+    case "exams": return { line: data.length ? plural(data.length, "épreuve", "épreuves") : "Aucune épreuve publiée", items: data.slice(0, 6).map((e) => `${e.start ? when(e.start, tz()) : "date à venir"} · ${e.title}${e.room ? ` · ${e.room}` : ""}`) };
+    case "documents": return { line: `${plural(data.length, "document", "documents")}, ${plural(data.filter((d) => d.downloadable).length, "téléchargeable", "téléchargeables")}`, items: data.slice(0, 6).map((d) => `${d.title}${d.year ? ` · ${d.year}` : ""}${d.downloadable ? "" : " · lien"}`) };
     default: return { line: "Réponse reçue", items: [] };
   }
 }
@@ -371,12 +378,12 @@ function providerOf(key) {
 }
 function outcome(key) {
   const r = state.results[key];
-  if (!r) return { tone: "idle", text: "En attente" };
+  if (!r) return { tone: "idle", kind: "wait", text: "En attente" };
   if (r.running) return { tone: "run", text: "En cours" };
-  if (r.skipped) return { tone: "idle", text: r.skipped };
+  if (r.skipped) return { tone: "idle", kind: "absent", text: r.skipped };
   if (r.data !== undefined && r.data !== null) return { tone: "ok", text: "OK" };
   const [tone, text] = PROBLEMS[r.problem?.code] || ["bad", r.problem?.title || "Erreur"];
-  return { tone, text };
+  return { tone, kind: r.problem?.code === "service_absent" ? "absent" : undefined, text };
 }
 
 function pageBench() {
@@ -394,19 +401,21 @@ function pageBench() {
 function loginPanel() {
   const f = state.form;
   const uni = state.universities.find((u) => u.id === f.university);
+  const loading = state.health === null;
   const status = el("div", { "aria-live": "polite" });
-  if (state.health && !state.health.ok) status.append(el("p", { class: "notice bad", text: "API injoignable : vérifie l'adresse dans le menu et que tonapi-server tourne." }));
-  else if (!apiIsSafe()) status.append(el("p", { class: "notice bad", text: "Adresse d'API refusée : les identifiants ne partent qu'en https, ou en http vers cette machine." }));
+  const down = state.health && !state.health.ok ? errorNotice("API injoignable : vérifie l'adresse de l'API et que tonapi-server tourne.") : null;
+  // L'alerte « API injoignable » est posée hors de la zone d'état : une seule annonce, pas deux.
+  if (!down && !apiIsSafe()) status.append(el("p", { class: "notice bad", text: "Adresse d'API refusée : les identifiants ne partent qu'en https, ou en http vers cette machine." }));
   const account = f.username && f.university ? findAccount(f.university, f.username) : null;
 
   const form = el("form", { autocomplete: "on", class: "panel-body", onsubmit: (e) => { e.preventDefault(); login(form, status); } },
     el("div", { class: "grid" },
       el("div", {},
         el("label", { for: "f-university", text: "Université" }),
-        el("select", { id: "f-university", required: true, onchange: (e) => { state.form.university = e.target.value; state.form.establishment = ""; route(); } },
-          el("option", { value: "", text: state.universities.length ? "Choisir une université" : "Aucune université disponible" }),
+        el("select", { id: "f-university", required: true, disabled: loading, onchange: (e) => { state.form.university = e.target.value; state.form.establishment = ""; route(); } },
+          el("option", { value: "", text: loading ? "Chargement des universités…" : state.universities.length ? "Choisis une université" : "Aucune université disponible" }),
           state.universities.map((u) => el("option", { value: u.id, selected: u.id === f.university, text: `${u.name}${u.status !== "active" ? ` (${u.status})` : ""}` }))),
-        uni ? el("p", { class: "hint", text: `${uni.login?.kind === "cas" ? "CAS" : uni.login?.kind}${uni.login?.mfa ? " · second facteur possible" : ""} · ${uni.id}` }) : null),
+        uni ? el("p", { class: "hint", text: `${uni.login?.kind === "cas" ? "CAS de l'université" : uni.login?.kind}${uni.login?.mfa ? " · second facteur possible" : ""} · ${uni.id}` }) : null),
       el("div", {},
         el("label", { for: "f-establishment", text: "Composante" }),
         el("select", { id: "f-establishment", onchange: (e) => { state.form.establishment = e.target.value; } },
@@ -425,6 +434,7 @@ function loginPanel() {
     el("div", { class: "row", style: "margin-top:16px" },
       el("button", { class: "primary", type: "submit", disabled: !apiIsSafe() || !state.universities.length, text: "Se connecter et tout tester" })),
     el("p", { class: "hint", text: "Le mot de passe part vers l'API puis le champ est vidé. Il n'est jamais mémorisé." }),
+    down,
     status);
   return panel({ title: "Connexion", sub: "Compte étudiant de l'université choisie", body: form });
 }
@@ -441,7 +451,7 @@ function savedPanel() {
           saved.filter(usable).map((a) => el("button", { type: "button", onclick: () => resumeAccount(a), text: `Reprendre ${a.username || a.university}` }))]
         : []))
     : empty("Aucun compte mémorisé", "Coche « Mémoriser ce compte » à la connexion pour le retrouver ici.");
-  return panel({ title: "Comptes mémorisés", sub: "Un clic remplit le formulaire", actions: el("a", { href: "#/comptes", text: "Gérer" }), body });
+  return panel({ title: "Comptes mémorisés", sub: "Un clic remplit le formulaire", actions: el("a", { href: "#/comptes", text: "Gérer les comptes" }), body });
 }
 
 async function login(form, status) {
@@ -455,7 +465,7 @@ async function login(form, status) {
   if (f.remember && known?.token) body.previousToken = known.token;
   state.accountId = f.remember ? id : null;
   if (!f.remember && known) forgetAccount(id);
-  status.replaceChildren(el("p", { class: "notice warn", text: "Connexion à l'université…" }));
+  status.replaceChildren(el("p", { class: "notice info", text: "Connexion à l'université…" }));
   const r = await call("POST", "/v1/auth/login", { body, auth: false });
   if (r.status === 200 && r.data?.token) return signedIn(r.data);
   if (r.status === 202 && r.data?.pending) { state.pending = r.data; return route(); }
@@ -483,7 +493,7 @@ function mfaPanel() {
   const send = async (method) => {
     const body = { pending: p.pending, method, rememberDevice: remember.checked };
     if (method === "code") { body.code = code.value.trim(); if (!body.code) return; }
-    status.replaceChildren(el("p", { class: "notice warn", text: method === "push" ? "En attente de la validation sur le téléphone (100 s au plus)…" : "Vérification du code…" }));
+    status.replaceChildren(el("p", { class: "notice info", text: method === "push" ? "En attente de la validation sur le téléphone (100 s au plus)…" : "Vérification du code…" }));
     const r = await call("POST", "/v1/auth/mfa", { body, auth: false });
     code.value = "";
     if (r.status === 200 && r.data?.token) {
@@ -500,7 +510,7 @@ function mfaPanel() {
         el("button", { class: "primary", type: "button", onclick: () => send("push"), text: "Valider sur mon téléphone" }),
         el("span", { class: "hint", style: "margin:0", text: `Appareil : ${p.methods.push}` })) : null,
       p.methods?.code ? el("form", { class: "row", style: "margin-top:14px; align-items:flex-end", onsubmit: (e) => { e.preventDefault(); send("code"); } },
-        el("div", { style: "flex:0 1 200px" }, el("label", { for: "mfa-code", text: "Code à 6 chiffres" }), code),
+        el("div", { style: "flex:0 1 200px" }, el("label", { for: "mfa-code", text: "Code de validation" }), code),
         el("button", { type: "submit", text: "Envoyer le code" })) : null,
       el("label", { class: "check", style: "margin-top:14px" }, remember, el("span", { text: "Faire mémoriser cet appareil par l'université (30 jours sans second facteur)" })),
       status),
@@ -515,30 +525,33 @@ function sessionPanel() {
     el("option", { value: "", text: "Détection automatique" }),
     establishments.map((e) => el("option", { value: e.id, selected: est?.source === "student" && est.id === e.id, text: e.name })));
   const week = el("div", { class: "week" },
-    el("button", { type: "button", class: "ghost", "aria-label": "Semaine précédente", title: "Semaine précédente", onclick: () => { state.week = addDays(state.week, -7); rerunTimetable(); }, text: "‹" }),
-    el("input", { type: "date", "aria-label": "Semaine de l'emploi du temps", value: iso(state.week), onchange: (e) => { if (e.target.value) { state.week = mondayOf(new Date(e.target.value)); rerunTimetable(); } } }),
-    el("button", { type: "button", class: "ghost", "aria-label": "Semaine suivante", title: "Semaine suivante", onclick: () => { state.week = addDays(state.week, 7); rerunTimetable(); }, text: "›" }));
+    el("button", { type: "button", id: "week-prev", class: "ghost", "aria-label": "Semaine précédente", title: "Semaine précédente", onclick: () => { state.week = addDays(state.week, -7); rerunTimetable(); }, text: "‹" }),
+    el("input", { type: "date", id: "week-date", value: iso(state.week), onchange: (e) => { if (e.target.value) { state.week = mondayOf(new Date(e.target.value)); rerunTimetable(); } } }),
+    el("button", { type: "button", id: "week-next", class: "ghost", "aria-label": "Semaine suivante", title: "Semaine suivante", onclick: () => { state.week = addDays(state.week, 7); rerunTimetable(); }, text: "›" }));
   return panel({
     title: me ? `${me.profile.displayName || me.profile.username}` : "Session active",
     sub: me ? `${me.university.name}${est ? ` · ${est.name} (${est.source === "detected" ? "détectée" : est.source === "student" ? "choisie" : "par défaut"}${est.confidence ? `, ${Math.round(est.confidence * 100)} %` : ""})` : ""}` : "",
     actions: el("div", { class: "row" },
-      el("button", { type: "button", class: "primary", onclick: runAll, disabled: state.running, text: state.running ? "Tests en cours…" : "Relancer les tests" }),
-      el("button", { type: "button", onclick: refresh, text: "Prolonger la session" }),
-      el("button", { type: "button", class: "ghost danger", onclick: logout, text: "Se déconnecter" })),
+      // aria-disabled plutôt que disabled : le bouton garde le focus pendant les tests.
+      el("button", { type: "button", id: "run-all", class: "primary", onclick: runAll, "aria-disabled": state.running ? "true" : null, text: state.running ? "Tests en cours…" : "Relancer les tests" }),
+      el("button", { type: "button", id: "refresh-session", onclick: refresh, text: "Prolonger la session" }),
+      el("button", { type: "button", id: "logout", class: "ghost danger", onclick: logout, text: "Se déconnecter" })),
     body: el("div", { class: "panel-body row", style: "align-items:flex-end; gap:16px" },
-      el("div", {}, el("label", { text: "Semaine de l'emploi du temps" }), week),
+      el("div", {}, el("label", { for: "week-date", text: "Semaine de l'emploi du temps" }), week),
       el("div", { style: "flex:0 1 280px" }, el("label", { for: "switch-est", text: "Composante" }), switcher)),
   });
 }
 
 function resultsPanel() {
   const counts = {};
-  for (const probe of PROBES) { const o = outcome(probe.key); counts[o.tone] = (counts[o.tone] || 0) + 1; }
+  // Les services au repos se comptent à part : « en attente » (pas encore testés) et « non proposés ».
+  for (const probe of PROBES) { const o = outcome(probe.key); const k = o.kind || o.tone; counts[k] = (counts[k] || 0) + 1; }
   const stats = el("div", { class: "stats" },
     counts.ok ? pill("ok", `${counts.ok} OK`) : null,
     counts.warn ? pill("warn", `${counts.warn} à voir`) : null,
     counts.bad ? pill("bad", `${counts.bad} en échec`) : null,
-    counts.idle ? pill("idle", `${counts.idle} sans données`) : null,
+    counts.wait ? pill("idle", `${counts.wait} en attente`) : null,
+    counts.absent ? pill("idle", plural(counts.absent, "non proposé", "non proposés")) : null,
     counts.run ? pill("run", `${counts.run} en cours`) : null,
     state.overviewMs && !state.running ? el("span", { class: "hint", text: `Tous les services en un appel groupé : ${state.overviewMs} ms` }) : null);
 
@@ -554,7 +567,7 @@ function resultsPanel() {
       const s = summarize(probe.key, result.data);
       line = s.line;
       if (s.items.length) detail.push(el("ul", {}, s.items.map((i) => el("li", { text: i }))));
-      detail.push(rawDetails(result.data));
+      detail.push(rawDetails(result.data, `raw:${probe.key}`));
     } else if (result?.problem) {
       line = result.problem.detail || result.problem.title || "";
       detail.push(el("p", { style: "margin:0; color:var(--text-2)" }, result.problem.title || "", result.problem.code ? [" · ", el("code", { text: result.problem.code }), " · ", el("a", { href: `#/erreurs?code=${result.problem.code}`, text: "que faire" })] : null));
@@ -566,9 +579,9 @@ function resultsPanel() {
       }
       if (result.problem.code === "service_login_required" && probe.separate) detail.push(serviceLoginForm(probe));
     }
-    const open = result?.problem?.code === "service_login_required";
-    return el("details", { class: "service", open },
-      el("summary", {},
+    const open = state.open[`service:${probe.key}`] ?? result?.problem?.code === "service_login_required";
+    const row = el("details", { class: "service", open },
+      el("summary", { onclick: () => { state.open[`service:${probe.key}`] = !row.open; } },
         el("span", { class: "name", text: probe.label }),
         el("span", { class: "provider", text: provider || "aucun fournisseur" }),
         el("span", { class: "line" }, pill(o.tone, o.text), " ", line),
@@ -576,20 +589,24 @@ function resultsPanel() {
         chevron()),
       el("div", { class: "detail" }, detail.length ? detail : el("p", { class: "hint", style: "margin:0", text: "Rien à afficher pour ce service." }),
         provider && fournisseur(provider) ? el("a", { href: `#/fournisseurs?id=${encodeURIComponent(provider)}`, text: `Fiche du fournisseur ${provider}` }) : null));
+    return row;
   });
 
   return el("div", { class: "stack" },
     panel({ title: "Services", sub: `Semaine du ${when(state.week, tz(), false)} pour l'emploi du temps`, actions: stats, body: el("div", { class: "services" }, rows) }),
     panel({
-      title: "Rapport anonyme", sub: "Statuts, fournisseurs et durées seulement, à joindre à une issue",
-      actions: copyButton(() => report(), "Copier"),
+      title: "Rapport anonyme", sub: "Statuts, fournisseurs et durées seulement, à joindre à un signalement de bogue",
+      actions: copyButton(() => report(), "Copier", "copy-report"),
       body: el("div", { class: "panel-body" }, el("pre", { class: "code", style: "margin:0", text: report() })),
     }));
 }
 
-function rawDetails(data) {
-  const d = el("details", {}, el("summary", { style: "cursor:pointer; color:var(--accent-text); font-size:13px; font-weight:550", text: "Réponse brute" }));
-  d.addEventListener("toggle", () => { if (d.open && !d.querySelector("pre")) d.append(el("pre", { class: "code", text: JSON.stringify(data, null, 2) })); });
+function rawDetails(data, memo) {
+  const d = el("details", { open: Boolean(state.open[memo]) }, el("summary", { class: "more", text: "Réponse brute", onclick: () => { state.open[memo] = !d.open; } }));
+  // Le JSON n'est construit qu'à l'ouverture : certaines réponses sont longues.
+  const fill = () => { if (d.open && !d.querySelector("pre")) d.append(el("pre", { class: "code", text: JSON.stringify(data, null, 2) })); };
+  d.addEventListener("toggle", fill);
+  fill();
   return d;
 }
 
@@ -693,6 +710,7 @@ async function logout() {
   endSession();
   state.me = null;
   state.results = {};
+  state.open = {};
   renderRail();
   route();
 }
@@ -700,15 +718,15 @@ async function logout() {
 function journalPanel() {
   return panel({
     title: "Journal des requêtes", sub: "Statut, heure, méthode, route et durée ; les corps ne sont pas gardés",
-    actions: el("button", { type: "button", class: "ghost", onclick: () => { state.journal = []; route(); }, text: "Vider" }),
+    actions: el("button", { type: "button", id: "clear-journal", class: "ghost", "aria-label": "Vider le journal", onclick: () => { state.journal = []; route(); }, text: "Vider" }),
     body: el("div", {},
       state.journal.length ? null : el("p", { class: "empty", id: "journal-empty" }, el("b", { text: "Aucune requête pour l'instant" }), "Elles apparaissent ici dès que la console appelle l'API."),
       el("ul", { class: "journal", id: "journal" }, state.journal.map(journalItem))),
   });
 }
 
-function copyButton(get, label) {
-  const b = el("button", { type: "button", text: label });
+function copyButton(get, label, id) {
+  const b = el("button", { type: "button", id, text: label });
   b.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(get()); b.textContent = "Copié"; } catch { b.textContent = "Copie impossible"; }
     setTimeout(() => { b.textContent = label; }, 1500);
@@ -716,64 +734,75 @@ function copyButton(get, label) {
   return b;
 }
 
-// ---------------------------------------------------------------------------------------------
 // Page : comptes mémorisés
-// ---------------------------------------------------------------------------------------------
 
 function pageAccounts() {
   const list = accounts();
-  const rows = list.map((a) => {
+  const rows = list.map((a, i) => {
+    const name = a.label || a.username || a.university;
     const label = el("input", { value: a.label || "", "aria-label": "Nom du compte", placeholder: a.username || "Nom du compte", onchange: (e) => upsertAccount({ id: a.id, label: e.target.value.trim() }) });
     const expired = a.expiresAt && new Date(a.expiresAt).getTime() < Date.now();
     const device = a.deviceSince ? a.deviceSince + 30 * 86400000 : null;
     return el("tr", {},
-      el("td", { style: "min-width:180px" }, label),
-      el("td", {}, el("code", { text: a.university }), el("div", { class: "hint", text: a.username || "identifiant non renseigné" })),
-      el("td", {}, a.token ? pill(expired ? "warn" : "ok", expired ? "expirée" : "valable") : pill("idle", "aucun jeton"),
+      el("td", { class: "name-cell", "data-label": "Nom" }, label),
+      el("td", { "data-label": "Université" }, el("code", { text: a.university }), el("div", { class: "hint", text: a.username || "identifiant non renseigné" })),
+      el("td", { "data-label": "Session tonAPI" }, a.token ? pill(expired ? "warn" : "ok", expired ? "expirée" : "valable") : pill("idle", "aucun jeton"),
         a.expiresAt ? el("div", { class: "hint", text: `jusqu'au ${new Date(a.expiresAt).toLocaleString("fr-FR")}` }) : null),
-      el("td", {}, device ? el("span", { text: `≈ ${relative(device)}` }) : el("span", { class: "hint", text: "inconnu" })),
-      el("td", { class: "hint", text: a.lastUsed ? new Date(a.lastUsed).toLocaleString("fr-FR") : "jamais" }),
-      el("td", {}, el("div", { class: "row", style: "flex-wrap:nowrap" },
-        el("button", { type: "button", onclick: () => { state.form = { ...state.form, university: a.university, username: a.username, establishment: a.establishment || "", remember: true }; state.accountId = a.id; location.hash = "#/"; }, text: "Se connecter avec" }),
-        el("button", { type: "button", class: "ghost danger", onclick: () => { forgetAccount(a.id); route(); }, text: "Oublier" }))));
+      el("td", { "data-label": "Appareil reconnu" }, device ? el("span", { text: `≈ ${relative(device)}` }) : el("span", { class: "hint", text: "inconnu" })),
+      el("td", { class: "hint", "data-label": "Dernière connexion", text: a.lastUsed ? new Date(a.lastUsed).toLocaleString("fr-FR") : "jamais" }),
+      el("td", { class: "actions-cell", "data-label": "" }, el("div", { class: "row actions" },
+        el("button", { type: "button", id: `connect-${i}`, "aria-label": `Se connecter avec ${name}`, onclick: () => { state.form = { ...state.form, university: a.university, username: a.username, establishment: a.establishment || "", remember: true }; state.accountId = a.id; location.hash = "#/"; }, text: "Se connecter avec" }),
+        el("button", { type: "button", id: `forget-${i}`, class: "ghost danger", "aria-label": `Oublier le compte ${name}`, onclick: () => { if (confirm(`Oublier le compte « ${name} » sur ce navigateur ? Son jeton mémorisé sera supprimé.`)) { forgetAccount(a.id); route(); } }, text: "Oublier" }))));
   });
   return [
     pageHead("Comptes mémorisés", "Pour se reconnecter sans refaire le second facteur à chaque essai. Aucun mot de passe n'est gardé.",
-      list.length ? el("button", { type: "button", class: "danger", onclick: () => { saveAccounts([]); state.accountId = null; route(); }, text: "Tout oublier" }) : null),
+      list.length ? el("button", { type: "button", id: "forget-all", class: "danger", onclick: () => { if (confirm(`Oublier les ${list.length} comptes mémorisés sur ce navigateur ? Leurs jetons seront supprimés.`)) { saveAccounts([]); state.accountId = null; route(); } }, text: "Tout oublier" }) : null),
     el("div", { class: "stack" },
       panel({
-        title: `${list.length} compte(s) sur ce navigateur`, sub: "Stockage local du navigateur, propre à cette adresse de console",
+        title: `${plural(list.length, "compte", "comptes")} sur ce navigateur`, sub: "Stockage local du navigateur, propre à cette adresse de console",
         body: list.length
-          ? el("div", { class: "table-wrap" }, el("table", {},
-            el("thead", {}, el("tr", {}, ["Nom", "Université", "Session tonAPI", "Appareil reconnu", "Dernière connexion", ""].map((h) => el("th", { text: h })))),
+          ? el("div", { class: "table-wrap" }, el("table", { class: "stack-table" },
+            el("thead", {}, el("tr", {}, ["Nom", "Université", "Session tonAPI", "Appareil reconnu", "Dernière connexion"].map((h) => el("th", { text: h })), el("th", {}, el("span", { class: "sr-only", text: "Actions" })))),
             el("tbody", {}, rows)))
           : empty("Aucun compte mémorisé", "Coche « Mémoriser ce compte » à la connexion dans le banc d'essai."),
       }),
       el("div", { class: "split" },
         panel({
           title: "Comment ça marche", sub: "Du mot de passe à la reconnexion sans second facteur",
-          body: el("div", { class: "panel-body" }, el("ol", { class: "steps" },
-            el("li", {}, el("div", {}, el("b", { text: "Connexion avec le mot de passe" }), el("span", { text: "La console l'envoie à POST /v1/auth/login, puis vide le champ. Il n'est écrit nulle part." }))),
-            el("li", {}, el("div", {}, el("b", { text: "Second facteur avec « mémoriser cet appareil »" }), el("span", { text: "Le CAS prolonge sa propre session à 30 jours (cookie connect.sid à Montpellier)." }))),
-            el("li", {}, el("div", {}, el("b", { text: "Jeton chiffré rendu par l'API" }), el("span", { text: "Les cookies de l'université voyagent chiffrés (AES-256-GCM) dans le jeton, que la console garde pour ce compte." }))),
-            el("li", {}, el("div", {}, el("b", { text: "Connexion suivante : previousToken" }), el("span", { text: "La console renvoie l'ancien jeton. Le serveur en reprend les cookies sauf le ticket CAS : le mot de passe reste demandé, l'appareil est reconnu." }))),
-            el("li", {}, el("div", {}, el("b", { text: "Renouvellements" }), el("span", { text: "Une réponse peut renvoyer un jeton à jour (en-tête TonAPI-Session) ; la console remplace celui du compte." }))),
-            el("li", {}, el("div", {}, el("b", { text: "Rechargement de la page" }), el("span", { text: "Tant que le jeton du compte est valable (12 h par défaut), la console reprend la session et relance les tests sans mot de passe. « Se déconnecter » ou une session refusée y met fin." }))))),
+          body: el("div", { class: "panel-body" },
+            el("ol", { class: "steps" },
+              el("li", {}, el("div", {}, el("b", { text: "Connexion avec le mot de passe" }), el("span", { text: "La console l'envoie à l'API pour ouvrir ta session auprès de l'université, puis vide le champ. Il n'est écrit nulle part." }))),
+              el("li", {}, el("div", {}, el("b", { text: "Second facteur avec « mémoriser cet appareil »" }), el("span", { text: "L'université garde ton appareil en mémoire de son côté, en général pendant 30 jours." }))),
+              el("li", {}, el("div", {}, el("b", { text: "Jeton chiffré rendu par l'API" }), el("span", { text: "Il contient ta session universitaire sous forme chiffrée. La console le garde pour ce compte." }))),
+              el("li", {}, el("div", {}, el("b", { text: "Connexion suivante" }), el("span", { text: "La console renvoie l'ancien jeton : l'université reconnaît l'appareil et ne redemande pas le second facteur. Le mot de passe reste demandé." }))),
+              el("li", {}, el("div", {}, el("b", { text: "Renouvellements" }), el("span", { text: "Quand l'API renvoie un jeton à jour, la console remplace l'ancien." }))),
+              el("li", {}, el("div", {}, el("b", { text: "Rechargement de la page" }), el("span", { text: "Tant que le jeton du compte est valable (12 h par défaut), la console reprend la session et relance les tests sans mot de passe. « Se déconnecter » ou une session refusée y met fin." })))),
+            el("details", { style: "margin-top:14px", open: Boolean(state.open["tech:how"]) },
+              el("summary", { class: "more", text: "Détails techniques", onclick: (e) => { state.open["tech:how"] = !e.currentTarget.parentElement.open; } }),
+              el("ul", { class: "plain" },
+                el("li", { text: "Connexion : POST /v1/auth/login. Le second facteur mémorisé repose sur le cookie de session du CAS, prolongé à 30 jours par l'université." }),
+                el("li", { text: "Le jeton est une session chiffrée en AES-256-GCM. Les cookies de l'université y voyagent, jamais le mot de passe." }),
+                el("li", { text: "À la connexion suivante, la console envoie previousToken : le serveur en reprend les cookies, sauf le ticket CAS." }),
+                el("li", { text: "Un jeton à jour arrive dans l'en-tête TonAPI-Session." })))),
         }),
         panel({
           title: "Limites et sécurité", sub: "À savoir avant de mémoriser un compte",
-          body: el("div", { class: "panel-body" }, el("ul", { class: "plain" },
-            el("li", { text: "Le jeton est chiffré par le serveur mais reste un secret : il ouvre la session tant qu'elle est valable (12 h par défaut). À éviter sur un ordinateur partagé." }),
-            el("li", { text: "Un ancien jeton est accepté comme previousToken jusqu'à 35 jours après son expiration, uniquement pour en reprendre les cookies." }),
-            el("li", { text: "Sans TONAPI_SESSION_KEYS, le serveur crée une clé temporaire : les jetons mémorisés deviennent invalides à chaque redémarrage." }),
-            el("li", { text: "La durée « appareil reconnu » est une estimation (30 jours depuis la dernière validation) : l'université peut l'écourter." }))),
+          body: el("div", { class: "panel-body" },
+            el("ul", { class: "plain" },
+              el("li", { text: "Le jeton est chiffré par le serveur mais reste un secret : il ouvre la session tant qu'elle est valable (12 h par défaut). À éviter sur un ordinateur partagé." }),
+              el("li", { text: "Un ancien jeton sert encore jusqu'à 35 jours après son expiration, uniquement pour faire reconnaître l'appareil." }),
+              el("li", { text: "Si le serveur n'a pas de clé de chiffrement fixe, il en crée une temporaire : les jetons mémorisés cessent de fonctionner à chaque redémarrage." }),
+              el("li", { text: "La durée « appareil reconnu » est une estimation (30 jours depuis la dernière validation) : l'université peut l'écourter." })),
+            el("details", { style: "margin-top:14px", open: Boolean(state.open["tech:limits"]) },
+              el("summary", { class: "more", text: "Détails techniques", onclick: (e) => { state.open["tech:limits"] = !e.currentTarget.parentElement.open; } }),
+              el("ul", { class: "plain" },
+                el("li", { text: "Clés de chiffrement : variable d'environnement TONAPI_SESSION_KEYS. Sans elle, une clé temporaire est tirée au démarrage." }),
+                el("li", { text: "previousToken est accepté 35 jours après l'expiration du jeton, pour en reprendre les cookies seulement." })))),
         }))),
   ];
 }
 
-// ---------------------------------------------------------------------------------------------
 // Page : couverture
-// ---------------------------------------------------------------------------------------------
 
 async function loadDetails() {
   await Promise.all(state.universities.map(async (u) => {
@@ -783,7 +812,7 @@ async function loadDetails() {
   }));
 }
 
-/// État d'un service pour un établissement, du plus sûr au moins sûr, en mots simples.
+// État d'un service pour un établissement, du plus sûr au moins sûr, en mots simples.
 const ETATS = {
   ok: { ton: "ok", court: "Vérifié", long: "Essayé avec un vrai compte : données reçues." },
   vide: { ton: "warn", court: "Répond, rien à montrer", long: "Essayé avec un vrai compte, qui n'avait encore rien (notes non publiées…) : format à confirmer." },
@@ -825,7 +854,7 @@ function coverageBlock(title, sub, statuses, key, detail) {
   const essai = VERIFIE[key];
   const resume = etats.includes("demo")
     ? "Données fictives, pour essayer l'API sans compte."
-    : `${usable} services sur ${SERVICES.length} servis par l'API, dont ${ok === 0 ? "aucun vérifié" : `${ok} ${ok > 1 ? "vérifiés" : "vérifié"}`} avec un vrai compte${essai ? ` (${essai.date})` : ""}.`;
+    : `L'API sert ${plural(usable, "service", "services")} sur ${SERVICES.length}, dont ${ok === 0 ? "aucun vérifié" : plural(ok, "vérifié", "vérifiés")} avec un vrai compte${essai ? ` (${essai.date})` : ""}.`;
   return el("section", { class: "cov-block" },
     el("div", { class: "cov-head" }, el("h3", { text: title }), sub ? el("span", { text: sub }) : null),
     el("p", { class: "cov-summary", text: resume }),
@@ -839,9 +868,10 @@ function loginText(d) {
 
 function pageCoverage() {
   const body = el("div", { class: "stack" }, el("p", { class: "empty", "aria-live": "polite" }, el("b", { text: "Chargement" }), "Lecture du détail de chaque université…"));
-  if (state.health && !state.health.ok) body.replaceChildren(empty("API injoignable", "Vérifie l'adresse dans le menu et que tonapi-server tourne."));
+  // Tant que la santé de l'API n'est pas connue, le message de chargement reste affiché : checkHealth() relance le rendu.
+  if (state.health && !state.health.ok) body.replaceChildren(errorNotice("API injoignable : vérifie l'adresse de l'API et que tonapi-server tourne."));
   else if (state.health && !state.universities.length) body.replaceChildren(empty("Aucune université servie", "Ajoute un dossier dans universities/ puis lance tonapi validate."));
-  else loadDetails().then(() => {
+  else if (state.health) loadDetails().then(() => {
     const cards = [];
     for (const u of state.universities) {
       const d = state.details[u.id];
@@ -866,9 +896,7 @@ function pageCoverage() {
   ];
 }
 
-// ---------------------------------------------------------------------------------------------
 // Page : fournisseurs
-// ---------------------------------------------------------------------------------------------
 
 function pageProviders(params) {
   const focus = params.get("id");
@@ -876,23 +904,31 @@ function pageProviders(params) {
   const ids = focus === "portal" ? ["portal", "tiles-portal"] : focus ? [focus] : [];
   const shown = FOURNISSEURS.filter((f) => !filter || f.services.includes(filter));
   const filters = el("div", { class: "filters", role: "group", "aria-label": "Filtrer par service" },
-    el("button", { type: "button", "aria-pressed": String(!filter), onclick: () => { location.hash = "#/fournisseurs"; }, text: "Tous" }),
+    el("button", { type: "button", id: "flt-all", "aria-pressed": String(!filter), onclick: () => { location.hash = "#/fournisseurs"; }, text: "Tous" }),
     SERVICES.filter((s) => FOURNISSEURS.some((f) => f.services.includes(s.key))).map((s) =>
-      el("button", { type: "button", "aria-pressed": String(filter === s.key), onclick: () => { location.hash = `#/fournisseurs?service=${s.key}`; }, text: s.label })));
+      el("button", { type: "button", id: `flt-${s.key}`, "aria-pressed": String(filter === s.key), onclick: () => { location.hash = `#/fournisseurs?service=${s.key}`; }, text: s.label })));
   const cards = shown.map((f) => {
     const essai = ESSAIS[f.essai];
-    return el("article", { class: `panel card${ids.includes(f.id) ? " focus" : ""}`, id: `f-${f.id}` },
+    const targeted = ids.includes(f.id);
+    return el("article", { class: `panel card${targeted ? " focus" : ""}`, id: `f-${f.id}`, tabindex: targeted ? "-1" : null },
       el("div", { class: "panel-body" },
-        el("h2", {}, el("code", { text: f.id }), pill(essai.ton, essai.label)),
+        el("h2", {}, el("span", {}, el("code", { text: f.id }), targeted ? el("span", { class: "mark", text: "Ciblé" }) : null), pill(essai.ton, essai.label)),
         el("p", { class: "logiciel", text: `${f.logiciel} · ${f.services.map(serviceLabel).join(", ")}` }),
         routeOf(f.id),
         el("p", { text: f.comment }),
         f.essais.length ? el("div", {}, el("h3", { text: "Essais réels" }), el("ul", {}, f.essais.map((x) => el("li", { text: x })))) : null,
         f.limites.length ? el("div", {}, el("h3", { text: "Limites" }), el("ul", {}, f.limites.map((x) => el("li", { text: x })))) : null,
-        el("details", {}, el("summary", { text: "Configuration TOML" }), el("pre", { class: "code", text: f.config })),
+        el("details", {}, el("summary", { class: "more", text: "Configuration TOML" }), el("pre", { class: "code", text: f.config })),
         el("p", { class: "hint", style: "margin:0" }, "Code : ", f.fichiers.map((x, i) => [i ? ", " : "", el("code", { text: x })]))));
   });
-  setTimeout(() => { const t = document.querySelector(".card.focus"); if (t) t.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }, 0);
+  // setTimeout(…, 0) : la page n'est insérée dans le document qu'après le retour de cette fonction, et scrollIntoView
+  // comme focus() ne peuvent agir que sur un élément déjà inséré.
+  setTimeout(() => {
+    const t = document.querySelector(".card.focus");
+    if (!t) return;
+    t.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    t.focus({ preventScroll: true });
+  }, 0);
   return [
     pageHead("Fournisseurs", "Un fournisseur correspond à un logiciel, jamais à une université. Pour chacun : le parcours suivi, ce qui a été essayé pour de vrai, et ses limites."),
     filters,
@@ -900,9 +936,7 @@ function pageProviders(params) {
   ];
 }
 
-// ---------------------------------------------------------------------------------------------
 // Page : explorateur d'API
-// ---------------------------------------------------------------------------------------------
 
 const explorer = { op: null };
 
@@ -922,22 +956,34 @@ function skeleton(schema, spec, depth = 0) {
 
 function pageExplorer() {
   const list = el("nav", { class: "panel endpoints", "aria-label": "Routes de l'API" }, el("p", { class: "empty" }, el("b", { text: "Chargement" }), "Lecture de /openapi.json…"));
+  const layout = el("div", { class: "explorer" });
+  const had = document.activeElement?.id;
   const pane = el("section", { class: "panel" }, empty("Choisis une route", "Le formulaire reprend ses paramètres et un squelette du corps JSON."));
   const load = state.openapi ? Promise.resolve() : call("GET", "/openapi.json", { auth: false }).then((r) => { state.openapi = r.data; });
   load.then(() => {
     const spec = state.openapi;
-    if (!spec) { list.replaceChildren(empty("Spécification indisponible", "L'API ne répond pas sur /openapi.json : vérifie l'adresse dans le menu.")); return; }
+    if (!spec) {
+      // Sans spécification, le formulaire de droite n'a rien à montrer : on le retire.
+      pane.hidden = true;
+      layout.classList.add("no-spec");
+      list.replaceChildren(errorNotice("Spécification indisponible : l'API ne répond pas sur /openapi.json. Vérifie l'adresse de l'API."));
+      return;
+    }
     const groups = {};
     for (const [path, ops] of Object.entries(spec.paths)) for (const [method, op] of Object.entries(ops)) (groups[op.tags?.[0] || "autres"] ||= []).push({ path, method, op });
-    list.replaceChildren(...Object.entries(groups).flatMap(([tag, ops]) => [el("h3", { text: tag }), ...ops.map((o) =>
-      el("button", { type: "button", class: "endpoint", "aria-pressed": String(explorer.op?.path === o.path && explorer.op?.method === o.method), onclick: () => { explorer.op = o; route(); } },
+    list.replaceChildren(...Object.entries(groups).flatMap(([tag, ops]) => [el("h2", { text: tag }), ...ops.map((o) =>
+      el("button", { type: "button", id: `ep-${o.method}-${o.path}`, class: "endpoint", "aria-pressed": String(explorer.op?.path === o.path && explorer.op?.method === o.method), onclick: () => { explorer.op = o; route(); } },
         el("span", { class: `method ${o.method}`, text: o.method.toUpperCase() }), el("span", { text: o.path })))]));
     if (explorer.op) pane.replaceChildren(...explorerForm(explorer.op, spec));
+    // La liste arrive après le rendu de la page : le bouton de route qui avait le focus le retrouve ici.
+    const back = had?.startsWith("ep-") ? $(had) : null;
+    if (back && [document.body, $("view")].includes(document.activeElement)) back.focus({ preventScroll: true });
   });
+  layout.append(list, pane);
   return [
     pageHead("Explorateur d'API", "Toutes les routes de la spécification OpenAPI, appelées avec la session active.",
       el("a", { class: "button", href: `${apiBase()}/docs`, target: "_blank", rel: "noopener noreferrer", text: "Documentation /docs" })),
-    el("div", { class: "explorer" }, list, pane),
+    layout,
   ];
 }
 
@@ -976,14 +1022,15 @@ function explorerForm(o, spec) {
   };
   const curl = () => {
     let body = textarea?.value;
+    // Le curl copié se partage dans un signalement : mots de passe, codes et jetons provisoires y sont masqués.
     if (body) { try { const j = JSON.parse(body); for (const k of ["password", "code", "pending", "previousToken"]) if (k in j) j[k] = `<${k}>`; body = JSON.stringify(j); } catch { /* corps tel quel */ } }
     return [`curl -X ${o.method.toUpperCase()} '${apiBase()}${build()}'`, useToken.checked ? `  -H "Authorization: Bearer $TONAPI_TOKEN"` : null, body ? `  -H 'Content-Type: application/json' -d '${body.replace(/'/g, "'\\''")}'` : null].filter(Boolean).join(" \\\n");
   };
   return [
     el("div", { class: "panel-head" },
-      el("div", {}, el("div", { class: "endpoint-title" }, el("span", { class: `method ${o.method}`, text: o.method.toUpperCase() }), el("code", { text: o.path })),
+      el("div", {}, el("h2", { class: "endpoint-title" }, el("span", { class: `method ${o.method}`, text: o.method.toUpperCase() }), el("code", { text: o.path })),
         el("p", { text: o.op.summary || o.op.description || "" })),
-      el("div", { class: "row" }, copyButton(curl, "Copier en curl"), el("button", { class: "primary", type: "button", onclick: send, text: "Envoyer" }))),
+      el("div", { class: "row" }, copyButton(curl, "Copier en curl", "copy-curl"), el("button", { class: "primary", type: "button", id: "explorer-send", onclick: send, text: "Envoyer" }))),
     el("div", { class: "panel-body" },
       params.length ? el("div", { class: "grid" }, params.map(({ p, input }) => el("div", {}, el("label", { for: `p-${p.name}`, text: `${p.name} · ${p.in}${p.required ? ", requis" : ""}` }), input))) : null,
       textarea ? el("div", { style: params.length ? "margin-top:14px" : null }, el("label", { for: "req-body", text: "Corps JSON (squelette d'après le schéma)" }), textarea) : null,
@@ -993,41 +1040,62 @@ function explorerForm(o, spec) {
   ];
 }
 
-// ---------------------------------------------------------------------------------------------
 // Page : codes d'erreur
-// ---------------------------------------------------------------------------------------------
 
 function pageErrors(params) {
   const focus = params.get("code");
-  setTimeout(() => { const t = document.getElementById(`e-${focus}`); if (t) t.scrollIntoView({ block: "center" }); }, 0);
+  // setTimeout(…, 0) : la ligne n'existe dans le document qu'après le retour de cette fonction.
+  setTimeout(() => {
+    const t = document.getElementById(`e-${focus}`);
+    if (!t) return;
+    t.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    t.focus({ preventScroll: true });
+  }, 0);
   return [
-    pageHead("Codes d'erreur", "Réponses au format RFC 9457 (application/problem+json). Un client se fie à code, jamais au texte de title ou detail."),
+    pageHead("Codes d'erreur", "Chaque erreur de l'API porte un code stable. Un client se fie au code, jamais au texte du message."),
     panel({
-      title: `${ERREURS.length} codes stables`, sub: "Définis dans crates/tonapi-core/src/problem.rs",
-      body: el("div", { class: "table-wrap" }, el("table", {},
-        el("thead", {}, el("tr", {}, ["Code", "HTTP", "Titre", "Cause habituelle", "Que faire"].map((h) => el("th", { text: h })))),
-        el("tbody", {}, ERREURS.map((e) => el("tr", { id: `e-${e.code}`, style: e.code === focus ? "background:var(--accent-soft)" : null },
-          el("td", {}, el("code", { text: e.code })), el("td", { class: "mono", text: e.status }), el("td", { text: e.titre }), el("td", { text: e.cause }), el("td", { text: e.faire })))))),
+      title: `${ERREURS.length} codes stables`,
+      body: el("div", {},
+        el("div", { class: "table-wrap" }, el("table", { class: "stack-table" },
+          el("thead", {}, el("tr", {}, ["Code", "HTTP", "Titre", "Cause habituelle", "Que faire"].map((h) => el("th", { text: h })))),
+          el("tbody", {}, ERREURS.map((e) => {
+            const targeted = e.code === focus;
+            return el("tr", { id: `e-${e.code}`, class: targeted ? "target" : null, tabindex: targeted ? "-1" : null },
+              el("td", { "data-label": "Code" }, el("code", { text: e.code }), targeted ? el("span", { class: "mark", text: "Ciblé" }) : null),
+              el("td", { class: "mono", "data-label": "HTTP", text: e.status }),
+              el("td", { "data-label": "Titre", text: e.titre }),
+              el("td", { "data-label": "Cause habituelle", text: e.cause }),
+              el("td", { "data-label": "Que faire", text: e.faire }));
+          })))),
+        el("details", { class: "panel-body", open: Boolean(state.open["tech:errors"]) },
+          el("summary", { class: "more", text: "Détails techniques", onclick: (e) => { state.open["tech:errors"] = !e.currentTarget.parentElement.open; } }),
+          el("p", { class: "hint", text: "Réponses au format RFC 9457 (application/problem+json). Codes définis dans crates/tonapi-core/src/problem.rs." }))),
     }),
   ];
 }
 
-// ---------------------------------------------------------------------------------------------
 // Routeur, thème, démarrage
-// ---------------------------------------------------------------------------------------------
 
 const PAGES = { "": pageBench, comptes: pageAccounts, couverture: pageCoverage, fournisseurs: pageProviders, api: pageExplorer, erreurs: pageErrors };
+const TITRES = { "": "Banc d'essai", comptes: "Comptes mémorisés", couverture: "Couverture", fournisseurs: "Fournisseurs", api: "Explorateur d'API", erreurs: "Codes d'erreur" };
 
 function route() {
   const [path, query] = location.hash.replace(/^#\/?/, "").split("?");
   const page = PAGES[path] ? path : "";
   for (const a of document.querySelectorAll(".nav a")) a.setAttribute("aria-current", a.dataset.page === page ? "page" : "false");
+  document.title = `${TITRES[page]} · tonAPI`;
   const focused = document.activeElement?.id;
   $("view").replaceChildren(...PAGES[page](new URLSearchParams(query || "")));
-  if (focused && $(focused)) $(focused).focus();
+  // Le rendu remplace tout : le focus revient au même contrôle (même id), sinon au contenu.
+  if (focused && $(focused)) $(focused).focus({ preventScroll: true });
+  else if (focused) $("view").focus({ preventScroll: true });
 }
 
-/// Thème : automatique (système), clair ou sombre, gardé sur ce navigateur.
+// Navigation étroite : la barre défile, le lien de la page affichée doit rester visible.
+function revealCurrentLink() {
+  document.querySelector('.nav a[aria-current="page"]')?.scrollIntoView({ inline: "center", block: "nearest" });
+}
+
 function applyTheme(theme) {
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
   else delete document.documentElement.dataset.theme;
@@ -1057,10 +1125,32 @@ $("api").addEventListener("change", (e) => {
   state.accountId = null;
   state.me = null;
   state.pending = null;
+  state.health = null;
+  state.universities = [];
+  renderRail();
+  route();
   checkHealth();
 });
-window.addEventListener("hashchange", () => { route(); $("view").focus({ preventScroll: true }); });
+window.addEventListener("hashchange", () => {
+  route();
+  revealCurrentLink();
+  // Un contrôle de la page garde le focus (filtre, route choisie) ; sinon il passe au contenu, pour annoncer la page.
+  const active = document.activeElement;
+  if (!$("view").contains(active) || active === $("view")) $("view").focus({ preventScroll: true });
+});
+
+// Le lien d'évitement passe par un gestionnaire dédié : un href="#view" déclencherait le routeur.
+$("skip").addEventListener("click", (e) => { e.preventDefault(); $("view").focus(); });
+
+// Réglages : repliés sous 920 px (où la barre latérale devient un bandeau), toujours ouverts au-dessus.
+const settings = $("settings");
+const narrow = matchMedia("(max-width: 920px)");
+const syncSettings = () => { settings.open = !narrow.matches; };
+narrow.addEventListener("change", syncSettings);
+syncSettings();
+
 renderRail();
 route();
+revealCurrentLink();
 checkHealth();
 resumeOnLoad();
