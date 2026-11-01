@@ -1,3 +1,6 @@
+//! Format de `university.toml` : identité, SSO (CAS, MFA, SAML), portail, liens, TLS et services
+//! d'une université.
+
 use std::path::PathBuf;
 
 use schemars::JsonSchema;

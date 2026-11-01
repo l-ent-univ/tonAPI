@@ -3,4 +3,5 @@ id = "composantes"
 name = "Composantes invalides"
 
 [sso]
-kind = "demo"
+kind = "cas"
+base-url = "https://cas.exemple.test/cas/"

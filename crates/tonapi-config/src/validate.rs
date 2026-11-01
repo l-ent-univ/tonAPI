@@ -11,7 +11,7 @@ use crate::diagnostics::locate;
 use crate::establishment::EstablishmentFile;
 use crate::services::{AppsService, ProfileService, Services};
 use crate::templates::is_placeholder;
-use crate::university::{PortalConfig, Tls, UniversityFile};
+use crate::university::{PortalConfig, Sso, Tls, UniversityFile};
 
 /// Problème trouvé dans un fichier. Un seul problème suffit à refuser le fichier.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -130,6 +130,20 @@ impl<'a> Checker<'a> {
     fn tls(&mut self, tls: Option<&Tls>, base: &Path) {
         for path in tls.iter().flat_map(|t| &t.extra_ca) {
             let needle = path.to_string_lossy();
+            // Un certificat ajouté devient une autorité de confiance pour tous les hôtes de
+            // l'université : il reste dans son dossier, sous un chemin relatif sans `..`.
+            if path.is_absolute()
+                || path
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                self.push(
+                    Some("tls.extra-ca"),
+                    Some(&needle),
+                    format!("`{needle}` doit être un chemin relatif au dossier de l'université, sans `..`"),
+                );
+                continue;
+            }
             match std::fs::read_to_string(base.join(path)) {
                 Ok(pem) if pem.contains("-----BEGIN CERTIFICATE-----") => {}
                 Ok(_) => self.push(
@@ -253,6 +267,14 @@ pub(crate) fn check_university(
         file.parent().unwrap_or(Path::new(".")),
     );
     c.portal_services(&university.services, &university.portal);
+    // `kind = "demo"` accepte `demo`/`demo` sans CAS : réservé à l'université de démonstration.
+    if matches!(university.sso, Sso::Demo) && university.id != "demo" {
+        c.push(
+            Some("sso.kind"),
+            Some("demo"),
+            "`kind = \"demo\"` est réservé à l'université `demo`",
+        );
+    }
     c.issues
 }
 

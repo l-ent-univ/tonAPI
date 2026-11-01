@@ -211,3 +211,39 @@ fn un_lien_hors_https_est_refuse() {
     }
     assert!(registry.get("https").is_some(), "{:#?}", report.rejected);
 }
+
+#[test]
+fn certificat_hors_du_dossier_et_demo_hors_demo_refuses() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cases = [
+        (
+            "certificat-absolu",
+            "[sso]\nkind = \"cas\"\nbase-url = \"https://cas.exemple.fr/\"\n\n[tls]\nextra-ca = [\"/etc/ssl/autre.pem\"]\n",
+        ),
+        (
+            "certificat-parent",
+            "[sso]\nkind = \"cas\"\nbase-url = \"https://cas.exemple.fr/\"\n\n[tls]\nextra-ca = [\"../autre/ca.pem\"]\n",
+        ),
+        ("fausse-demo", "[sso]\nkind = \"demo\"\n"),
+    ];
+    for (dir, body) in cases {
+        let univ = tmp.path().join(dir);
+        fs::create_dir_all(&univ).unwrap();
+        fs::write(
+            univ.join("university.toml"),
+            format!("id = \"{dir}\"\nname = \"Essai\"\n\n{body}"),
+        )
+        .unwrap();
+    }
+    let (registry, report) = Registry::load(tmp.path());
+    for (dir, _) in cases {
+        assert!(registry.get(dir).is_none(), "{dir} accepté");
+        assert!(
+            report
+                .rejected
+                .iter()
+                .any(|i| i.file.ends_with(format!("{dir}/university.toml"))),
+            "{dir} sans motif"
+        );
+    }
+}

@@ -1,3 +1,6 @@
+//! Format d'un fichier de composante (`establishments/<id>.toml`) : règles de rattachement, puis
+//! services, liens et réglages TLS qui remplacent ceux de l'université pour ses étudiants.
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
