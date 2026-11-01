@@ -53,7 +53,7 @@ impl CasServer {
 }
 
 /// Second facteur esup-otp demandé après le mot de passe.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct OtpChallenge {
     /// Page « Authentification renforcée », où le code est posté.
     pub page_url: Url,
@@ -69,6 +69,19 @@ pub struct OtpChallenge {
     /// au second facteur sans vérifier les identifiants.
     #[serde(default)]
     pub password_posted: bool,
+}
+
+// Le ticket, l'identifiant et le hash donnent accès à l'API OTP au nom de l'étudiant : jamais
+// dans une trace.
+impl std::fmt::Debug for OtpChallenge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OtpChallenge")
+            .field("page", &self.page_url.host_str())
+            .field("api", &self.api_url.host_str())
+            .field("error", &self.error)
+            .field("password_posted", &self.password_posted)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Fin de la marche.
@@ -287,12 +300,15 @@ fn classify(cas: &CasServer, page: &Page) -> Kind {
     {
         return Kind::Login(form.clone());
     }
-    if let Some(challenge) = otp_challenge(page, &forms) {
+    // Second facteur et page « appareil » : seulement sur le CAS. Une page d'un autre hôte de
+    // la chaîne ne doit pas pouvoir désigner l'API OTP appelée ni recevoir le code.
+    if on_cas && let Some(challenge) = otp_challenge(page, &forms) {
         return Kind::Otp(challenge);
     }
-    if let Some(form) = forms
-        .iter()
-        .find(|f| f.has("rememberMe") && f.has("ticket"))
+    if on_cas
+        && let Some(form) = forms
+            .iter()
+            .find(|f| f.has("rememberMe") && f.has("ticket"))
     {
         return Kind::Remember(form.clone());
     }

@@ -215,9 +215,14 @@ async fn open_socket(
         .as_str()
         .ok_or_else(|| CasError::Unexpected("socket OTP : sid absent".into()))?
         .to_owned();
+    // Valeurs annoncées par le serveur OTP : bornées (une somme démesurée ou nulle ferait
+    // boucler ou attendre sans fin).
     let poll_timeout = Duration::from_millis(
-        open["pingInterval"].as_u64().unwrap_or(25_000)
-            + open["pingTimeout"].as_u64().unwrap_or(20_000),
+        open["pingInterval"]
+            .as_u64()
+            .unwrap_or(25_000)
+            .saturating_add(open["pingTimeout"].as_u64().unwrap_or(20_000))
+            .clamp(1_000, 60_000),
     );
     socket.query_pairs_mut().append_pair("sid", &sid);
     Ok((socket, poll_timeout))

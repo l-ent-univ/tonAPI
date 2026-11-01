@@ -316,7 +316,8 @@ impl Browser {
                 }
             }
             let (status, response_headers, text) = self
-                .send(method.clone(), url.clone(), headers, body.clone(), None)
+                // Le corps (identifiants) ne part qu'au premier saut : jamais recopié.
+                .send(method.clone(), url.clone(), headers, body.take(), None)
                 .await?;
             hops.push(url.clone());
 
