@@ -8,12 +8,12 @@ Prévois 15 à 30 minutes pour observer tes services et préparer les fichiers s
 - ton compte universitaire (celui de l'ENT) ;
 - ton téléphone, si ton université demande une validation à la connexion.
 
-## Étape 1 — Installer l'app Claude
+## Étape 1 : Installer l'app Claude
 
 1. Va sur [claude.ai/download](https://claude.ai/download) et installe l'application.
 2. Ouvre-la et connecte-toi à ton compte Claude.
 
-## Étape 2 — Télécharger tonAPI
+## Étape 2 : Télécharger tonAPI
 
 1. Va sur [github.com/l-ent-univ/tonAPI](https://github.com/l-ent-univ/tonAPI).
 2. Clique sur le bouton vert **Code**, puis **Download ZIP**.
@@ -21,13 +21,13 @@ Prévois 15 à 30 minutes pour observer tes services et préparer les fichiers s
 
 Tu connais Git ? Tu peux plutôt cloner le dépôt : ce sera plus simple pour proposer ton ajout à la fin.
 
-## Étape 3 — Lancer Claude sur le dossier
+## Étape 3 : Lancer Claude sur le dossier
 
 1. Dans l'app Claude, va dans l'onglet **Code**.
 2. Choisis le dossier `tonAPI` que tu viens de télécharger.
 3. Ouvre le fichier [`prompts/ajouter-un-etablissement.md`](../prompts/ajouter-un-etablissement.md), copie tout le bloc gris, colle-le dans Claude et envoie.
 
-## Étape 4 — Répondre et te connecter
+## Étape 4 : Répondre et te connecter
 
 Claude va :
 
@@ -39,7 +39,7 @@ Claude va :
 
 À la fin, il distingue les services observés, les fournisseurs réellement implémentés et les essais effectués. Une configuration valide ne suffit pas à rendre un service fonctionnel. Tu peux ensuite lui demander de préparer l'envoi.
 
-## Étape 5 — Envoyer ton ajout
+## Étape 5 : Envoyer ton ajout
 
 - **Tu as cloné avec Git :** accepte quand Claude propose de créer la pull request.
 - **Sinon :** ouvre une issue [« Nouvel établissement »](https://github.com/l-ent-univ/tonAPI/issues/new?template=nouvel-etablissement.yml) et joins les deux fichiers que Claude t'indique.

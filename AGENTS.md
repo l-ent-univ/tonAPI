@@ -8,9 +8,12 @@ explicatifs et messages d'erreur. Respecte les identifiants de code et conventio
 
 | Besoin | Source |
 |---|---|
+| Trouver la bonne page de documentation | [Docs/README.md](Docs/README.md) |
 | Comprendre le produit et son état | [Docs/agents/contexte.md](Docs/agents/contexte.md) |
 | Définir une intervention sur un service réel | [Docs/agents/perimetre.md](Docs/agents/perimetre.md) |
 | Développer un fournisseur | [crates/tonapi-providers/README.md](crates/tonapi-providers/README.md) |
+| Écrire une configuration TOML | [Docs/configuration.md](Docs/configuration.md) |
+| Connaître le contrat de l'API | [Docs/api.md](Docs/api.md) |
 | Ajouter un établissement | [prompts/ajouter-un-etablissement.md](prompts/ajouter-un-etablissement.md) |
 | Documenter un ENT en détail | [Docs/PROMPT-analyse-etablissement.md](Docs/PROMPT-analyse-etablissement.md) |
 
@@ -74,7 +77,7 @@ Si un contrôle est indisponible, indique la commande et la cause ; ne le décla
 | `tonapi-cli` | Binaire `tonapi` et commandes de maintenance |
 
 `universities/<id>/university.toml` contient la configuration d'une université et
-`universities/<id>/establishments/*.toml` ses remplacements par composante. `schema/` est généré. `Docs/` contient la recherche, `prompts/` les procédures pour
+`universities/<id>/establishments/*.toml` ses remplacements par composante. `schema/` est généré. `Docs/` contient la documentation (index `Docs/README.md`) et la recherche datée (`Docs/recherche/`), `prompts/` les procédures pour
 agents et `reports/` les rapports structurés.
 
 ## Contrats techniques

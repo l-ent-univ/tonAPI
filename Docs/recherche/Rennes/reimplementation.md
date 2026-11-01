@@ -1,7 +1,7 @@
 # Checklist de réimplémentation — tonAPI (Rennes)
 
 > Ordre conseillé, de la brique la plus utile à la plus fragile, pour l'Université de Rennes et l'IUT de Lannion. Chaque section renvoie à la doc détaillée ; tous les endpoints sont dans [apis/INDEX.md](apis/INDEX.md).
-> Écrit le 2026-10-14 à partir des seuls fichiers de `Docs/Rennes/` (tafac + lent-ios + GET publics du 14 oct.). Aucun secret ni donnée personnelle. Les durées sont des **estimations** pour un développeur qui connaît déjà le client Montpellier.
+> Écrit le 2026-10-14 à partir des seuls fichiers de `Docs/recherche/Rennes/` (tafac + lent-ios + GET publics du 14 oct.). Aucun secret ni donnée personnelle. Les durées sont des **estimations** pour un développeur qui connaît déjà le client Montpellier.
 > Règle d'or : **un seul POST du mot de passe par tentative, vers le seul CAS** ; ensuite, tout passe par le `TGC`. Jamais de secret dans les logs.
 
 ## Vue d'ensemble : quel service, quel hôte, quelle auth

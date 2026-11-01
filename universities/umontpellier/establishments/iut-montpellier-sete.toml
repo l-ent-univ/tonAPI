@@ -1,6 +1,6 @@
 #:schema ../../../schema/establishment.schema.json
 # IUT de Montpellier-Sète. Pas de ScoDoc public : les étudiants passent par Mon Dossier Web.
-# Docs/Montpellier/research/questions-ouvertes.md
+# Docs/recherche/Montpellier/research/questions-ouvertes.md
 
 id = "iut-montpellier-sete"
 name = "IUT de Montpellier-Sète"

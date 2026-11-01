@@ -1,6 +1,6 @@
 # Index des endpoints HTTP — Université de Montpellier et IUT de Béziers
 
-> Index consolidé de **tous** les endpoints HTTP documentés dans `Docs/Montpellier/` (fichiers principaux + `research/`). Généré le 2026-10-13 à partir des seuls faits écrits dans ces fichiers : rien n'est inventé, aucun secret ni donnée personnelle (placeholders `<…>`).
+> Index consolidé de **tous** les endpoints HTTP documentés dans `Docs/recherche/Montpellier/` (fichiers principaux + `research/`). Généré le 2026-10-13 à partir des seuls faits écrits dans ces fichiers : rien n'est inventé, aucun secret ni donnée personnelle (placeholders `<…>`).
 > Chaque ligne renvoie à la doc détaillée (colonne **Source**). Quand deux fichiers se contredisent, les deux versions figurent avec leur marque.
 
 ## Légende

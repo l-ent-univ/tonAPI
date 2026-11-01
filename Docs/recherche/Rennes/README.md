@@ -64,5 +64,5 @@ Voir [research/questions-ouvertes.md](research/questions-ouvertes.md) : 2FA rée
 
 ## Source
 
-- Dépôt : `~/Documents/GitHub/tafac` (commit `fff42f1`), surtout `server/entAuthApp.js`, `planningPortalApi.js`, `universities/univ-rennes/`.
+- Dépôt : `tafac` (commit `fff42f1`), surtout `server/entAuthApp.js`, `planningPortalApi.js`, `universities/univ-rennes/`.
 - Configs : `lent-ios/LEntKit/Sources/LEntKit/Resources/Institutions/{univ-rennes,iut-lannion}.json`.

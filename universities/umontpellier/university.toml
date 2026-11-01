@@ -1,5 +1,5 @@
 #:schema ../../schema/university.schema.json
-# Université de Montpellier. Sources : Docs/Montpellier/.
+# Université de Montpellier. Sources : Docs/recherche/Montpellier/.
 
 id = "umontpellier"
 name = "Université de Montpellier"
@@ -11,7 +11,7 @@ website = "https://www.umontpellier.fr/"
 account-help = "https://app.umontpellier.fr/securum/protected/authenticated"
 password-reset = "https://app.umontpellier.fr/securum/public/centralAuthentication"
 
-# esup-otp-cas-server (/cas) devant Apereo CAS 7 (/pre-otp). Docs/Montpellier/cas-umontpellier.md
+# esup-otp-cas-server (/cas) devant Apereo CAS 7 (/pre-otp). Docs/recherche/Montpellier/cas-umontpellier.md
 [sso]
 kind = "cas"
 base-url = "https://cas.umontpellier.fr/cas/"
@@ -26,20 +26,20 @@ api-url = "https://otp-api.umontpellier.fr/"
 kind = "tiles-portal"
 base-url = "https://ent.umontpellier.fr/"
 
-# Lien iCal ADE lu sur prose-etudiant. Docs/Montpellier/emploi-du-temps.md, lien-ade.md
+# Lien iCal ADE lu sur prose-etudiant. Docs/recherche/Montpellier/emploi-du-temps.md, lien-ade.md
 [services.timetable]
 provider = "ade-ical-link"
 link-page = "https://app.umontpellier.fr/prose-etudiant/protected/ical"
 feed-host = "proseconsult.umontpellier.fr"
 options = { cache-ttl-secs = 900 }
 
-# Les facultés n'ont pas de ScoDoc : relevés certifiés seulement. Docs/Montpellier/ent.md
+# Les facultés n'ont pas de ScoDoc : relevés certifiés seulement. Docs/recherche/Montpellier/ent.md
 [services.grades]
 provider = "link"
 url = "https://app.umontpellier.fr/rn_demat/protected/student-result"
 label = "Relevés de notes"
 
-# Moodle UM : web service mobile désactivé, AJAX avec sesskey. Docs/Montpellier/ent.md
+# Moodle UM : web service mobile désactivé, AJAX avec sesskey. Docs/recherche/Montpellier/ent.md
 [services.homework]
 provider = "moodle-ajax"
 base-url = "https://moodle.umontpellier.fr/"
@@ -58,7 +58,7 @@ provider = "portal"
 provider = "portal"
 
 # Attestations de réussite dématérialisées. [vu] 13/10/2026 (Swagger public, front Angular) et
-# 28/10/2026 (service CAS de l'application). Docs/Montpellier/research/pistes-api.md §6.3
+# 28/10/2026 (service CAS de l'application). Docs/recherche/Montpellier/research/pistes-api.md §6.3
 [services.documents]
 provider = "ardemat"
 base-url = "https://app.umontpellier.fr/ardemat-api/"

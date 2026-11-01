@@ -1,6 +1,6 @@
 # Emploi du temps — Université de Rennes (d'après le code de tafac)
 
-> Source : **code source uniquement** du projet open source `tafac` (client alternatif à l'ENT de Rennes, dépôt local `~/Documents/GitHub/tafac`, commit `HEAD` d'octobre 2026) et messages `git log` des fichiers concernés. **Aucune requête réseau** n'a été faite pour écrire ce document : rien n'est vérifié en direct.
+> Source : **code source uniquement** du projet open source `tafac` (client alternatif à l'ENT de Rennes, commit `HEAD` d'octobre 2026) et messages `git log` des fichiers concernés. **Aucune requête réseau** n'a été faite pour écrire ce document : rien n'est vérifié en direct.
 > Références : `fichier:ligne` dans le dépôt tafac.
 > Marquage : **[code]** = lu tel quel dans le code ; **[incertain]** = déduit, supposé, ou dépendant du comportement du serveur (non observé).
 > Les clés de chiffrement de l'app mobile, l'identifiant client GWT, les jetons et les identifiants de session ne sont **jamais** reproduits : `<PLACEHOLDER>`.

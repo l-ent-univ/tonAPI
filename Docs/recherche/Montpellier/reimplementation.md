@@ -2,6 +2,8 @@
 
 > Ordre conseillé, de la brique la plus simple à la plus dure. Chaque section renvoie à la doc détaillée.
 > Règle d'or : **un seul POST du mot de passe par tentative**, jamais de `verify=False`, jamais de secret dans les logs.
+>
+> **Document historique** (13 oct. 2026), écrit avant le code de tonAPI. Les lignes sur le mot de passe ont été corrigées le 01/11/2026 pour suivre le code : tonAPI ne garde jamais le mot de passe (absent de `SessionData`) [code], et un service à compte propre (ScoDoc de l'IUT, Moodle BUT) s'ouvre par `POST /v1/auth/service-login` après une erreur `service_login_required` [code]. État actuel : [../../fournisseurs.md](../../fournisseurs.md) et [../../securite.md](../../securite.md).
 
 ## Vue d'ensemble : quel service, quel hôte, quelle auth
 
@@ -21,8 +23,8 @@
 
 | Couple | Sert pour |
 |---|---|
-| **Compte Université** (login ENT UM) | CAS UM (ENT, Moodle UM, Zimbra, Mon Dossier Web, prose/ADE) **et** Moodle BUT (posté directement à `moodle-but.iutbeziers.fr`) |
-| **Compte IUT** (`prenom.nom`, celui des ordinateurs de l'IUT) | CAS IUT → ScoDoc (notes + absences) |
+| **Compte Université** (login ENT UM) | CAS UM (ENT, Moodle UM, Zimbra, Mon Dossier Web, prose/ADE) **et** Moodle BUT (posté directement à `moodle-but.iutbeziers.fr` ; dans tonAPI, par `POST /v1/auth/service-login` avec `service: homework`) |
+| **Compte IUT** (`prenom.nom`, celui des ordinateurs de l'IUT) | CAS IUT → ScoDoc (notes + absences) ; dans tonAPI, par `POST /v1/auth/service-login` avec `service: grades` |
 | Lien ADE `data=` (optionnel) | iCal sans login, si on ne le récupère pas via prose |
 
 ## Ordre de mise en œuvre conseillé
@@ -43,7 +45,7 @@
 - [ ] Encodage form strict RFC 3986 (`A-Za-z0-9-._~` seuls non encodés), UTF-8.
 - [ ] User-Agent de navigateur **réaliste et stable** (Mon Dossier Web refuse un UA inventé ; l'appareil mémorisé 2FA en dépend peut-être).
 - [ ] Bundle CA + intermédiaire **GandiCert** pour `cas.iutbeziers.fr:8443`.
-- [ ] Stockage chiffré : cookies de session, jeton Moodle, lien ADE, mot de passe (facultatif, séparé).
+- [ ] Stockage chiffré : cookies de session, jeton Moodle, lien ADE. Jamais le mot de passe : dans tonAPI il sert à une connexion puis est oublié.
 - [ ] Logs masqués : `password`, `username`, `ticket`, `ST-…`, `TGC`, `execution`, `lt`, `data=`, `sesskey`, `wstoken`, `token`, `privatetoken`, `userHash`, `ZM_AUTH_TOKEN`, `preauth`.
 - [ ] Ne jamais exposer les données perso (`relevé.etudiant`, INE, NIP, adresse…) au-delà du nécessaire.
 - [ ] Un 5xx / timeout **n'est jamais** une déconnexion : ne pas reposter le mot de passe dans ce cas.
@@ -84,10 +86,10 @@ Voir les checklists détaillées en fin de [scodoc.md](scodoc.md), [moodle.md](m
 6. **Persistance**
    - [ ] garder **tous** les cookies `cas.umontpellier.fr` (TGC JWT, `connect.sid` de 30 jours, cookie de l'appareil mémorisé) ;
    - [ ] chiffrer au repos ;
-   - [ ] mot de passe facultatif, séparé, chiffré.
+   - [ ] ne pas garder le mot de passe (tonAPI : le jeton chiffré gardé par le client porte les cookies et jetons de service, pas le mot de passe).
 7. **Renouvellement**
    - [ ] rejouer l'entrée ENT avec les cookies seuls, puis sonder ;
-   - [ ] mot de passe seulement si le SSO est mort ;
+   - [ ] si le SSO est mort, demander à l'étudiant de se reconnecter (tonAPI : `session_expired`), sans rejouer de mot de passe ;
    - [ ] jamais sur un 5xx ou une erreur réseau ;
    - [ ] attention au verrouillage du compte : un seul POST par tentative.
 8. **Planning**

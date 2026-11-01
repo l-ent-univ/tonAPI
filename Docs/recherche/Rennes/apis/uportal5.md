@@ -1,6 +1,6 @@
 # uPortal 5 — API REST du portail `services-numeriques.univ-rennes.fr`
 
-> Sources : docs `Docs/Rennes/` — [ent.md](../ent.md) (portail + services) et [cas-rennes.md](../cas-rennes.md) (connexion CAS) ; projet **tafac** de l'utilisateur (`~/Documents/GitHub/tafac`) : `server/entAuthApp.js` (parties portail), `src/entApi.js`, `src/knownEndpoints.js`, `src/components/AvailableApplications.jsx`, `universities/univ-rennes/*`. Aucune requête faite sur un hôte `univ-rennes` pour écrire ce fichier ; aucun transcript de session repris.
+> Sources : docs `Docs/recherche/Rennes/` — [ent.md](../ent.md) (portail + services) et [cas-rennes.md](../cas-rennes.md) (connexion CAS) ; projet **tafac** : `server/entAuthApp.js` (parties portail), `src/entApi.js`, `src/knownEndpoints.js`, `src/components/AvailableApplications.jsx`, `universities/univ-rennes/*`. Aucune requête faite sur un hôte `univ-rennes` pour écrire ce fichier ; aucun transcript de session repris.
 > Aucun mot de passe, cookie, ticket, jeton, uid, nom, e-mail ni numéro étudiant n'est reproduit (placeholders `<…>`).
 >
 > **Légende :** **[confirmé]** = vu en réponse HTTP réelle (sonde publique du 14 oct. 2026 citée par [ent.md](../ent.md)/[cas-rennes.md](../cas-rennes.md), ou commit tafac « vérifié avec un vrai compte Rennes »). **[code]** = ce que fait tafac, cité `fichier:ligne`. **[déduit]** = conclusion tirée du code ou des versions. **[incertain]** = hypothèse non observée.

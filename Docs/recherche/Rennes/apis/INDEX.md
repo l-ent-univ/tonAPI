@@ -1,6 +1,6 @@
 # Index des endpoints HTTP — Université de Rennes (et IUT de Lannion)
 
-> Index consolidé de **tous** les endpoints HTTP décrits dans `Docs/Rennes/` : [cas-rennes.md](../cas-rennes.md), [ent.md](../ent.md), [emploi-du-temps.md](../emploi-du-temps.md), [scodoc.md](../scodoc.md), [moodle.md](../moodle.md), [mail-et-autres.md](../mail-et-autres.md). Généré le 2026-10-14 à partir des seuls faits écrits dans ces fichiers : aucun endpoint inventé, aucune requête réseau, aucun secret ni donnée personnelle (placeholders `<…>`).
+> Index consolidé de **tous** les endpoints HTTP décrits dans `Docs/recherche/Rennes/` : [cas-rennes.md](../cas-rennes.md), [ent.md](../ent.md), [emploi-du-temps.md](../emploi-du-temps.md), [scodoc.md](../scodoc.md), [moodle.md](../moodle.md), [mail-et-autres.md](../mail-et-autres.md). Généré le 2026-10-14 à partir des seuls faits écrits dans ces fichiers : aucun endpoint inventé, aucune requête réseau, aucun secret ni donnée personnelle (placeholders `<…>`).
 > Chaque ligne renvoie à la section détaillée (colonne **Source**). Quand deux fichiers ne disent pas la même chose, voir [Contradictions entre fichiers](#contradictions-entre-fichiers).
 
 > **Références détaillées par service** : [uportal5.md](uportal5.md) (portail ENT), [ade-portal-rest.md](ade-portal-rest.md) (planning ADE REST). Cet INDEX reste la vue d'ensemble de tous les endpoints.

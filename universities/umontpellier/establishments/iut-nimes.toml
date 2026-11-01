@@ -1,6 +1,6 @@
 #:schema ../../../schema/establishment.schema.json
 # IUT de Nîmes. Son ScoDoc (https://scodoc.iut-nimes.fr/ScoDoc) refuse les accès hors campus :
-# les notes restent un lien. Docs/Montpellier/research/questions-ouvertes.md
+# les notes restent un lien. Docs/recherche/Montpellier/research/questions-ouvertes.md
 
 id = "iut-nimes"
 name = "IUT de Nîmes"

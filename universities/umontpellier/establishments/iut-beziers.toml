@@ -1,5 +1,5 @@
 #:schema ../../../schema/establishment.schema.json
-# IUT de Béziers. Sources : Docs/Montpellier/scodoc.md, cas-iut-beziers.md, moodle.md, lien-ade.md.
+# IUT de Béziers. Sources : Docs/recherche/Montpellier/scodoc.md, cas-iut-beziers.md, moodle.md, lien-ade.md.
 
 id = "iut-beziers"
 name = "IUT de Béziers"

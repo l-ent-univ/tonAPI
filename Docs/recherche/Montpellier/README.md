@@ -107,6 +107,6 @@ Aucun secret ni donnée personnelle n'est reproduit.
 
 ## Projets sources
 
-- `~/Documents/GitHub/lent-ios` (voir `LEntKit/GUIDE.md`, `LEntKit/Sources/LEntKit/Resources/Institutions/umontpellier.json`)
-- `~/Documents/GitHub/tafac-ios`
-- `~/Documents/GitHub/iCalFormater`
+- `lent-ios` (voir `LEntKit/GUIDE.md`, `LEntKit/Sources/LEntKit/Resources/Institutions/umontpellier.json`)
+- `tafac-ios`
+- `iCalFormater`

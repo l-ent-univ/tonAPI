@@ -3,7 +3,7 @@
 Documentation de référence de l'API REST du portail planning **ADE** (ADESoft) tel que déployé à l'**Université de Rennes** sur `https://planning.univ-rennes.fr/portal/`. C'est le chemin **actif** pour l'emploi du temps de Rennes depuis le 2026-09-02 (`planning.api = 'portal-rest'`).
 
 Rédigée le 14 oct. 2026 à partir de **deux sources** :
-- le **code source** du client open source `tafac` (dépôt local `~/Documents/GitHub/tafac`), surtout `planningPortalApi.js` et son test ; références `fichier:ligne` ;
+- le **code source** du client open source `tafac`, surtout `planningPortalApi.js` et son test ; références `fichier:ligne` ;
 - une **sonde directe** de l'ADE de Rennes du 2026-10-14 (sonde publique sans identifiants + une session avec un vrai compte étudiant, aucune valeur recopiée), consignée dans [../emploi-du-temps.md §11](../emploi-du-temps.md).
 
 Marquage des faits :

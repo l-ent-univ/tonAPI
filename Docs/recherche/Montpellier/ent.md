@@ -357,7 +357,7 @@ Avec le cookie `ZM_AUTH_TOKEN` : `GET /home/~/inbox.json` (même forme que SOAP 
 
 ## Références dans le code de lent-ios
 
-Chemins relatifs à `/Users/lucas/Documents/GitHub/lent-ios/`.
+Chemins relatifs à la racine du projet `lent-ios`.
 
 - **Configuration :** `LEntKit/Sources/LEntKit/Resources/Institutions/umontpellier.json`, `iut-beziers.json` ; `LEntKit/Sources/LEntKit/Config/CASConfig.swift:4-41` ; `Config/ProlongationConfig.swift:5-36` ; `Config/ADELauncher.swift`.
 - **CAS :**

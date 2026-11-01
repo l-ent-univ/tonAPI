@@ -1,5 +1,5 @@
 #:schema ../../../schema/establishment.schema.json
-# IUT de Lannion. Sources : Docs/Rennes/scodoc.md, emploi-du-temps.md.
+# IUT de Lannion. Sources : Docs/recherche/Rennes/scodoc.md, emploi-du-temps.md.
 
 id = "iut-lannion"
 name = "IUT de Lannion"
