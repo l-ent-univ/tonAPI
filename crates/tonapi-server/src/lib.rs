@@ -7,6 +7,7 @@ mod limit;
 mod reload;
 mod respond;
 mod routes;
+mod slots;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,7 +24,7 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_scalar::{Scalar, Servable};
 
-pub use guard::AUTH_PER_IP as DEFAULT_AUTH_PER_IP;
+pub use guard::{AUTH_PER_IP as DEFAULT_AUTH_PER_IP, Cidr};
 pub use reload::watch;
 
 /// En-tête qui porte un jeton mis à jour (composante changée, cookies renouvelés…).
@@ -36,9 +37,8 @@ pub struct Settings {
     pub universities_dir: PathBuf,
     /// Durée de vie d'une session, en secondes.
     pub session_ttl_secs: i64,
-    /// Derrière un répartiteur de confiance : l'adresse du client est la dernière de
-    /// `X-Forwarded-For`. Sinon, celle de la connexion TCP.
-    pub trust_proxy: bool,
+    /// Répartiteurs de confiance : seules leurs connexions font lire `X-Forwarded-For`.
+    pub trusted_proxies: Vec<Cidr>,
     /// Sert `/docs` et `/openapi.json`.
     pub docs: bool,
     /// Demandes de connexion par adresse IP et par minute.
@@ -54,6 +54,7 @@ pub struct AppState {
     pub settings: Arc<Settings>,
     login_limiter: Arc<limit::LoginLimiter>,
     ip_limiter: Arc<guard::IpLimiter>,
+    account_slots: Arc<slots::AccountSlots>,
 }
 
 impl AppState {
@@ -66,6 +67,7 @@ impl AppState {
             settings: Arc::new(settings),
             login_limiter: Arc::default(),
             ip_limiter,
+            account_slots: Arc::default(),
         }
     }
 }

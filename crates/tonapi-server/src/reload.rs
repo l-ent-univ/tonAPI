@@ -32,7 +32,16 @@ pub fn watch(
             tokio::time::sleep(Duration::from_millis(300)).await;
             while rx.try_recv().is_ok() {}
 
-            let (next, report) = Registry::load(&dir);
+            // Lecture de fichiers synchrone : hors des fils du runtime.
+            let source = dir.clone();
+            let Ok((next, report)) =
+                tokio::task::spawn_blocking(move || Registry::load(&source)).await
+            else {
+                tracing::warn!(
+                    "rechargement interrompu : la configuration précédente reste servie"
+                );
+                continue;
+            };
             if report.is_ok() {
                 tracing::info!(universities = next.len(), "universités rechargées");
                 registry.store(Arc::new(next));

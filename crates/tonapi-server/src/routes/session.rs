@@ -311,6 +311,9 @@ pub async fn mfa(
         return Err(invalid("ce jeton n'attend pas de second facteur"));
     }
     let action = match (request.method, request.code) {
+        (MfaMethod::Code, Some(code)) if code.len() > 64 => {
+            return Err(invalid("code de validation trop long"));
+        }
         (MfaMethod::Code, Some(code)) if !code.trim().is_empty() => MfaAction::Code(code),
         (MfaMethod::Code, _) => return Err(invalid("`code` est obligatoire avec `method: code`")),
         (MfaMethod::Push, _) => MfaAction::Push { wait: PUSH_WAIT },
@@ -452,18 +455,27 @@ pub async fn refresh(
     Ok(response)
 }
 
-/// Déconnexion. Le client oublie son jeton ; rien n'est gardé côté serveur.
+/// Déconnexion : la session CAS de l'étudiant est fermée, puis le client oublie son jeton. Le
+/// jeton reste techniquement lisible jusqu'à son expiration (aucune liste de révocation côté
+/// serveur), mais le CAS ne le reconnaît plus.
 #[utoipa::path(
     post,
     path = "/v1/auth/logout",
     tag = "session",
     security(("session" = [])),
     responses(
-        (status = 204, description = "Session terminée"),
+        (status = 204, description = "Session terminée (la fermeture côté CAS est tentée, sans garantie)"),
         (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
     )
 )]
-pub async fn logout(AuthSession(_session): AuthSession) -> StatusCode {
+pub async fn logout(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+) -> StatusCode {
+    let registry = state.registry.load_full();
+    if let Some(university) = registry.get(&session.university) {
+        tonapi_providers::logout(university, &session).await;
+    }
     StatusCode::NO_CONTENT
 }
 

@@ -95,6 +95,7 @@ async fn run<T, F>(
 where
     F: AsyncFnOnce(&mut Context<'_>) -> Result<Fetched<T>, Problem>,
 {
+    let _slot = state.account_slots.acquire(&original)?;
     let registry = state.registry.load_full();
     let university = registry
         .get(&original.university)

@@ -22,7 +22,7 @@ fn server() -> Router {
         Settings {
             universities_dir: dir,
             session_ttl_secs: 3600,
-            trust_proxy: false,
+            trusted_proxies: Vec::new(),
             docs: true,
             auth_per_ip: 120,
         },

@@ -86,6 +86,7 @@ pub async fn overview(
     query: Result<Query<OverviewQuery>, QueryRejection>,
 ) -> Result<Response, ApiError> {
     let Query(query) = query.map_err(|e| invalid(e.body_text()))?;
+    let _slot = state.account_slots.acquire(&session)?;
     let registry = state.registry.load_full();
     let university = registry
         .get(&session.university)

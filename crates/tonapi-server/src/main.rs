@@ -7,10 +7,13 @@
 //!   `TONAPI_ENV=dev` : une clé temporaire est alors créée et les jetons ne survivent pas au
 //!   redémarrage.
 //! - `TONAPI_SESSION_TTL_SECS` (défaut 43200, soit 12 h ; entre 60 s et 7 jours)
-//! - `TONAPI_TRUST_PROXY=1` : derrière un répartiteur de confiance, l'adresse du client est la
-//!   dernière de `X-Forwarded-For` (limite des connexions par adresse)
-//! - `TONAPI_DOCS=0` : ne pas servir `/docs` ni `/openapi.json`
-//! - `TONAPI_AUTH_PER_IP` (défaut 120) : demandes de connexion par adresse et par minute
+//! - `TONAPI_TRUSTED_PROXIES` : adresses ou plages (`10.0.0.0/8,192.0.2.7`) des répartiteurs de
+//!   confiance ; seules leurs connexions font lire `X-Forwarded-For` (limite par adresse)
+//! - `TONAPI_DOCS` : sert `/docs` et `/openapi.json` (défaut : oui en dev, non sinon)
+//! - `TONAPI_RELOAD` : recharge `universities/` à chaque modification (défaut : oui en dev, non
+//!   sinon ; en production, la configuration change par redéploiement)
+//! - `TONAPI_AUTH_PER_IP` (défaut 120, entre 1 et 10 000) : demandes de connexion par adresse et
+//!   par minute
 //! - `RUST_LOG` (défaut `info`)
 
 use std::net::SocketAddr;
@@ -18,7 +21,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use tonapi_config::Registry;
-use tonapi_server::{AppState, DEFAULT_AUTH_PER_IP, Settings, app, watch};
+use tonapi_server::{AppState, Cidr, DEFAULT_AUTH_PER_IP, Settings, app, watch};
 use tonapi_session::SessionKeys;
 use tracing_subscriber::EnvFilter;
 
@@ -56,6 +59,28 @@ async fn main() -> Result<()> {
         std::env::var(name).map_or(default, |v| matches!(v.as_str(), "1" | "true" | "yes"))
     };
 
+    if std::env::var_os("TONAPI_TRUST_PROXY").is_some() {
+        bail!(
+            "TONAPI_TRUST_PROXY n'existe plus : déclarer les répartiteurs avec \
+             TONAPI_TRUSTED_PROXIES=<adresse ou plage>,…"
+        );
+    }
+    let trusted_proxies = match std::env::var("TONAPI_TRUSTED_PROXIES") {
+        Ok(list) => list
+            .split(',')
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| Cidr::parse(s).with_context(|| format!("TONAPI_TRUSTED_PROXIES : `{s}`")))
+            .collect::<Result<Vec<_>>>()?,
+        Err(_) => Vec::new(),
+    };
+    let auth_per_ip: u32 = match std::env::var("TONAPI_AUTH_PER_IP") {
+        Ok(v) => v.parse().context("TONAPI_AUTH_PER_IP")?,
+        Err(_) => DEFAULT_AUTH_PER_IP,
+    };
+    if !(1..=10_000).contains(&auth_per_ip) {
+        bail!("TONAPI_AUTH_PER_IP doit être entre 1 et 10000");
+    }
+
     let (registry, report) = Registry::load(&dir);
     for issue in &report.rejected {
         tracing::warn!("{issue}");
@@ -71,15 +96,16 @@ async fn main() -> Result<()> {
         Settings {
             universities_dir: dir.clone(),
             session_ttl_secs: ttl,
-            trust_proxy: flag("TONAPI_TRUST_PROXY", false),
-            docs: flag("TONAPI_DOCS", true),
-            auth_per_ip: match std::env::var("TONAPI_AUTH_PER_IP") {
-                Ok(v) => v.parse().context("TONAPI_AUTH_PER_IP")?,
-                Err(_) => DEFAULT_AUTH_PER_IP,
-            },
+            trusted_proxies,
+            docs: flag("TONAPI_DOCS", dev),
+            auth_per_ip,
         },
     );
-    let _watcher = watch(dir, state.registry.clone()).context("surveillance des universités")?;
+    let _watcher = if flag("TONAPI_RELOAD", dev) {
+        Some(watch(dir, state.registry.clone()).context("surveillance des universités")?)
+    } else {
+        None
+    };
 
     let listener = tokio::net::TcpListener::bind(&addr)
         .await

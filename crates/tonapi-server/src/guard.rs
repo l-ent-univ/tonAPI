@@ -86,34 +86,89 @@ impl IpLimiter {
     }
 }
 
-/// Adresse du client : la connexion TCP, ou derrière un répartiteur de confiance
-/// (`TONAPI_TRUST_PROXY=1`) la dernière adresse de `X-Forwarded-For`, ajoutée par lui.
-fn client_ip(request: &Request, trust_proxy: bool) -> Option<IpAddr> {
-    if trust_proxy
-        && let Some(ip) = request
-            .headers()
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.rsplit(',').next())
-            .map(str::trim)
-            .and_then(|v| {
-                v.parse::<IpAddr>()
-                    .ok()
-                    .or_else(|| v.parse::<SocketAddr>().ok().map(|a| a.ip()))
-            })
-    {
-        return Some(ip);
+/// Plage d'adresses (`10.0.0.0/8`, `2001:db8::/32`) ou adresse seule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cidr {
+    net: IpAddr,
+    prefix: u8,
+}
+
+impl Cidr {
+    /// Lit `adresse` ou `adresse/longueur`.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Cidr> {
+        let text = text.trim();
+        let (addr, prefix) = if let Some((addr, len)) = text.split_once('/') {
+            (addr.parse::<IpAddr>().ok()?, len.parse::<u8>().ok()?)
+        } else {
+            let addr = text.parse::<IpAddr>().ok()?;
+            (addr, if addr.is_ipv4() { 32 } else { 128 })
+        };
+        let max = if addr.is_ipv4() { 32 } else { 128 };
+        (prefix <= max).then_some(Cidr { net: addr, prefix })
     }
-    request
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        let mask = |bits: u32, prefix: u8| {
+            if prefix == 0 {
+                0
+            } else {
+                u128::MAX << (bits - u32::from(prefix))
+            }
+        };
+        match (self.net, ip) {
+            (IpAddr::V4(net), IpAddr::V4(ip)) => {
+                let m = mask(32, self.prefix);
+                u128::from(u32::from(net)) & m == u128::from(u32::from(ip)) & m
+            }
+            (IpAddr::V6(net), IpAddr::V6(ip)) => {
+                let m = mask(128, self.prefix);
+                u128::from(net) & m == u128::from(ip) & m
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Adresse du client. Sans répartiteur de confiance, celle de la connexion TCP. Si la
+/// connexion vient d'un répartiteur déclaré (`TONAPI_TRUSTED_PROXIES`), `X-Forwarded-For` est
+/// lu de droite à gauche et la première adresse non fiable est retenue : un client qui forge
+/// l'en-tête en contactant directement le serveur ne change pas son adresse.
+fn client_ip(request: &Request, trusted: &[Cidr]) -> Option<IpAddr> {
+    let peer = request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
-        .map(|c| c.0.ip())
+        .map(|c| c.0.ip())?;
+    let is_trusted = |ip: IpAddr| trusted.iter().any(|c| c.contains(ip));
+    if !is_trusted(peer) {
+        return Some(peer);
+    }
+    let forwarded = request
+        .headers()
+        .get_all("x-forwarded-for")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .map(str::trim)
+        .filter_map(|v| {
+            v.parse::<IpAddr>()
+                .ok()
+                .or_else(|| v.parse::<SocketAddr>().ok().map(|a| a.ip()))
+        })
+        .collect::<Vec<_>>();
+    Some(
+        forwarded
+            .into_iter()
+            .rev()
+            .find(|ip| !is_trusted(*ip))
+            .unwrap_or(peer),
+    )
 }
 
 pub async fn protect(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let path = request.uri().path().to_owned();
     if COUNTED.contains(&path.as_str())
-        && let Some(ip) = client_ip(&request, state.settings.trust_proxy)
+        && let Some(ip) = client_ip(&request, &state.settings.trusted_proxies)
         && !state.ip_limiter.allow(ip, Instant::now())
     {
         let mut response = ApiError::from(Problem::new(ErrorCode::RateLimited).detail(
@@ -156,6 +211,52 @@ pub async fn protect(State(state): State<AppState>, request: Request, next: Next
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plages_de_proxys() {
+        let lan = Cidr::parse("10.0.0.0/8").unwrap();
+        assert!(lan.contains("10.1.2.3".parse().unwrap()));
+        assert!(!lan.contains("11.0.0.1".parse().unwrap()));
+        let one = Cidr::parse("192.0.2.7").unwrap();
+        assert!(one.contains("192.0.2.7".parse().unwrap()));
+        assert!(!one.contains("192.0.2.8".parse().unwrap()));
+        let v6 = Cidr::parse("2001:db8::/32").unwrap();
+        assert!(v6.contains("2001:db8:ffff::1".parse().unwrap()));
+        assert!(!v6.contains("10.0.0.1".parse().unwrap()));
+        assert!(
+            Cidr::parse("0.0.0.0/0")
+                .unwrap()
+                .contains("8.8.8.8".parse().unwrap())
+        );
+        assert_eq!(Cidr::parse("10.0.0.0/33"), None);
+        assert_eq!(Cidr::parse("pas une adresse"), None);
+    }
+
+    fn request(peer: &str, forwarded: Option<&str>) -> Request {
+        let mut builder = Request::builder().uri("/v1/auth/login");
+        if let Some(f) = forwarded {
+            builder = builder.header("x-forwarded-for", f);
+        }
+        let mut request = builder.body(axum::body::Body::empty()).unwrap();
+        request
+            .extensions_mut()
+            .insert(ConnectInfo(peer.parse::<SocketAddr>().unwrap()));
+        request
+    }
+
+    #[test]
+    fn x_forwarded_for_seulement_depuis_un_proxy_de_confiance() {
+        let trusted = [Cidr::parse("10.0.0.0/8").unwrap()];
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        // Client direct qui forge l'en-tête : son adresse TCP compte.
+        let forged = request("203.0.113.9:4000", Some("198.51.100.1"));
+        assert_eq!(client_ip(&forged, &trusted), Some(ip("203.0.113.9")));
+        // Derrière le répartiteur : première adresse non fiable en partant de la droite.
+        let proxied = request("10.0.0.2:4000", Some("198.51.100.1, 203.0.113.5, 10.0.0.3"));
+        assert_eq!(client_ip(&proxied, &trusted), Some(ip("203.0.113.5")));
+        // Aucun répartiteur déclaré : l'en-tête est ignoré.
+        assert_eq!(client_ip(&proxied, &[]), Some(ip("10.0.0.2")));
+    }
 
     #[test]
     fn ipv6_regroupee_par_64() {
