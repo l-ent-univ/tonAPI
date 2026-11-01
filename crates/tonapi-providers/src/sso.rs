@@ -139,15 +139,19 @@ fn browser(
         .map_err(|e| Problem::new(ErrorCode::Internal).detail(e.to_string()))
 }
 
-/// Cookies d'une session précédente gardés pour la reconnaissance de l'appareil : ceux du seul
-/// hôte du CAS, sans le TGC. Les cookies des services (ScoDoc, Moodle, mail…) ne passent jamais
-/// d'une session à l'autre.
+/// Cookies d'une session précédente (du même compte, vérifié par le serveur) gardés pour la
+/// reconnaissance de l'appareil : ceux que le CAS reçoit, c'est-à-dire posés pour son hôte ou un
+/// domaine parent (`Domain=univ.fr`), sans le TGC. Les cookies propres aux services (ScoDoc,
+/// Moodle, mail…) ne passent pas d'une session à l'autre.
 fn device_cookies(previous: Vec<StoredCookie>, cas: &CasServer) -> Vec<StoredCookie> {
     let host = cas.base.host_str().unwrap_or_default().to_ascii_lowercase();
     previous
         .into_iter()
         .filter(|c| !SSO_TICKET_COOKIES.contains(&c.name.as_str()))
-        .filter(|c| c.domain.trim_start_matches('.').eq_ignore_ascii_case(&host))
+        .filter(|c| {
+            let domain = c.domain.trim_start_matches('.').to_ascii_lowercase();
+            host == domain || (!c.host_only && host.ends_with(&format!(".{domain}")))
+        })
         .collect()
 }
 
@@ -369,10 +373,16 @@ mod tests {
                 cookie("cas.exemple.test", "TGC"),
                 cookie("scodoc.exemple.test", "PHPSESSID"),
                 cookie("exemple.test", "MoodleSession"),
+                StoredCookie {
+                    host_only: false,
+                    ..cookie("exemple.test", "appareil")
+                },
             ],
             &cas,
         );
         let names: Vec<&str> = kept.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["connect.sid"]);
+        // `Domain=exemple.test` est envoyé au CAS ; un cookie réservé à l'hôte `exemple.test`
+        // ne l'est pas.
+        assert_eq!(names, ["connect.sid", "appareil"]);
     }
 }

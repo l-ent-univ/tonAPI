@@ -226,7 +226,15 @@ fn shareable(link: &str, account: &str) -> bool {
     let Ok(url) = Url::parse(link) else {
         return false;
     };
-    if url.query().is_some() || url.fragment().is_some() {
+    if url.fragment().is_some() {
+        return false;
+    }
+    // Paramètres courts seulement (`?v=1`) : une valeur longue, un numéro ou un code
+    // hexadécimal (jeton, flux iCal, numéro étudiant) peut être propre à l'étudiant.
+    let personal_value = url.query_pairs().any(|(_, value)| {
+        value.len() > 8 || (value.len() >= 6 && value.chars().all(|c| c.is_ascii_hexdigit()))
+    });
+    if personal_value {
         return false;
     }
     let lower = link.to_ascii_lowercase();
@@ -814,9 +822,13 @@ mod tests {
             "https://app.exemple.test/ent/html/edt.html",
             "e2100"
         ));
-        assert!(!shareable(
+        assert!(shareable(
             "https://app.exemple.test/ent/Apoweb?v=1",
             "e2100"
+        ));
+        assert!(!shareable(
+            "https://app.exemple.test/ent/dossier?numetu=21901234",
+            ""
         ));
         assert!(!shareable(
             "https://ade.exemple.test/direct_cal.jsp?data=8241fc",
