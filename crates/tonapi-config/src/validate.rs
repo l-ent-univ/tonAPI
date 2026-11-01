@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use url::Url;
 
 use crate::SCHEMA_VERSION;
 use crate::diagnostics::locate;
@@ -183,12 +182,35 @@ pub fn is_valid_id(id: &str) -> bool {
 /// (`http://`, `javascript:`, `data:`, `mailto:`…). Une phrase contenant un espace n'en est pas
 /// une. `urn:` reste permis : c'est un identifiant (entityID SAML), jamais ouvert ni appelé.
 fn has_non_https_scheme(text: &str) -> bool {
-    if text.contains("://") {
-        return !text.starts_with("https://");
+    // Comme un navigateur : blancs de tête et caractères de contrôle ignorés (`" javascript:"`,
+    // `"java\tscript:"`).
+    let compact: String = text
+        .trim_start()
+        .chars()
+        .filter(|c| !c.is_ascii_control())
+        .collect();
+    if compact.contains("://") {
+        return !compact.starts_with("https://");
     }
-    text.starts_with(|c: char| c.is_ascii_alphabetic())
-        && !text.contains(char::is_whitespace)
-        && Url::parse(text).is_ok_and(|url| !matches!(url.scheme(), "https" | "urn"))
+    // Schémas sans `//` qu'un client pourrait ouvrir ; `hôte:port`, `urn:…` ou un libellé comme
+    // `Notes:v2` ne sont pas des liens.
+    let scheme = compact
+        .split_once(':')
+        .map(|(scheme, _)| scheme.to_ascii_lowercase());
+    matches!(
+        scheme.as_deref(),
+        Some(
+            "javascript"
+                | "data"
+                | "vbscript"
+                | "file"
+                | "mailto"
+                | "tel"
+                | "sms"
+                | "blob"
+                | "about"
+        )
+    )
 }
 
 fn walk(value: &Value, path: String, out: &mut Vec<(String, String)>) {
@@ -259,4 +281,33 @@ pub(crate) fn check_establishment(
         }
     }
     c.issues
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schemas_hors_https() {
+        for bad in [
+            "javascript:alert(1)",
+            " javascript:alert(1)",
+            "java\tscript:alert(1)",
+            "javascript:alert(1) //",
+            "data:text/html,x",
+            "http://exemple.fr/",
+        ] {
+            assert!(has_non_https_scheme(bad), "{bad:?} accepté");
+        }
+        for ok in [
+            "https://exemple.fr/",
+            "urn:mace:cru.fr:federation:univ-rennes1.fr",
+            "cas.univ.fr:8443",
+            "localhost:8080",
+            "Notes:v2",
+            "Remarque : voir le portail",
+        ] {
+            assert!(!has_non_https_scheme(ok), "{ok:?} refusé");
+        }
+    }
 }
