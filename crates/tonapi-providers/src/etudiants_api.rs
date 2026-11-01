@@ -15,7 +15,7 @@
 //! `attestationReussites` (clé → nom, fichier `<base>/<clé>`). [vu] 27/10/2026 : ces trois champs
 //! sont vides sur le compte observé, formats des dates et durées [inconnu].
 
-use chrono::{DateTime, Duration, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
+use chrono::{NaiveDate, NaiveTime};
 use chrono_tz::Tz;
 use reqwest::Method;
 use reqwest::header::{self, HeaderMap, HeaderValue};
@@ -26,7 +26,7 @@ use tonapi_core::{
 };
 use url::Url;
 
-use crate::ade_ical::university_tz;
+use crate::common::{resolve_local, root, text_or_number, university_tz};
 use crate::net::{Net, upstream};
 use crate::{Context, Download};
 
@@ -57,17 +57,6 @@ const ATTESTATIONS: [(DocumentKind, &str, &str); 3] = [
 pub(crate) struct Record {
     pub student_number: Option<String>,
     pub program: Option<String>,
-}
-
-fn root(base_url: &Url) -> Url {
-    let mut base = base_url.clone();
-    if !base.path().ends_with('/') {
-        let path = format!("{}/", base.path());
-        base.set_path(&path);
-    }
-    base.set_query(None);
-    base.set_fragment(None);
-    base
 }
 
 pub(crate) async fn fetch_record(ctx: &mut Context<'_>, base_url: &Url) -> Result<Record, Problem> {
@@ -254,15 +243,6 @@ async fn get_json(net: &mut Net, url: Url) -> Result<Option<Value>, Problem> {
     Ok(serde_json::from_str(&body).ok())
 }
 
-fn text(value: Option<&Value>) -> Option<String> {
-    let text = match value? {
-        Value::String(s) => s.split_whitespace().collect::<Vec<_>>().join(" "),
-        Value::Number(n) => n.to_string(),
-        _ => return None,
-    };
-    (!text.is_empty()).then_some(text)
-}
-
 pub(crate) fn parse_record(value: &Value) -> Result<Record, Problem> {
     let root = value
         .as_object()
@@ -275,14 +255,14 @@ pub(crate) fn parse_record(value: &Value) -> Result<Record, Problem> {
         .into_iter()
         .flatten()
     {
-        if let Some(label) = text(step.get("libelle"))
+        if let Some(label) = text_or_number(step.get("libelle"))
             && !programs.contains(&label)
         {
             programs.push(label);
         }
     }
     Ok(Record {
-        student_number: text(root.get("numero")),
+        student_number: text_or_number(root.get("numero")),
         program: (!programs.is_empty()).then(|| programs.join(" ; ")),
     })
 }
@@ -318,12 +298,12 @@ pub(crate) fn parse_grades(value: &Value) -> Result<GradeReport, Problem> {
         .ok_or_else(|| upstream(PROVIDER, "liste des étapes absente"))?;
     let mut semesters = Vec::new();
     for step in steps {
-        let step_code = text(step.get("codEtape")).unwrap_or_default();
+        let step_code = text_or_number(step.get("codEtape")).unwrap_or_default();
         let Some(map) = step.get("semestres").and_then(Value::as_object) else {
             continue;
         };
         for (key, semester) in map {
-            let name = text(semester.get("intitule")).unwrap_or_else(|| key.clone());
+            let name = text_or_number(semester.get("intitule")).unwrap_or_else(|| key.clone());
             let mut modules = Vec::new();
             let elements = semester
                 .get("classifiedElementPedagogiques")
@@ -331,8 +311,10 @@ pub(crate) fn parse_grades(value: &Value) -> Result<GradeReport, Problem> {
                 .into_iter()
                 .flatten();
             for (n, element) in elements.enumerate() {
-                let code = text(element.get("codElement")).unwrap_or_else(|| format!("{}", n + 1));
-                let name = text(element.get("libElement")).unwrap_or_else(|| code.clone());
+                let code = text_or_number(element.get("codElement"))
+                    .unwrap_or_else(|| format!("{}", n + 1));
+                let name =
+                    text_or_number(element.get("libElement")).unwrap_or_else(|| code.clone());
                 let mut evaluations = Vec::new();
                 for (field, label) in [
                     ("noteEpreuve1", "Évaluation 1"),
@@ -353,7 +335,11 @@ pub(crate) fn parse_grades(value: &Value) -> Result<GradeReport, Problem> {
                 let (average, average_status) = mark(element.get("note"));
                 // Le résultat (ADM, AJ…) et une note finale non numérique deviennent des mentions.
                 for (suffix, label, status) in [
-                    ("resultat", "Résultat", text(element.get("resultat"))),
+                    (
+                        "resultat",
+                        "Résultat",
+                        text_or_number(element.get("resultat")),
+                    ),
                     ("note", "Note", average_status),
                 ] {
                     if let Some(status) = status {
@@ -403,13 +389,13 @@ pub(crate) fn parse_exams(value: &Value, tz: Tz) -> Result<Vec<Exam>, Problem> {
             return Err(upstream(PROVIDER, "période d'épreuves illisible"));
         };
         for (n, item) in list.iter().enumerate() {
-            let code = text(item.get("codEpreuve"));
-            let date = text(item.get("dateEpreuve")).and_then(|d| exam_date(&d));
-            let time = text(item.get("heureDebutEpreuve")).and_then(|t| exam_time(&t));
+            let code = text_or_number(item.get("codEpreuve"));
+            let date = text_or_number(item.get("dateEpreuve")).and_then(|d| exam_date(&d));
+            let time = text_or_number(item.get("heureDebutEpreuve")).and_then(|t| exam_time(&t));
             let start = match (date, time) {
-                (Some(date), Some(time)) => local(tz, date.and_time(time)),
+                (Some(date), Some(time)) => resolve_local(tz, date.and_time(time)),
                 // Date sans heure : minuit local, pour que le jour reste lisible.
-                (Some(date), None) => local(tz, date.and_time(NaiveTime::MIN)),
+                (Some(date), None) => resolve_local(tz, date.and_time(NaiveTime::MIN)),
                 _ => None,
             };
             let courses = item
@@ -417,26 +403,30 @@ pub(crate) fn parse_exams(value: &Value, tz: Tz) -> Result<Vec<Exam>, Problem> {
                 .and_then(Value::as_array)
                 .into_iter()
                 .flatten()
-                .filter_map(
-                    |e| match (text(e.get("codElement")), text(e.get("libElement"))) {
+                .filter_map(|e| {
+                    match (
+                        text_or_number(e.get("codElement")),
+                        text_or_number(e.get("libElement")),
+                    ) {
                         (Some(c), Some(l)) => Some(format!("{c} - {l}")),
                         (c, l) => c.or(l),
-                    },
-                )
+                    }
+                })
                 .collect();
             let id = code.clone().unwrap_or_else(|| format!("{}", n + 1));
             exams.push(Exam {
                 id: format!("{key}-{id}"),
-                title: text(item.get("libEpreuve"))
+                title: text_or_number(item.get("libEpreuve"))
                     .or(code)
                     .unwrap_or_else(|| "Épreuve".to_owned()),
                 start,
-                duration_minutes: text(item.get("dureeEpreuve")).and_then(|d| minutes(&d)),
-                room: text(item.get("salleEpreuve")),
-                building: text(item.get("batEpreuve")),
-                session: text(item.get("libPeriode")),
+                duration_minutes: text_or_number(item.get("dureeEpreuve"))
+                    .and_then(|d| minutes(&d)),
+                room: text_or_number(item.get("salleEpreuve")),
+                building: text_or_number(item.get("batEpreuve")),
+                session: text_or_number(item.get("libPeriode")),
                 courses,
-                notice: text(item.get("infoEpreuve")),
+                notice: text_or_number(item.get("infoEpreuve")),
             });
         }
     }
@@ -447,17 +437,6 @@ pub(crate) fn parse_exams(value: &Value, tz: Tz) -> Result<Vec<Exam>, Problem> {
         (None, None) => std::cmp::Ordering::Equal,
     });
     Ok(exams)
-}
-
-/// Heure locale ; une heure sautée au passage à l'heure d'été avance d'une heure.
-fn local(tz: Tz, at: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
-    tz.from_local_datetime(&at)
-        .earliest()
-        .or_else(|| {
-            tz.from_local_datetime(&(at + Duration::hours(1)))
-                .earliest()
-        })
-        .map(|d| d.fixed_offset())
 }
 
 /// `JJ/MM/AAAA` (Apogée) ou `AAAA-MM-JJ`, éventuellement suivi d'une heure ignorée.
@@ -515,7 +494,8 @@ pub(crate) fn parse_attestations(
         for (key, name) in map {
             out.push(Document {
                 id: format!("{prefix}.{key}"),
-                title: text(Some(name)).unwrap_or_else(|| "Attestation de réussite".to_owned()),
+                title: text_or_number(Some(name))
+                    .unwrap_or_else(|| "Attestation de réussite".to_owned()),
                 kind,
                 year: None,
                 session: None,
@@ -531,13 +511,15 @@ pub(crate) fn parse_attestations(
         .ok_or_else(bad)?;
     for (year, list) in years {
         for item in list.as_array().ok_or_else(bad)? {
-            let annee = text(item.get("annee")).unwrap_or_else(|| year.clone());
-            let kind_code = text(item.get("type")).ok_or_else(bad)?.replace('/', "");
-            let session = text(item.get("session"));
+            let annee = text_or_number(item.get("annee")).unwrap_or_else(|| year.clone());
+            let kind_code = text_or_number(item.get("type"))
+                .ok_or_else(bad)?
+                .replace('/', "");
+            let session = text_or_number(item.get("session"));
             let key = format!("{annee}_{kind_code}_{}", session.as_deref().unwrap_or(""));
             out.push(Document {
                 id: format!("{prefix}.{key}"),
-                title: text(item.get("libelle")).unwrap_or(kind_code),
+                title: text_or_number(item.get("libelle")).unwrap_or(kind_code),
                 kind,
                 year: Some(annee),
                 session,

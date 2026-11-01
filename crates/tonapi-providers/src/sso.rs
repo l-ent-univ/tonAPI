@@ -135,8 +135,31 @@ fn browser(
         https_only: net.https_only,
         ..BrowserOptions::default()
     };
-    Browser::new(&options, CookieJar::from_stored(cookies))
-        .map_err(|e| Problem::new(ErrorCode::Internal).detail(e.to_string()))
+    Browser::new(&options, CookieJar::from_stored(cookies)).map_err(|e| crate::client_problem(&e))
+}
+
+/// Ferme la session CAS de l'étudiant (le TGC n'est plus reconnu). Au mieux : un CAS qui ne répond
+/// pas en 5 s ne fait pas échouer la déconnexion de l'API.
+pub async fn logout(university: &ResolvedUniversity, session: &SessionData) {
+    let Some(cas) = cas_server(university) else {
+        return;
+    };
+    let Ok(url) = cas.base.join("logout") else {
+        return;
+    };
+    let Ok(mut browser) = browser(university, session.cookies.clone(), NetSettings::default())
+    else {
+        return;
+    };
+    let _ = browser
+        .send(
+            reqwest::Method::GET,
+            url,
+            reqwest::header::HeaderMap::new(),
+            None,
+            Some(Duration::from_secs(5)),
+        )
+        .await;
 }
 
 /// Cookies d'une session précédente (du même compte, vérifié par le serveur) gardés pour la

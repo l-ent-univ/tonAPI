@@ -22,21 +22,11 @@ use serde_json::Value;
 use tonapi_core::{Document, DocumentKind, ErrorCode, Problem};
 use url::Url;
 
+use crate::common::{root, text_or_number};
 use crate::net::{Net, upstream};
 use crate::{Context, Download};
 
 const PROVIDER: &str = "ardemat";
-
-fn root(base_url: &Url) -> Url {
-    let mut base = base_url.clone();
-    if !base.path().ends_with('/') {
-        let path = format!("{}/", base.path());
-        base.set_path(&path);
-    }
-    base.set_query(None);
-    base.set_fragment(None);
-    base
-}
 
 pub(crate) async fn fetch_documents(
     ctx: &mut Context<'_>,
@@ -165,21 +155,12 @@ fn attestations(student: &Value) -> Result<&Vec<Value>, Problem> {
     }
 }
 
-fn text(value: &Value, key: &str) -> Option<String> {
-    let text = match value.get(key)? {
-        Value::String(s) => s.split_whitespace().collect::<Vec<_>>().join(" "),
-        Value::Number(n) => n.to_string(),
-        _ => return None,
-    };
-    (!text.is_empty()).then_some(text)
-}
-
 /// Identifiant stable, sans jeton : année, code, session, type et version, réduits à
 /// `[A-Za-z0-9_-]`.
 fn document_id(dto: &Value) -> String {
     ["annee", "code", "session", "type", "version"]
         .iter()
-        .map(|k| text(dto, k).unwrap_or_default())
+        .map(|k| text_or_number(dto.get(k)).unwrap_or_default())
         .collect::<Vec<_>>()
         .join("-")
         .chars()
@@ -202,12 +183,12 @@ pub(crate) fn parse_documents(student: &Value) -> Result<Vec<Document>, Problem>
         .iter()
         .map(|dto| Document {
             id: document_id(dto),
-            title: text(dto, "libelle")
-                .or_else(|| text(dto, "type"))
+            title: text_or_number(dto.get("libelle"))
+                .or_else(|| text_or_number(dto.get("type")))
                 .unwrap_or_else(|| "Attestation de réussite".to_owned()),
             kind: DocumentKind::Achievement,
-            year: text(dto, "annee"),
-            session: text(dto, "session"),
+            year: text_or_number(dto.get("annee")),
+            session: text_or_number(dto.get("session")),
             downloadable: !blocked,
             url: None,
         })

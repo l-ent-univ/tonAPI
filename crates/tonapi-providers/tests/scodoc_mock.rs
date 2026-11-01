@@ -1,17 +1,13 @@
 //! Fournisseur `scodoc-gateway` contre un faux serveur ScoDoc + CAS local. Aucun accès réseau réel.
 
+mod common;
 mod support;
-
-use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use chrono::Utc;
 use serde_json::{Value, json};
-use tonapi_config::{ResolvedUniversity, ServiceKind, UniversityFile};
+use tonapi_config::{ResolvedUniversity, ServiceKind};
 use tonapi_core::ErrorCode;
-use tonapi_providers::{
-    Context, NetSettings, absences, grades, grades_and_absences, service_login,
-};
+use tonapi_providers::{Context, absences, grades, grades_and_absences, service_login};
 use tonapi_session::{SessionData, StoredCookie};
 
 use support::Server;
@@ -19,44 +15,19 @@ use support::Server;
 const PAYLOAD: &str = include_str!("fixtures/scodoc/premiere_connexion.json");
 
 fn university(server: &Server, sign_in: &Value) -> ResolvedUniversity {
-    ResolvedUniversity {
-        dir: PathBuf::new(),
-        university: serde_json::from_value::<UniversityFile>(server.university(sign_in)).unwrap(),
-        establishments: BTreeMap::new(),
-    }
+    common::university(server.university(sign_in))
 }
 
 fn session(cookies: Vec<StoredCookie>) -> SessionData {
-    SessionData {
-        university: "test".to_owned(),
-        username: "e00000000000".to_owned(),
-        establishment: None,
-        cookies,
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
-        expires_at: i64::MAX,
-    }
+    common::session("test", "e00000000000", cookies)
 }
 
 fn cookie(name: &str, value: &str) -> StoredCookie {
-    StoredCookie {
-        domain: "127.0.0.1".to_owned(),
-        path: "/".to_owned(),
-        name: name.to_owned(),
-        value: value.to_owned(),
-        host_only: true,
-        expires: None,
-    }
+    common::stored_cookie(name, value, "/")
 }
 
 fn context<'a>(university: &'a ResolvedUniversity, session: &'a mut SessionData) -> Context<'a> {
-    Context {
-        university,
-        session,
-        now: Utc::now(),
-        net: NetSettings { https_only: false },
-    }
+    common::context(university, session, Utc::now())
 }
 
 fn university_cas() -> Value {

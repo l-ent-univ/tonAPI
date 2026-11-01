@@ -1,7 +1,8 @@
 //! Fournisseur `bluemind` de bout en bout contre un faux webmail local : CAS, `webapp/mail/`,
 //! `webapp/session-infos.js` et l'API REST. Valeurs inventées.
 
-use std::collections::BTreeMap;
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -9,10 +10,12 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, Response, StatusCode, Uri, header};
 use chrono::{TimeZone, Utc};
-use tonapi_config::{ResolvedUniversity, UniversityFile};
+use tonapi_config::ResolvedUniversity;
 use tonapi_core::{ErrorCode, MailInbox, Problem};
 use tonapi_providers::{Context, NetSettings, mail_inbox};
-use tonapi_session::{SessionData, StoredCookie};
+use tonapi_session::SessionData;
+
+use common::{has_cookie, query, redirect};
 
 const DOMAIN: &str = "etu.example.test";
 const USER: &str = "0A1B2C3D-0000-0000-0000-000000000000";
@@ -29,12 +32,6 @@ struct Mock {
 
 type Shared = Arc<Mutex<Mock>>;
 
-fn query(uri: &Uri, key: &str) -> Option<String> {
-    url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
-}
-
 fn reply(
     status: StatusCode,
     content_type: &str,
@@ -48,21 +45,6 @@ fn reply(
         r = r.header(header::SET_COOKIE, cookie);
     }
     r.body(Body::from(body)).unwrap()
-}
-
-fn redirect(location: &str) -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::FOUND)
-        .header(header::LOCATION, location)
-        .body(Body::empty())
-        .unwrap()
-}
-
-fn has_cookie(headers: &HeaderMap, pair: &str) -> bool {
-    headers
-        .get(header::COOKIE)
-        .and_then(|c| c.to_str().ok())
-        .is_some_and(|c| c.split("; ").any(|p| p == pair))
 }
 
 async fn handle(
@@ -137,54 +119,32 @@ async fn handle(
 }
 
 async fn start() -> (Shared, String) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (listener, base) = common::listen().await;
     let state: Shared = Arc::new(Mutex::new(Mock {
         base: base.clone(),
         ..Mock::default()
     }));
     let app = Router::new().fallback(handle).with_state(state.clone());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    common::spawn(listener, app);
     (state, base)
 }
 
 fn university(base: &str) -> ResolvedUniversity {
-    let file: UniversityFile = serde_json::from_value(serde_json::json!({
+    common::university(serde_json::json!({
         "id": "test-bm",
         "name": "Université de test",
         "sso": { "kind": "cas", "base-url": format!("{base}/cas/") },
         "services": { "mail": { "provider": "bluemind", "base-url": format!("{base}/") } },
     }))
-    .unwrap();
-    ResolvedUniversity {
-        dir: std::path::PathBuf::new(),
-        university: file,
-        establishments: BTreeMap::new(),
-    }
 }
 
 fn session(tgc: bool) -> SessionData {
-    SessionData {
-        university: "test-bm".to_owned(),
-        username: "camille.demo".to_owned(),
-        establishment: None,
-        cookies: if tgc {
-            vec![StoredCookie {
-                domain: "127.0.0.1".to_owned(),
-                path: "/".to_owned(),
-                name: "TGC".to_owned(),
-                value: "TGT-demo".to_owned(),
-                host_only: true,
-                expires: None,
-            }]
-        } else {
-            Vec::new()
-        },
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
-        expires_at: i64::MAX,
-    }
+    let cookies = if tgc {
+        vec![common::stored_cookie("TGC", "TGT-demo", "/")]
+    } else {
+        Vec::new()
+    };
+    common::session("test-bm", "camille.demo", cookies)
 }
 
 async fn inbox(

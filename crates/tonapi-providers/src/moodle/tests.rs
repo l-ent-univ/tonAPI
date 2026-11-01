@@ -15,6 +15,8 @@ use tonapi_config::{
 };
 use tonapi_session::SessionData;
 
+use super::parse::*;
+use super::saml::*;
 use super::*;
 use crate::NetSettings;
 
@@ -51,7 +53,7 @@ fn detail(problem: &Problem) -> String {
     problem.detail.clone().unwrap_or_default()
 }
 
-// --- événements → devoirs ------------------------------------------------------------------------
+// événements → devoirs
 
 #[test]
 fn les_evenements_deviennent_des_devoirs_tries_par_echeance() {
@@ -155,7 +157,7 @@ fn un_devoir_sans_action_n_est_pas_declare_non_rendu() {
     assert_eq!(homework[0].submitted, None);
 }
 
-// --- réponses d'erreur de Moodle, en HTTP 200 -------------------------------------------------------
+// réponses d'erreur de Moodle, en HTTP 200
 
 #[test]
 fn erreurs_ajax_en_http_200() {
@@ -261,7 +263,7 @@ fn arguments_au_format_de_server_php() {
     assert!(form_pairs(&json!(null)).is_empty());
 }
 
-// --- page Moodle ---------------------------------------------------------------------------------
+// page Moodle
 
 #[test]
 fn sesskey_lu_dans_le_m_cfg() {
@@ -286,7 +288,7 @@ fn sesskey_avec_espaces_et_fausses_pistes() {
     assert_eq!(sesskey_of(r#""sesskey":null"#), None);
 }
 
-// --- texte ---------------------------------------------------------------------------------------
+// texte
 
 #[test]
 fn nettoyage_des_titres() {
@@ -322,7 +324,7 @@ fn texte_d_un_fragment_html() {
     assert_eq!(html_to_text("<p> </p>"), "");
 }
 
-// --- redirections écrites dans une page --------------------------------------------------------------
+// redirections écrites dans une page
 
 #[test]
 fn redirections_html() {
@@ -371,7 +373,7 @@ fn hotes_autorises_pendant_la_federation() {
     assert!(!allowed("https://evilrenater.fr/"));
 }
 
-// --- sign_in contre un faux login/token.php -----------------------------------------------------------
+// sign_in contre un faux login/token.php
 
 #[derive(Default)]
 struct TokenMock {
@@ -562,7 +564,7 @@ fn sans_jeton_la_reponse_depend_de_la_configuration() {
 fn assert_send<T: Send>(_: &T) {}
 
 #[allow(dead_code)]
-async fn les_futurs_sont_send(ctx: &mut Context<'_>, base: &Url, config: &HomeworkService) {
+fn les_futurs_sont_send(ctx: &mut Context<'_>, base: &Url, config: &HomeworkService) {
     assert_send(&fetch_ajax(ctx, base, MoodleEntry::Shibboleth));
     assert_send(&fetch_webservice(ctx, base, &LOCAL));
     assert_send(&sign_in(ctx, config, "u", "p"));

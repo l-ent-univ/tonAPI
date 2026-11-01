@@ -12,14 +12,14 @@
 //!   et ne garde que les cookies dans `tokens["scodoc.<hôte>"]` ; jamais le mot de passe. Les
 //!   requêtes suivantes n'utilisent que ce jeton, jamais les cookies de l'université.
 //!
-//! Source des formats : `Docs/Montpellier/scodoc.md` et `Docs/Rennes/scodoc.md`.
+//! Source des formats : `Docs/recherche/Montpellier/scodoc.md` et `Docs/recherche/Rennes/scodoc.md`.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::Duration;
 
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, TimeZone};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
 use chrono_tz::Tz;
 use reqwest::Method;
 use reqwest::header::{self, HeaderMap, HeaderValue};
@@ -35,6 +35,7 @@ use tonapi_session::StoredCookie;
 use url::Url;
 
 use crate::Context;
+use crate::common::{self, resolve_local, university_tz};
 use crate::net::{Net, http_problem, upstream};
 
 const PROVIDER: &str = "scodoc-gateway";
@@ -52,7 +53,7 @@ fn bad(what: impl Display) -> Problem {
     upstream(PROVIDER, what)
 }
 
-// ─────────────────────────────── Analyse pure ───────────────────────────────
+// Analyse pure
 
 /// Réponse de `data.php`, une fois lue.
 #[derive(Debug)]
@@ -364,15 +365,7 @@ fn at(day: NaiveDate, hours: f64, tz: Tz) -> Result<DateTime<FixedOffset>, Probl
         .and_time(NaiveTime::MIN)
         .checked_add_signed(chrono::Duration::minutes(minutes))
         .ok_or_else(|| bad("date d'absence hors limites"))?;
-    tz.from_local_datetime(&local)
-        .earliest()
-        .or_else(|| {
-            local
-                .checked_add_signed(chrono::Duration::hours(1))
-                .and_then(|later| tz.from_local_datetime(&later).earliest())
-        })
-        .map(|instant| instant.fixed_offset())
-        .ok_or_else(|| bad("horaire d'absence illisible"))
+    resolve_local(tz, local).ok_or_else(|| bad("horaire d'absence illisible"))
 }
 
 fn flag(value: Option<&Value>) -> bool {
@@ -459,18 +452,11 @@ pub(crate) fn parse_absences(data: &Value, tz: Tz) -> Result<AbsenceReport, Prob
     Ok(AbsenceReport { absences, totals })
 }
 
-// ──────────────────────────────── Réseau ────────────────────────────────────
+// Réseau
 
 /// Racine de la passerelle, avec une barre finale.
 fn base_of(config: &ScoDocGateway) -> Url {
-    let mut base = config.base_url.clone();
-    if !base.path().ends_with('/') {
-        let path = format!("{}/", base.path());
-        base.set_path(&path);
-    }
-    base.set_query(None);
-    base.set_fragment(None);
-    base
+    common::root(&config.base_url)
 }
 
 fn same_origin(a: &Url, b: &Url) -> bool {
@@ -498,11 +484,7 @@ fn data_url(base: &Url) -> Url {
 
 /// Clé de `SessionData::tokens` du service : une connexion sert aux notes et aux absences.
 fn token_key(base: &Url) -> String {
-    let host = base.host_str().unwrap_or_default();
-    match base.port() {
-        Some(port) => format!("scodoc.{host}:{port}"),
-        None => format!("scodoc.{host}"),
-    }
+    common::token_key("scodoc", base)
 }
 
 fn login_required(detail: &str) -> Problem {
@@ -529,13 +511,6 @@ fn cas_problem(error: CasError) -> Problem {
         CasError::Http(e) => http_problem(PROVIDER, &e),
         CasError::InsecureForm | CasError::Unexpected(_) => bad(error),
     }
-}
-
-/// Fuseau de l'université.
-fn timezone(ctx: &Context<'_>) -> Result<Tz, Problem> {
-    ctx.university.university.timezone.parse().map_err(|_| {
-        Problem::new(ErrorCode::Internal).detail("fuseau horaire de l'université illisible")
-    })
 }
 
 fn stored_cookies(ctx: &Context<'_>, key: &str) -> Option<Vec<StoredCookie>> {
@@ -678,7 +653,7 @@ pub(crate) async fn fetch_grades(
     ctx: &mut Context<'_>,
     config: &ScoDocGateway,
 ) -> Result<GradeReport, Problem> {
-    let tz = timezone(ctx)?;
+    let tz = university_tz(ctx)?;
     parse_grades(&fetch_data(ctx, config).await?, tz)
 }
 
@@ -687,7 +662,7 @@ pub(crate) async fn fetch_absences(
     ctx: &mut Context<'_>,
     config: &ScoDocGateway,
 ) -> Result<AbsenceReport, Problem> {
-    let tz = timezone(ctx)?;
+    let tz = university_tz(ctx)?;
     parse_absences(&fetch_data(ctx, config).await?, tz)
 }
 
@@ -697,7 +672,7 @@ pub(crate) async fn fetch_both(
     ctx: &mut Context<'_>,
     config: &ScoDocGateway,
 ) -> (Result<GradeReport, Problem>, Result<AbsenceReport, Problem>) {
-    let data = match timezone(ctx) {
+    let data = match university_tz(ctx) {
         Ok(tz) => fetch_data(ctx, config).await.map(|data| (data, tz)),
         Err(problem) => Err(problem),
     };

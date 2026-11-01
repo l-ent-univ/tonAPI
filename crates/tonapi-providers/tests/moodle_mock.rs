@@ -3,6 +3,8 @@
 //!
 //! Le faux serveur joue aussi le CAS, le WAYF et l'IdP (même hôte, chemins différents).
 
+mod common;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -20,8 +22,10 @@ use tonapi_config::{
 };
 use tonapi_core::{ErrorCode, Homework, Problem};
 use tonapi_providers::{Context, Fetched, NetSettings, homework, service_login};
-use tonapi_session::{SessionData, StoredCookie};
+use tonapi_session::SessionData;
 use url::Url;
+
+use common::{has_cookie, query};
 
 const AJAX_EVENTS: &str = include_str!("fixtures/moodle/ajax_events.json");
 const WS_EVENTS: &str = include_str!("fixtures/moodle/ws_events.json");
@@ -102,19 +106,6 @@ fn json_body(status: StatusCode, body: impl Into<String>) -> Response<Body> {
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.into()))
         .unwrap()
-}
-
-fn has_cookie(headers: &HeaderMap, pair: &str) -> bool {
-    headers
-        .get(header::COOKIE)
-        .and_then(|c| c.to_str().ok())
-        .is_some_and(|c| c.split("; ").any(|p| p == pair))
-}
-
-fn query(uri: &Uri, key: &str) -> Option<String> {
-    url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
 }
 
 fn enc(value: &str) -> String {
@@ -306,13 +297,13 @@ async fn handle(
 }
 
 async fn start(setup: impl FnOnce(&mut Mock)) -> (Shared, Url) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+    let (listener, root) = common::listen().await;
+    let base = Url::parse(&format!("{root}/")).unwrap();
     let mut mock = Mock::default();
     setup(&mut mock);
     let state: Shared = Arc::new(Mutex::new(mock));
     let app = Router::new().fallback(handle).with_state(state.clone());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    common::spawn(listener, app);
     (state, base)
 }
 
@@ -378,23 +369,11 @@ fn saml() -> SamlConfig {
 
 /// Session d'un étudiant, avec ou sans ticket-granting du CAS.
 fn session(with_tgc: bool) -> SessionData {
-    let tgc = StoredCookie {
-        domain: "127.0.0.1".to_owned(),
-        path: "/cas/".to_owned(),
-        name: "TGC".to_owned(),
-        value: "tgt-ok".to_owned(),
-        host_only: true,
-        expires: None,
-    };
+    let tgc = common::stored_cookie("TGC", "tgt-ok", "/cas/");
+    let cookies = if with_tgc { vec![tgc] } else { Vec::new() };
     SessionData {
-        university: "universite-test".to_owned(),
-        username: "e00000000000".to_owned(),
-        establishment: None,
-        cookies: if with_tgc { vec![tgc] } else { Vec::new() },
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
         expires_at: 3600,
+        ..common::session("universite-test", "e00000000000", cookies)
     }
 }
 
@@ -423,7 +402,7 @@ fn titles(fetched: &Fetched<Vec<Homework>>) -> Vec<&str> {
     fetched.data.iter().map(|h| h.title.as_str()).collect()
 }
 
-// --- moodle-ajax, entrée par le CAS ----------------------------------------------------------------------
+// moodle-ajax, entrée par le CAS
 
 #[tokio::test]
 async fn ajax_ouvre_la_session_par_le_cas_puis_la_reutilise() {
@@ -574,7 +553,7 @@ async fn ajax_lit_les_pages_suivantes() {
     assert_eq!(s.ajax[1].1["aftereventid"], 50);
 }
 
-// --- moodle-ajax, entrée Shibboleth ----------------------------------------------------------------------
+// moodle-ajax, entrée Shibboleth
 
 #[tokio::test]
 async fn ajax_shibboleth_traverse_wayf_idp_et_saml() {
@@ -630,7 +609,7 @@ async fn ajax_shibboleth_ne_poste_jamais_hors_des_hotes_autorises() {
     assert!(state.lock().unwrap().wayf_posts.is_empty());
 }
 
-// --- moodle-webservice ----------------------------------------------------------------------------------------
+// moodle-webservice
 
 #[tokio::test]
 async fn webservice_utilise_le_jeton_de_la_session() {

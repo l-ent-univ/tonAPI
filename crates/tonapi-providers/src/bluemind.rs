@@ -19,6 +19,7 @@ use tonapi_core::{ErrorCode, MailAddress, MailInbox, MailMessage, Problem};
 use url::Url;
 
 use crate::Context;
+use crate::common::{root, token_key, university_tz};
 use crate::net::{Net, upstream};
 
 const PROVIDER: &str = "bluemind";
@@ -33,37 +34,15 @@ struct Session {
     domain: String,
 }
 
-fn token_key(base: &Url) -> String {
-    match base.port() {
-        Some(port) => format!("bluemind.{}:{port}", base.host_str().unwrap_or_default()),
-        None => format!("bluemind.{}", base.host_str().unwrap_or_default()),
-    }
-}
-
-fn root(base_url: &Url) -> Url {
-    let mut base = base_url.clone();
-    if !base.path().ends_with('/') {
-        let path = format!("{}/", base.path());
-        base.set_path(&path);
-    }
-    base.set_query(None);
-    base.set_fragment(None);
-    base
-}
-
-// ---------------------------------------------------------------------------------------------
 // Récupération
-// ---------------------------------------------------------------------------------------------
 
 pub(crate) async fn fetch_inbox(
     ctx: &mut Context<'_>,
     base_url: &Url,
 ) -> Result<MailInbox, Problem> {
-    let tz: Tz = ctx.university.university.timezone.parse().map_err(|_| {
-        Problem::new(ErrorCode::Internal).detail("fuseau horaire de l'université inconnu")
-    })?;
+    let tz = university_tz(ctx)?;
     let base = root(base_url);
-    let key = token_key(&base);
+    let key = token_key("bluemind", &base);
     let stored: Option<Session> = ctx
         .session
         .tokens
@@ -244,9 +223,7 @@ fn sorted(must_not: &[&str]) -> Value {
     })
 }
 
-// ---------------------------------------------------------------------------------------------
 // Analyse (sans réseau)
-// ---------------------------------------------------------------------------------------------
 
 /// Valeur d'une clé `"cle": "valeur"` de `session-infos.js`.
 fn js_string(text: &str, key: &str) -> Option<String> {

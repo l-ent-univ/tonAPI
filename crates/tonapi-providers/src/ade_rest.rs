@@ -1,6 +1,6 @@
 //! Emploi du temps ADE, API REST du portail (`<portail>/RestApi/`), derrière le CAS de l'université.
 //!
-//! Parcours, d'après `Docs/Rennes/apis/ade-portal-rest.md` :
+//! Parcours, d'après `Docs/recherche/Rennes/apis/ade-portal-rest.md` :
 //!
 //! 1. `POST sso/accessToken` donne un jeton SSO court ; s'il est vide (HTTP 200 + `errMsg`), on
 //!    traverse le CAS avec le TGC de la session ([`Net::open_protected`]) puis on réessaie ;
@@ -19,9 +19,7 @@
 
 use std::collections::HashSet;
 
-use chrono::{
-    DateTime, FixedOffset, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, TimeZone,
-};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 use reqwest::Method;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
@@ -31,6 +29,7 @@ use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
 use url::Url;
 
 use crate::Context;
+use crate::common::{resolve_local, token_key};
 use crate::net::{Net, upstream};
 
 /// Nom du fournisseur dans les messages d'erreur.
@@ -52,9 +51,7 @@ struct Tokens {
     project: i64,
 }
 
-// ---------------------------------------------------------------------------------------------
 // Analyse pure
-// ---------------------------------------------------------------------------------------------
 
 /// Les réponses sont enveloppées dans `{"data": …}` ; retire un niveau s'il y en a un.
 fn unwrap_data(value: &Value) -> &Value {
@@ -311,18 +308,12 @@ fn instant(date: NaiveDate, clock: &str, tz: Tz) -> Result<DateTime<FixedOffset>
         Some(offset) => offset
             .from_local_datetime(&naive)
             .single()
-            .map(|d| d.with_timezone(&tz)),
-        None => match tz.from_local_datetime(&naive) {
-            LocalResult::Single(d) => Some(d),
-            // Heure répétée au passage à l'heure d'hiver : la première occurrence.
-            LocalResult::Ambiguous(first, _) => Some(first),
-            // Heure sautée au passage à l'heure d'été : une heure plus tard, comme ADE iCal.
-            LocalResult::None => naive
-                .checked_add_signed(TimeDelta::hours(1))
-                .and_then(|later| tz.from_local_datetime(&later).earliest()),
-        },
+            .map(|d| d.with_timezone(&tz).fixed_offset()),
+        // Heure répétée : la première occurrence ; heure sautée : une heure plus tard, comme ADE
+        // iCal.
+        None => resolve_local(tz, naive),
     };
-    local.map(|d| d.fixed_offset()).ok_or_else(|| {
+    local.ok_or_else(|| {
         upstream(
             PROVIDER,
             "heure d'événement inexistante (changement d'heure)",
@@ -464,9 +455,7 @@ fn events_filter(resource: i64, from: NaiveDate, to: NaiveDate) -> String {
     )
 }
 
-// ---------------------------------------------------------------------------------------------
 // Récupération
-// ---------------------------------------------------------------------------------------------
 
 /// Réponse d'ADE : des données, ou une session perdue (401 ou redirection, p. ex. vers le CAS).
 enum Reply {
@@ -498,11 +487,7 @@ impl Client {
             let path = format!("{}/", base.path());
             base.set_path(&path);
         }
-        let host = base.host_str().unwrap_or_default();
-        let key = match base.port() {
-            Some(port) => format!("ade-rest.{host}:{port}"),
-            None => format!("ade-rest.{host}"),
-        };
+        let key = token_key("ade-rest", &base);
         let tokens = ctx
             .session
             .tokens

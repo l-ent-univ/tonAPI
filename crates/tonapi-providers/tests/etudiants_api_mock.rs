@@ -1,7 +1,8 @@
 //! Profil du portail complété par le dossier `etudiants-api`, contre un faux portail uPortal 4,
 //! un faux CAS et une fausse application de scolarité. Valeurs inventées.
 
-use std::collections::BTreeMap;
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -9,10 +10,12 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Response, StatusCode, Uri, header};
 use chrono::{TimeZone, Utc};
-use tonapi_config::{ResolvedUniversity, UniversityFile};
+use tonapi_config::ResolvedUniversity;
 use tonapi_core::{DocumentKind, ErrorCode};
-use tonapi_providers::{Context, NetSettings, document, documents, exams, grades, profile};
-use tonapi_session::{SessionData, StoredCookie};
+use tonapi_providers::{Context, document, documents, exams, grades, profile};
+use tonapi_session::SessionData;
+
+use common::{has_cookie, query, redirect};
 
 const SESSION: &str = include_str!("fixtures/uportal/session_v4.json");
 const PEOPLE: &str = include_str!("fixtures/uportal/people_v4.json");
@@ -34,33 +37,12 @@ struct Mock {
 
 type Shared = Arc<Mutex<Mock>>;
 
-fn query(uri: &Uri, key: &str) -> Option<String> {
-    url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
-}
-
 fn reply(status: StatusCode, cookie: Option<&str>, body: &str) -> Response<Body> {
     let mut r = Response::builder().status(status);
     if let Some(cookie) = cookie {
         r = r.header(header::SET_COOKIE, cookie);
     }
     r.body(Body::from(body.to_owned())).unwrap()
-}
-
-fn redirect(location: &str) -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::FOUND)
-        .header(header::LOCATION, location)
-        .body(Body::empty())
-        .unwrap()
-}
-
-fn has_cookie(headers: &HeaderMap, pair: &str) -> bool {
-    headers
-        .get(header::COOKIE)
-        .and_then(|c| c.to_str().ok())
-        .is_some_and(|c| c.split("; ").any(|p| p == pair))
 }
 
 async fn handle(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Response<Body> {
@@ -124,20 +106,19 @@ async fn handle(State(state): State<Shared>, uri: Uri, headers: HeaderMap) -> Re
 }
 
 async fn start(down: bool) -> (Shared, String) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (listener, base) = common::listen().await;
     let state: Shared = Arc::new(Mutex::new(Mock {
         base: base.clone(),
         down,
         ..Mock::default()
     }));
     let app = Router::new().fallback(handle).with_state(state.clone());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    common::spawn(listener, app);
     (state, base)
 }
 
 fn university(base: &str) -> ResolvedUniversity {
-    let file: UniversityFile = serde_json::from_value(serde_json::json!({
+    common::university(serde_json::json!({
         "id": "test-scol",
         "name": "Université de test",
         "sso": { "kind": "cas", "base-url": format!("{base}/cas/") },
@@ -156,41 +137,22 @@ fn university(base: &str) -> ResolvedUniversity {
             }
         },
     }))
-    .unwrap();
-    ResolvedUniversity {
-        dir: std::path::PathBuf::new(),
-        university: file,
-        establishments: BTreeMap::new(),
-    }
 }
 
 fn session() -> SessionData {
-    SessionData {
-        university: "test-scol".to_owned(),
-        username: "e00000000000".to_owned(),
-        establishment: None,
-        cookies: vec![StoredCookie {
-            domain: "127.0.0.1".to_owned(),
-            path: "/".to_owned(),
-            name: "TGC".to_owned(),
-            value: "TGT-demo".to_owned(),
-            host_only: true,
-            expires: None,
-        }],
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
-        expires_at: i64::MAX,
-    }
+    common::session(
+        "test-scol",
+        "e00000000000",
+        vec![common::stored_cookie("TGC", "TGT-demo", "/")],
+    )
 }
 
 fn context<'a>(university: &'a ResolvedUniversity, session: &'a mut SessionData) -> Context<'a> {
-    Context {
+    common::context(
         university,
         session,
-        now: Utc.with_ymd_and_hms(2026, 10, 28, 8, 0, 0).unwrap(),
-        net: NetSettings { https_only: false },
-    }
+        Utc.with_ymd_and_hms(2026, 10, 28, 8, 0, 0).unwrap(),
+    )
 }
 
 #[tokio::test]

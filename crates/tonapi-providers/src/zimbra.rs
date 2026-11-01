@@ -3,7 +3,7 @@
 //! Parcours : la page d'entrée du webmail passe par le CAS (TGC de la session, sans mot de passe) et
 //! finit par la préauthentification Zimbra, qui pose le cookie `ZM_AUTH_TOKEN`. La boîte se lit
 //! ensuite en SOAP au format JSON (`/service/soap/SearchRequest`, `GetFolderRequest`), avec ce seul
-//! cookie. Sources : `Docs/Montpellier/ent.md` (« Mail : Zimbra »), `Docs/Rennes/mail-et-autres.md`.
+//! cookie. Sources : `Docs/recherche/Montpellier/ent.md` (« Mail : Zimbra »), `Docs/recherche/Rennes/mail-et-autres.md`.
 //!
 //! - Cookie absent de la session, ou refusé (`AUTH_REQUIRED`, `AUTH_EXPIRED`, HTTP 401) : la chaîne
 //!   de connexion est rejouée **une seule fois**.
@@ -22,6 +22,7 @@ use tonapi_http::forms;
 use url::Url;
 
 use crate::Context;
+use crate::common::{str_field, university_tz};
 use crate::net::{Net, upstream};
 
 const PROVIDER: &str = "zimbra-rest";
@@ -45,14 +46,7 @@ impl From<Problem> for Failure {
     }
 }
 
-// ───────────────────────────── Analyse pure ─────────────────────────────
-
-/// Fuseau de l'université.
-fn timezone(name: &str) -> Result<Tz, Problem> {
-    name.parse::<Tz>().map_err(|_| {
-        Problem::new(ErrorCode::Internal).detail("fuseau horaire de l'université illisible")
-    })
-}
+// Analyse pure
 
 /// Code d'erreur Zimbra d'une réponse en faute (`Body.Fault.Detail.Error.Code`), nettoyé pour qu'il
 /// puisse figurer dans un message : des lettres, chiffres, points et soulignés seulement.
@@ -110,15 +104,6 @@ fn response_body<'a>(envelope: &'a Value, name: &str) -> Result<&'a Value, Probl
         .ok_or_else(|| upstream(PROVIDER, format!("`Body.{name}` absent")))
 }
 
-/// Texte non vide d'un champ.
-fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-}
-
 /// Identifiant : Zimbra l'envoie en chaîne, un nombre est accepté.
 fn message_id(m: &Value) -> Option<String> {
     match m.get("id")? {
@@ -158,8 +143,10 @@ fn sender(m: &Value) -> MailAddress {
     });
     match from {
         Some(e) => MailAddress {
-            name: text(e, "p").or_else(|| text(e, "d")).map(str::to_owned),
-            address: text(e, "a").unwrap_or_default().to_owned(),
+            name: str_field(e, "p")
+                .or_else(|| str_field(e, "d"))
+                .map(str::to_owned),
+            address: str_field(e, "a").unwrap_or_default().to_owned(),
         },
         None => MailAddress {
             name: None,
@@ -180,7 +167,7 @@ fn parse_message(index: usize, m: &Value, tz: Tz) -> Result<MailMessage, Problem
         .ok_or_else(|| upstream(PROVIDER, format!("message {index} : date hors limites")))?;
     Ok(MailMessage {
         id,
-        subject: text(m, "su").unwrap_or_default().to_owned(),
+        subject: str_field(m, "su").unwrap_or_default().to_owned(),
         from: sender(m),
         date,
         // Drapeau `u` : non lu.
@@ -240,7 +227,7 @@ fn build_inbox(
     })
 }
 
-// ───────────────────────────── Réseau ─────────────────────────────
+// Réseau
 
 /// Requête SOAP (JSON) vers la racine du serveur : `/service/soap/<nom>`.
 async fn soap(net: &mut Net, base: &Url, name: &str, request: Value) -> Result<Value, Failure> {
@@ -370,7 +357,7 @@ pub(crate) async fn fetch_inbox(
     base_url: &Url,
     entry_url: Option<&Url>,
 ) -> Result<MailInbox, Problem> {
-    let tz = timezone(&ctx.university.university.timezone)?;
+    let tz = university_tz(ctx)?;
     let mut net = Net::open(ctx, PROVIDER)?;
     let now = ctx.now.timestamp();
     let result = run(&mut net, base_url, entry_url.unwrap_or(base_url), tz, now).await;
@@ -632,14 +619,5 @@ mod tests {
                 .contains("page de connexion")
         );
         assert!(parse_envelope(200, SEARCH).is_ok());
-    }
-
-    #[test]
-    fn fuseau_illisible() {
-        assert!(timezone("Europe/Paris").is_ok());
-        assert_eq!(
-            timezone("Mars/Olympus").unwrap_err().code,
-            ErrorCode::Internal
-        );
     }
 }

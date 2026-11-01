@@ -1,7 +1,9 @@
 //! Fournisseur `ardemat` contre un faux CAS (détour `pre-otp` comme à Montpellier) et une fausse
 //! API : ticket demandé sans être consommé, à usage unique, puis liste et PDF. Valeurs inventées.
 
-use std::collections::{BTreeMap, BTreeSet};
+mod common;
+
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -9,10 +11,12 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, Response, StatusCode, Uri, header};
 use chrono::{TimeZone, Utc};
-use tonapi_config::{ResolvedUniversity, UniversityFile};
+use tonapi_config::ResolvedUniversity;
 use tonapi_core::{DocumentKind, ErrorCode};
-use tonapi_providers::{Context, NetSettings, document, documents};
-use tonapi_session::{SessionData, StoredCookie};
+use tonapi_providers::{Context, document, documents};
+use tonapi_session::SessionData;
+
+use common::{query, redirect};
 
 #[derive(Default)]
 struct Mock {
@@ -26,20 +30,6 @@ struct Mock {
 }
 
 type Shared = Arc<Mutex<Mock>>;
-
-fn query(uri: &Uri, key: &str) -> Option<String> {
-    url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
-}
-
-fn redirect(location: &str) -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::FOUND)
-        .header(header::LOCATION, location)
-        .body(Body::empty())
-        .unwrap()
-}
 
 fn reply(status: StatusCode, content_type: &str, body: impl Into<Body>) -> Response<Body> {
     Response::builder()
@@ -144,20 +134,19 @@ async fn handle(
 }
 
 async fn start(blocked: bool) -> (Shared, String) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (listener, base) = common::listen().await;
     let state: Shared = Arc::new(Mutex::new(Mock {
         base: base.clone(),
         blocked,
         ..Mock::default()
     }));
     let app = Router::new().fallback(handle).with_state(state.clone());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    common::spawn(listener, app);
     (state, base)
 }
 
 fn university(base: &str) -> ResolvedUniversity {
-    let file: UniversityFile = serde_json::from_value(serde_json::json!({
+    common::university(serde_json::json!({
         "id": "test-ardemat",
         "name": "Université de test",
         "sso": { "kind": "cas", "base-url": format!("{base}/cas/") },
@@ -167,45 +156,23 @@ fn university(base: &str) -> ResolvedUniversity {
             "service-url": format!("{base}/ardemat/")
         } },
     }))
-    .unwrap();
-    ResolvedUniversity {
-        dir: std::path::PathBuf::new(),
-        university: file,
-        establishments: BTreeMap::new(),
-    }
 }
 
 fn session(tgc: bool) -> SessionData {
-    SessionData {
-        university: "test-ardemat".to_owned(),
-        username: "e00000000000".to_owned(),
-        establishment: None,
-        cookies: if tgc {
-            vec![StoredCookie {
-                domain: "127.0.0.1".to_owned(),
-                path: "/cas".to_owned(),
-                name: "TGC".to_owned(),
-                value: "TGT-demo".to_owned(),
-                host_only: true,
-                expires: None,
-            }]
-        } else {
-            Vec::new()
-        },
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
-        expires_at: i64::MAX,
-    }
+    let cookies = if tgc {
+        vec![common::stored_cookie("TGC", "TGT-demo", "/cas")]
+    } else {
+        Vec::new()
+    };
+    common::session("test-ardemat", "e00000000000", cookies)
 }
 
 fn context<'a>(university: &'a ResolvedUniversity, session: &'a mut SessionData) -> Context<'a> {
-    Context {
+    common::context(
         university,
         session,
-        now: Utc.with_ymd_and_hms(2026, 10, 28, 8, 0, 0).unwrap(),
-        net: NetSettings { https_only: false },
-    }
+        Utc.with_ymd_and_hms(2026, 10, 28, 8, 0, 0).unwrap(),
+    )
 }
 
 #[tokio::test]

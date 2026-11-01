@@ -2,8 +2,8 @@
 //! `/uPortal/`, `layout.jsp`, `session.json`, `people/<id>.json`), un faux uPortal 5 (racine,
 //! `layout.json`, `userinfo`) et un faux CAS. Aucune requête ne quitte `127.0.0.1`.
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -12,11 +12,12 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Response, StatusCode, Uri, header};
 use chrono::Utc;
 use serde_json::{Value, json};
-use tokio::net::TcpListener;
-use tonapi_config::{ResolvedUniversity, UniversityFile};
+use tonapi_config::ResolvedUniversity;
 use tonapi_core::ErrorCode;
-use tonapi_providers::{Context, NetSettings, apps, profile};
+use tonapi_providers::{Context, apps, profile};
 use tonapi_session::{SessionData, StoredCookie};
+
+use common::has_cookie;
 
 const LAYOUT_JSONP: &str = include_str!("fixtures/uportal/layout_prolongation.jsonp");
 const LAYOUT_V5: &str = include_str!("fixtures/uportal/layout_v5.json");
@@ -26,9 +27,7 @@ const SESSION_V4_GUEST: &str = include_str!("fixtures/uportal/session_v4_invite.
 const PEOPLE_V4: &str = include_str!("fixtures/uportal/people_v4.json");
 const USERINFO: &str = include_str!("fixtures/uportal/userinfo_v5.jwt");
 
-// ---------------------------------------------------------------------------------------------
 // Faux portail
-// ---------------------------------------------------------------------------------------------
 
 #[derive(Default)]
 struct Hits {
@@ -69,13 +68,6 @@ impl Portal {
             hits: Arc::default(),
         }
     }
-}
-
-fn has_cookie(headers: &HeaderMap, pair: &str) -> bool {
-    headers
-        .get(header::COOKIE)
-        .and_then(|c| c.to_str().ok())
-        .is_some_and(|c| c.split("; ").any(|p| p == pair))
 }
 
 fn reply(status: StatusCode, body: &str) -> Response<Body> {
@@ -195,17 +187,8 @@ async fn cas_handler(State(cas): State<Cas>, uri: Uri, headers: HeaderMap) -> Re
     }
 }
 
-async fn serve(router: Router) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, router).await.unwrap();
-    });
-    format!("http://{addr}")
-}
-
 async fn spawn_portal(portal: &Portal) -> String {
-    serve(
+    common::serve(
         Router::new()
             .fallback(portal_handler)
             .with_state(portal.clone()),
@@ -214,27 +197,19 @@ async fn spawn_portal(portal: &Portal) -> String {
 }
 
 async fn spawn_cas(cas: &Cas) -> String {
-    serve(Router::new().fallback(cas_handler).with_state(cas.clone())).await
+    common::serve(Router::new().fallback(cas_handler).with_state(cas.clone())).await
 }
 
-// ---------------------------------------------------------------------------------------------
 // Contexte
-// ---------------------------------------------------------------------------------------------
 
 fn university(portal: &Value, sso: &Value) -> ResolvedUniversity {
-    let file: UniversityFile = serde_json::from_value(json!({
+    common::university(json!({
         "id": "test",
         "name": "Université de test",
         "sso": sso,
         "portal": portal,
         "services": { "apps": { "provider": "portal" }, "profile": { "provider": "portal" } },
     }))
-    .unwrap();
-    ResolvedUniversity {
-        dir: PathBuf::new(),
-        university: file,
-        establishments: BTreeMap::new(),
-    }
 }
 
 fn uportal4(root: &str) -> Value {
@@ -250,36 +225,15 @@ fn no_cas() -> Value {
 }
 
 fn session(cookies: Vec<StoredCookie>) -> SessionData {
-    SessionData {
-        university: "test".into(),
-        username: "e00000000000".into(),
-        establishment: None,
-        cookies,
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
-        expires_at: i64::MAX,
-    }
+    common::session("test", "e00000000000", cookies)
 }
 
 fn tgc() -> StoredCookie {
-    StoredCookie {
-        domain: "127.0.0.1".into(),
-        path: "/".into(),
-        name: "TGC".into(),
-        value: "ok".into(),
-        host_only: true,
-        expires: None,
-    }
+    common::stored_cookie("TGC", "ok", "/")
 }
 
 fn context<'a>(university: &'a ResolvedUniversity, session: &'a mut SessionData) -> Context<'a> {
-    Context {
-        university,
-        session,
-        now: Utc::now(),
-        net: NetSettings { https_only: false },
-    }
+    common::context(university, session, Utc::now())
 }
 
 fn has_session_cookie(session: &SessionData) -> bool {
@@ -289,9 +243,7 @@ fn has_session_cookie(session: &SessionData) -> bool {
         .any(|c| c.name == "JSESSIONID" && c.value == "auth")
 }
 
-// ---------------------------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
 async fn uportal4_applications_puis_session_reutilisee() {

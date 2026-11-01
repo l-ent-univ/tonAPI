@@ -1,8 +1,8 @@
 //! Fournisseur `zimbra-rest` contre un faux webmail local : page d'entrée avec préauthentification
 //! derrière un faux CAS, puis SOAP en JSON. Aucun test ne contacte un vrai service.
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -11,10 +11,12 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Method, Response, StatusCode, Uri, header};
 use chrono::{TimeZone, Utc};
 use serde_json::{Value, json};
-use tonapi_config::{ResolvedUniversity, UniversityFile};
+use tonapi_config::ResolvedUniversity;
 use tonapi_core::{ErrorCode, MailInbox};
 use tonapi_providers::{Context, NetSettings, mail_inbox};
-use tonapi_session::{SessionData, StoredCookie};
+use tonapi_session::SessionData;
+
+use common::query;
 
 const SEARCH: &str = include_str!("fixtures/zimbra/search_response.json");
 const FOLDER: &str = include_str!("fixtures/zimbra/folder_response.json");
@@ -111,12 +113,6 @@ fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .find_map(|pair| pair.strip_prefix(&format!("{name}=")).map(str::to_owned))
 }
 
-fn query(uri: &Uri, key: &str) -> Option<String> {
-    url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
-}
-
 const LOGIN_PAGE: &str = r#"<html><body><form method="post" id="fm1" action="login">
     <input id="username" name="username"><input type="password" name="password">
     <input type="hidden" name="execution" value="E1"><input type="hidden" name="_eventId" value="submit">
@@ -203,19 +199,16 @@ async fn handle(
 
 /// Démarre le faux webmail ; renvoie son adresse (`http://127.0.0.1:port`).
 async fn serve(state: &Shared) -> String {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (listener, base) = common::listen().await;
     let app = Router::new()
         .fallback(handle)
         .with_state((Arc::clone(state), base.clone()));
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
+    common::spawn(listener, app);
     base
 }
 
 fn university(base: &str) -> ResolvedUniversity {
-    let file: UniversityFile = serde_json::from_value(json!({
+    common::university(json!({
         "id": "demo-zimbra",
         "name": "Université Démo Zimbra",
         "timezone": "Europe/Paris",
@@ -226,40 +219,17 @@ fn university(base: &str) -> ResolvedUniversity {
             "entry-url": format!("{base}/preauth"),
         } },
     }))
-    .unwrap();
-    ResolvedUniversity {
-        dir: PathBuf::new(),
-        university: file,
-        establishments: BTreeMap::new(),
-    }
-}
-
-fn stored(name: &str, value: &str, path: &str) -> StoredCookie {
-    StoredCookie {
-        domain: "127.0.0.1".to_owned(),
-        path: path.to_owned(),
-        name: name.to_owned(),
-        value: value.to_owned(),
-        host_only: true,
-        expires: None,
-    }
 }
 
 /// Session d'étudiant : TGC du faux CAS et, si demandé, un cookie Zimbra déjà obtenu.
 fn session(zimbra_token: Option<&str>) -> SessionData {
-    let mut cookies = vec![stored("TGC", "tgc-synthetique", "/cas/")];
+    let mut cookies = vec![common::stored_cookie("TGC", "tgc-synthetique", "/cas/")];
     if let Some(token) = zimbra_token {
-        cookies.push(stored("ZM_AUTH_TOKEN", token, "/"));
+        cookies.push(common::stored_cookie("ZM_AUTH_TOKEN", token, "/"));
     }
     SessionData {
-        university: "demo-zimbra".to_owned(),
-        username: "camille.demo".to_owned(),
-        establishment: None,
-        cookies,
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
         expires_at: 0,
+        ..common::session("demo-zimbra", "camille.demo", cookies)
     }
 }
 

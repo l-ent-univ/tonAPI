@@ -4,18 +4,15 @@
 //! Un service absent donne `service_absent` (avec le lien quand il y en a un) ; une fonction qu'un
 //! fournisseur ne peut pas assurer (groupes d'un lien iCal, par exemple) donne `not_implemented`.
 
-// Les fournisseurs réseau sont asynchrones ; `demo` ne l'est pas mais partage la même signature.
-#![allow(clippy::unused_async)]
-
 mod ade_ical;
 mod ade_myplanning;
 mod ade_rest;
 mod ardemat;
 mod bluemind;
+mod common;
 mod demo;
 mod etudiants_api;
 mod moodle;
-#[allow(dead_code)] // utilisé par les fournisseurs réseau au fur et à mesure de leur ajout
 mod net;
 mod scodoc;
 mod shared;
@@ -37,7 +34,9 @@ use tonapi_core::{
 use tonapi_session::{EstablishmentPick, SessionData};
 
 pub use net::NetSettings;
-pub use sso::{LoginInput, LoginOutcome, MfaAction, MfaPrompt, complete_mfa, login, refresh};
+pub use sso::{
+    LoginInput, LoginOutcome, MfaAction, MfaPrompt, complete_mfa, login, logout, refresh,
+};
 pub use tonapi_http::otp::OtpMethods;
 
 /// Ce dont un fournisseur a besoin pour une requête.
@@ -53,6 +52,13 @@ impl Context<'_> {
         self.university
             .services_for(self.session.establishment.as_ref().map(|e| e.id.as_str()))
     }
+}
+
+/// Client HTTP impossible à construire (certificat supplémentaire illisible…) : le détail, qui
+/// contient un chemin du serveur, va dans le journal, pas dans la réponse.
+pub(crate) fn client_problem(error: &tonapi_http::HttpError) -> Problem {
+    tracing::error!(%error, "client HTTP impossible à construire");
+    Problem::new(ErrorCode::Internal).detail("configuration TLS de l'université illisible")
 }
 
 /// Fichier servi tel quel (attestation PDF…).
@@ -86,6 +92,11 @@ fn absent(services: &Services, kind: ServiceKind) -> Problem {
         Some((_, ServiceAvailability::Link { url })) => problem.link(url.as_str()),
         _ => problem,
     }
+}
+
+fn mon_dossier_web_pending() -> Problem {
+    Problem::new(ErrorCode::NotImplemented)
+        .detail("le fournisseur `mon-dossier-web` n'est pas encore implémenté")
 }
 
 fn tiles(ctx: &Context<'_>) -> bool {
@@ -369,10 +380,7 @@ pub async fn documents(ctx: &mut Context<'_>) -> Result<Fetched<Vec<Document>>, 
             ardemat::fetch_documents(ctx, base_url, service_url).await?,
             "ardemat",
         )),
-        Some(DocumentsService::MonDossierWeb { .. }) => {
-            Err(Problem::new(ErrorCode::NotImplemented)
-                .detail("le fournisseur `mon-dossier-web` n'est pas encore implémenté"))
-        }
+        Some(DocumentsService::MonDossierWeb { .. }) => Err(mon_dossier_web_pending()),
         Some(DocumentsService::Link(_) | DocumentsService::None) | None => {
             Err(absent(&services, ServiceKind::Documents))
         }
@@ -396,10 +404,7 @@ pub async fn document(ctx: &mut Context<'_>, id: &str) -> Result<Fetched<Downloa
             ardemat::download(ctx, base_url, service_url, id).await?,
             "ardemat",
         )),
-        Some(DocumentsService::MonDossierWeb { .. }) => {
-            Err(Problem::new(ErrorCode::NotImplemented)
-                .detail("le fournisseur `mon-dossier-web` n'est pas encore implémenté"))
-        }
+        Some(DocumentsService::MonDossierWeb { .. }) => Err(mon_dossier_web_pending()),
         Some(DocumentsService::Link(_) | DocumentsService::None) | None => {
             Err(absent(&services, ServiceKind::Documents))
         }

@@ -2,9 +2,11 @@
 
 Un fournisseur = un logiciel (ADE, ScoDoc, Moodle…), jamais une université. Tout ce qui varie d'un site à l'autre vient de la configuration (`tonapi-config`).
 
+Catalogue des fournisseurs, limites et essais réels : [Docs/fournisseurs.md](../../Docs/fournisseurs.md).
+
 ## Forme d'un module
 
-`src/<logiciel>.rs` (ex. `scodoc.rs`, `ade_ical.rs`) contient deux couches :
+`src/<logiciel>.rs` (ex. `scodoc.rs`, `zimbra.rs`) contient deux couches. Quand le fichier grossit, l'analyse part dans des sous-modules d'un dossier du même nom, sans `mod.rs` : `moodle/{parse,saml}.rs`, `uportal/parse.rs`, `ade_ical/{ics,fields,vaadin}.rs`, `ade_myplanning/{gwt,tree}.rs`. Ce qui sert à plusieurs fournisseurs (`root`, `token_key`, `university_tz`, `resolve_local`…) est dans `src/common.rs` ; le kit des faux serveurs de test est dans `tests/common/mod.rs`.
 
 1. **Analyse pure**, sans réseau : `pub(crate) fn parse_…(&str | &serde_json::Value, …) -> Result<Modèle, Problem>`. Elle reçoit le corps tel que le service le renvoie et produit les modèles de `tonapi-core`. C'est elle qui porte presque tous les tests.
 2. **Récupération** : `pub(crate) async fn fetch_…(ctx: &mut Context<'_>, config…) -> Result<Modèle, Problem>`. Elle ouvre un `Net` (`src/net.rs`), fait les requêtes, appelle `net.save(ctx)` avant de rendre la main, puis passe le corps à l'analyse.
@@ -24,6 +26,6 @@ L'aiguillage (`src/lib.rs`) appelle `fetch_…` dans le bras du fournisseur. Une
 
 ## Tests
 
-- Fixtures **synthétiques** dans `tests/fixtures/<logiciel>/`, construites d'après la documentation de `Docs/` : aucune donnée réelle, noms et valeurs inventés (`Camille Demo`, `e00000000000`).
+- Fixtures **synthétiques** dans `tests/fixtures/<logiciel>/`, construites d'après la recherche de `Docs/recherche/` : aucune donnée réelle, noms et valeurs inventés (`Camille Demo`, `e00000000000`).
 - Tests unitaires de l'analyse dans le module (`#[cfg(test)]`) : cas normal, champs manquants, valeurs non numériques, fuseau horaire.
 - Test de bout en bout dans `tests/<logiciel>_mock.rs` : un faux serveur axum local et `Context { net: NetSettings { https_only: false }, … }`. Aucun test ne contacte un vrai service.

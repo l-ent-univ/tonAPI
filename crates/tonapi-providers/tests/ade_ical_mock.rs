@@ -2,7 +2,8 @@
 //! le CAS (`/cas/login`), la page prose-etudiant qui porte le lien (`/prose/ical`) et le serveur
 //! ADE qui sert le flux (`/jsp/custom/modules/plannings/direct_cal.jsp`). Aucune donnée réelle.
 
-use std::collections::BTreeMap;
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -10,10 +11,12 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Response, StatusCode, Uri, header};
 use chrono::{NaiveDate, TimeZone, Utc};
-use tonapi_config::{ResolvedUniversity, UniversityFile};
+use tonapi_config::ResolvedUniversity;
 use tonapi_core::{Course, ErrorCode, Problem};
 use tonapi_providers::{Context, NetSettings, timetable, timetable_groups};
-use tonapi_session::{SessionData, StoredCookie};
+use tonapi_session::SessionData;
+
+use common::{query, redirect};
 
 const SEMAINE: &str = include_str!("fixtures/ade_ical/semaine.ics");
 const PAGE: &str = include_str!("fixtures/ade_ical/page-ical.html");
@@ -53,12 +56,6 @@ fn enc(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
-fn query(uri: &Uri, key: &str) -> Option<String> {
-    url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
-}
-
 fn reply(
     status: StatusCode,
     content_type: &str,
@@ -72,14 +69,6 @@ fn reply(
         r = r.header(header::SET_COOKIE, cookie);
     }
     r.body(Body::from(body)).unwrap()
-}
-
-fn redirect(location: &str) -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::FOUND)
-        .header(header::LOCATION, location)
-        .body(Body::empty())
-        .unwrap()
 }
 
 const LOGIN_PAGE: &str = r#"<html><body><form method="post" id="fm1" action="login">
@@ -188,9 +177,7 @@ async fn start(feed: Feed) -> (Shared, String) {
 }
 
 async fn start_with(feed: Feed, vaadin: bool) -> (Shared, String) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let base = format!("http://{addr}");
+    let (listener, base) = common::listen().await;
     let state: Shared = Arc::new(Mutex::new(Mock {
         base: base.clone(),
         feed,
@@ -200,14 +187,14 @@ async fn start_with(feed: Feed, vaadin: bool) -> (Shared, String) {
         navigations: Vec::new(),
     }));
     let app = Router::new().fallback(handle).with_state(state.clone());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    common::spawn(listener, app);
     (state, base)
 }
 
 /// Université de test : CAS et lien ADE sur le faux serveur. `feed_host` remplace l'hôte du flux.
 fn university(base: &str, feed_host: Option<&str>) -> ResolvedUniversity {
     let host = base.trim_start_matches("http://");
-    let file: UniversityFile = serde_json::from_value(serde_json::json!({
+    common::university(serde_json::json!({
         "id": "test-ade",
         "name": "Université de test",
         "sso": { "kind": "cas", "base-url": format!("{base}/cas/") },
@@ -217,38 +204,16 @@ fn university(base: &str, feed_host: Option<&str>) -> ResolvedUniversity {
             "feed-host": feed_host.unwrap_or(host),
         } },
     }))
-    .unwrap();
-    ResolvedUniversity {
-        dir: std::path::PathBuf::new(),
-        university: file,
-        establishments: BTreeMap::new(),
-    }
 }
 
 /// Session d'un étudiant fictif ; `tgc` : le CAS le reconnaît encore.
 fn session(tgc: bool) -> SessionData {
     let cookies = if tgc {
-        vec![StoredCookie {
-            domain: "127.0.0.1".to_owned(),
-            path: "/".to_owned(),
-            name: "TGC".to_owned(),
-            value: "TGT-demo".to_owned(),
-            host_only: true,
-            expires: None,
-        }]
+        vec![common::stored_cookie("TGC", "TGT-demo", "/")]
     } else {
         Vec::new()
     };
-    SessionData {
-        university: "test-ade".to_owned(),
-        username: "e00000000000".to_owned(),
-        establishment: None,
-        cookies,
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
-        expires_at: i64::MAX,
-    }
+    common::session("test-ade", "e00000000000", cookies)
 }
 
 fn day(m: u32, d: u32) -> NaiveDate {

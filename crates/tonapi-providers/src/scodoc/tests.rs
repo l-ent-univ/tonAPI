@@ -33,7 +33,7 @@ fn day(text: &str) -> NaiveDate {
     NaiveDate::parse_from_str(text, "%Y-%m-%d").unwrap()
 }
 
-// ───────────────────────────── notes ─────────────────────────────
+// notes
 
 #[test]
 fn releve_du_semestre_courant() {
@@ -209,7 +209,7 @@ fn dates_d_evaluation_dans_le_fuseau_de_l_universite() {
     assert_eq!(evaluation_date(None, Paris), None);
 }
 
-// ──────────────────────────── absences ────────────────────────────
+// absences
 
 #[test]
 fn absences_du_semestre() {
@@ -353,7 +353,7 @@ fn absences_formes_et_champs_manquants() {
     assert!(parse(json!("texte")).is_err());
 }
 
-// ───────────────────── réponse et adresses du service ─────────────────────
+// réponse et adresses du service
 
 #[test]
 fn reponses_de_data_php() {
@@ -407,7 +407,7 @@ fn adresses_du_service() {
     assert_eq!(token_key(&local), "scodoc.127.0.0.1:8080");
 }
 
-// ──────────── connexion au CAS de la composante (faux serveur) ────────────
+// connexion au CAS de la composante (faux serveur)
 
 use super::support;
 

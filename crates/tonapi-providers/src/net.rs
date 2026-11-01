@@ -61,7 +61,7 @@ impl Net {
             &options,
             CookieJar::from_stored(ctx.session.cookies.clone()),
         )
-        .map_err(|e| Problem::new(ErrorCode::Internal).detail(e.to_string()))?;
+        .map_err(|e| crate::client_problem(&e))?;
         let cas = match &ctx.university.university.sso {
             Sso::Cas(cas) => Some(CasServer::new(cas.base_url.clone(), cas.flavor)),
             Sso::Demo => None,

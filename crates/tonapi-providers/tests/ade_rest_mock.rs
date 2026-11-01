@@ -2,8 +2,8 @@
 //! session par le TGC, jeton SSO, `ssologin`, renouvellement du jeton sur 401 (un seul nouvel essai),
 //! sélection, événements et arbre des groupes. Aucune donnée réelle, aucun accès à un vrai service.
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -15,8 +15,10 @@ use serde_json::json;
 use tonapi_config::ResolvedUniversity;
 use tonapi_core::ErrorCode;
 use tonapi_providers::{Context, NetSettings, timetable, timetable_groups};
-use tonapi_session::{SessionData, StoredCookie};
+use tonapi_session::SessionData;
 use url::Url;
+
+use common::{has_cookie, query};
 
 const EVENTS: &str = include_str!("fixtures/ade_rest/events.json");
 const TREE: &str = include_str!("fixtures/ade_rest/resourcestree.json");
@@ -62,19 +64,6 @@ fn status(code: StatusCode) -> Response<Body> {
         .status(code)
         .body(Body::empty())
         .unwrap()
-}
-
-fn has_cookie(headers: &HeaderMap, pair: &str) -> bool {
-    headers
-        .get(header::COOKIE)
-        .and_then(|c| c.to_str().ok())
-        .is_some_and(|c| c.split("; ").any(|p| p == pair))
-}
-
-fn query(uri: &Uri, key: &str) -> Option<String> {
-    url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
 }
 
 fn bearer_is(headers: &HeaderMap, token: &str) -> bool {
@@ -198,52 +187,33 @@ async fn handle(
 }
 
 async fn start(selection: &str) -> (Shared, String) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (listener, base) = common::listen().await;
     let shared: Shared = Arc::new(Mutex::new(Mock {
         base: base.clone(),
         selection: selection.to_owned(),
         ..Mock::default()
     }));
     let app = Router::new().fallback(handle).with_state(shared.clone());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    common::spawn(listener, app);
     (shared, base)
 }
 
 fn university(base: &str) -> ResolvedUniversity {
-    let file = serde_json::from_value(json!({
+    common::university(json!({
         "id": "test",
         "name": "Université de test",
         "sso": {"kind": "cas", "base-url": format!("{base}/cas/")},
         "services": {"timetable": {"provider": "ade-portal-rest", "base-url": format!("{base}/portal/")}},
     }))
-    .unwrap();
-    ResolvedUniversity {
-        dir: PathBuf::new(),
-        university: file,
-        establishments: BTreeMap::new(),
-    }
 }
 
 /// Session d'un étudiant déjà connecté au CAS : seul le TGC est connu.
 fn session() -> SessionData {
-    SessionData {
-        university: "test".into(),
-        username: "e00000000000".into(),
-        establishment: None,
-        cookies: vec![StoredCookie {
-            domain: "127.0.0.1".into(),
-            path: "/cas".into(),
-            name: "TGC".into(),
-            value: "tgc-demo".into(),
-            host_only: true,
-            expires: None,
-        }],
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
-        expires_at: i64::MAX,
-    }
+    common::session(
+        "test",
+        "e00000000000",
+        vec![common::stored_cookie("TGC", "tgc-demo", "/cas")],
+    )
 }
 
 fn token_key(base: &str) -> String {

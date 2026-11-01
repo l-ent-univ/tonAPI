@@ -2,7 +2,8 @@
 //! chargeur GWT, code de permutation, quatre services GWT-RPC et `anonymous_cal.jsp`.
 //! Codes d'enseignement et numéros de ressources inventés.
 
-use std::collections::BTreeMap;
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -10,10 +11,12 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Response, StatusCode, Uri, header};
 use chrono::{NaiveDate, TimeZone, Utc};
-use tonapi_config::{ResolvedUniversity, UniversityFile};
+use tonapi_config::ResolvedUniversity;
 use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
 use tonapi_providers::{Context, NetSettings, timetable, timetable_groups};
-use tonapi_session::{SessionData, StoredCookie};
+use tonapi_session::SessionData;
+
+use common::{has_cookie, query, redirect};
 
 const SEMAINE: &str = include_str!("fixtures/ade_ical/semaine.ics");
 const PERMUTATION: &str = "1987F1EF14DA1BA12007E141147356DC";
@@ -75,12 +78,6 @@ struct Mock {
 
 type Shared = Arc<Mutex<Mock>>;
 
-fn query(uri: &Uri, key: &str) -> Option<String> {
-    url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
-}
-
 fn reply(
     status: StatusCode,
     content_type: &str,
@@ -94,21 +91,6 @@ fn reply(
         r = r.header(header::SET_COOKIE, cookie);
     }
     r.body(Body::from(body)).unwrap()
-}
-
-fn redirect(location: &str) -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::FOUND)
-        .header(header::LOCATION, location)
-        .body(Body::empty())
-        .unwrap()
-}
-
-fn has_cookie(headers: &HeaderMap, pair: &str) -> bool {
-    headers
-        .get(header::COOKIE)
-        .and_then(|c| c.to_str().ok())
-        .is_some_and(|c| c.split("; ").any(|p| p == pair))
 }
 
 async fn handle(
@@ -211,54 +193,32 @@ async fn handle(
 }
 
 async fn start() -> (Shared, String) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (listener, base) = common::listen().await;
     let state: Shared = Arc::new(Mutex::new(Mock {
         base: base.clone(),
         ..Mock::default()
     }));
     let app = Router::new().fallback(handle).with_state(state.clone());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    common::spawn(listener, app);
     (state, base)
 }
 
 fn university(base: &str) -> ResolvedUniversity {
-    let file: UniversityFile = serde_json::from_value(serde_json::json!({
+    common::university(serde_json::json!({
         "id": "test-ade",
         "name": "Université de test",
         "sso": { "kind": "cas", "base-url": format!("{base}/cas/") },
         "services": { "timetable": { "provider": "ade-myplanning", "base-url": format!("{base}/") } },
     }))
-    .unwrap();
-    ResolvedUniversity {
-        dir: std::path::PathBuf::new(),
-        university: file,
-        establishments: BTreeMap::new(),
-    }
 }
 
 fn session(tgc: bool) -> SessionData {
-    SessionData {
-        university: "test-ade".to_owned(),
-        username: "e00000000000".to_owned(),
-        establishment: None,
-        cookies: if tgc {
-            vec![StoredCookie {
-                domain: "127.0.0.1".to_owned(),
-                path: "/".to_owned(),
-                name: "TGC".to_owned(),
-                value: "TGT-demo".to_owned(),
-                host_only: true,
-                expires: None,
-            }]
-        } else {
-            Vec::new()
-        },
-        tokens: BTreeMap::new(),
-        pending: false,
-        issued_at: 0,
-        expires_at: i64::MAX,
-    }
+    let cookies = if tgc {
+        vec![common::stored_cookie("TGC", "TGT-demo", "/")]
+    } else {
+        Vec::new()
+    };
+    common::session("test-ade", "e00000000000", cookies)
 }
 
 async fn week(

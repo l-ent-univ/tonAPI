@@ -18,6 +18,7 @@ use tonapi_core::{App, ErrorCode, Problem, Profile};
 use url::Url;
 
 use crate::Context;
+use crate::common::root;
 use crate::net::{Net, upstream};
 
 const PROVIDER: &str = "tiles-portal";
@@ -35,24 +36,13 @@ const ENROLLMENT_HINTS: [&str; 7] = [
 
 fn base(ctx: &Context<'_>) -> Result<Url, Problem> {
     match &ctx.university.university.portal {
-        PortalConfig::TilesPortal { base_url } => {
-            let mut base = base_url.clone();
-            if !base.path().ends_with('/') {
-                let path = format!("{}/", base.path());
-                base.set_path(&path);
-            }
-            base.set_query(None);
-            base.set_fragment(None);
-            Ok(base)
-        }
+        PortalConfig::TilesPortal { base_url } => Ok(root(base_url)),
         _ => Err(Problem::new(ErrorCode::ServiceAbsent)
             .detail("aucun portail à tuiles n'est déclaré pour cette université")),
     }
 }
 
-// ---------------------------------------------------------------------------------------------
 // Récupération
-// ---------------------------------------------------------------------------------------------
 
 pub(crate) async fn fetch_profile(ctx: &mut Context<'_>) -> Result<Profile, Problem> {
     let attributes = get_json(ctx, "api/cas-attributes").await?;
@@ -123,9 +113,7 @@ async fn get_with_entry(net: &mut Net, base: &Url, url: &Url) -> Result<Value, P
     }
 }
 
-// ---------------------------------------------------------------------------------------------
 // Analyse (sans réseau)
-// ---------------------------------------------------------------------------------------------
 
 /// Attributs de l'étudiant : objet `userAttributes`, `attributes` ou la racine.
 fn attributes(value: &Value) -> Option<&Map<String, Value>> {
