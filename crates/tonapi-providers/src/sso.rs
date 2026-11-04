@@ -16,10 +16,6 @@ use url::Url;
 use crate::net::NetSettings;
 use crate::{demo, pick_establishment};
 
-/// Cookies qui portent à eux seuls une session CAS (ticket-granting) : jamais réutilisés pour une
-/// nouvelle connexion par mot de passe.
-const SSO_TICKET_COOKIES: [&str; 3] = ["TGC", "CASTGC", "CASTGT"];
-
 /// Clé de [`SessionData::tokens`] qui garde le défi du second facteur.
 const OTP_TOKEN: &str = "otp";
 /// Durée de vie d'un jeton « en attente du second facteur ».
@@ -164,13 +160,14 @@ pub async fn logout(university: &ResolvedUniversity, session: &SessionData) {
 
 /// Cookies d'une session précédente (du même compte, vérifié par le serveur) gardés pour la
 /// reconnaissance de l'appareil : ceux que le CAS reçoit, c'est-à-dire posés pour son hôte ou un
-/// domaine parent (`Domain=univ.fr`), sans le TGC. Les cookies propres aux services (ScoDoc,
+/// domaine parent (`Domain=univ.fr`), sans le TGC : jamais réutilisé pour une nouvelle connexion
+/// par mot de passe. Les cookies propres aux services (ScoDoc,
 /// Moodle, mail…) ne passent pas d'une session à l'autre.
 fn device_cookies(previous: Vec<StoredCookie>, cas: &CasServer) -> Vec<StoredCookie> {
     let host = cas.base.host_str().unwrap_or_default().to_ascii_lowercase();
     previous
         .into_iter()
-        .filter(|c| !SSO_TICKET_COOKIES.contains(&c.name.as_str()))
+        .filter(|c| !cas::TICKET_GRANTING.contains(&c.name.as_str()))
         .filter(|c| {
             let domain = c.domain.trim_start_matches('.').to_ascii_lowercase();
             host == domain || (!c.host_only && host.ends_with(&format!(".{domain}")))
@@ -359,10 +356,18 @@ pub async fn refresh(
         return Ok(session);
     };
     let mut browser = browser(university, session.cookies.clone(), NetSettings::default())?;
-    match cas::open(&mut browser, &cas, entry_url(university, &cas), None)
+    let entry = entry_url(university, &cas);
+    // Avec un portail, le renouvellement réussi revient sur lui : une page du CAS non reconnue
+    // (maintenance, refus) ne prolonge pas la session.
+    let expects_portal = !cas.owns(&entry) || entry.query_pairs().any(|(k, _)| k == "service");
+    match cas::open(&mut browser, &cas, entry, None)
         .await
         .map_err(cas_problem)?
     {
+        Outcome::SignedIn { page, .. } if expects_portal && cas.owns(&page.url) => {
+            Err(Problem::new(ErrorCode::UpstreamChanged)
+                .detail("le CAS n'a pas renvoyé vers le portail : session non prolongée"))
+        }
         Outcome::SignedIn { .. } => Ok(signed_in(session, &browser, now, ttl_secs)),
         Outcome::SecondFactor(_) => Err(Problem::new(ErrorCode::SessionExpired)
             .detail("l'université redemande le second facteur : reconnectez-vous")),

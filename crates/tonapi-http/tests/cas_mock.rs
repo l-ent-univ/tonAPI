@@ -21,6 +21,20 @@ struct Mock {
     pushed: bool,
     remembered: Option<String>,
     first_poll_done: bool,
+    /// Réponse du CAS au POST du mot de passe : page de refus que le code ne connaît pas.
+    refuse_password: Option<StatusCode>,
+    /// Réponse du CAS au POST du code : page de refus que le code ne connaît pas.
+    refuse_code: Option<StatusCode>,
+}
+
+const LOCKED_PAGE: &str = "<html><body><h1>Compte temporairement verrouillé</h1><p>Réessayez plus tard.</p></body></html>";
+
+fn status_html(status: StatusCode, body: &str) -> Response<Body> {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "text/html")
+        .body(Body::from(body.to_owned()))
+        .unwrap()
 }
 
 type Shared = Arc<Mutex<Mock>>;
@@ -147,6 +161,10 @@ async fn handle(
                 html(login_page(false), None)
             }
         }
+        (Method::POST, "/pre-otp/login") if s.refuse_password.is_some() => {
+            s.password_posts += 1;
+            status_html(s.refuse_password.unwrap_or(StatusCode::OK), LOCKED_PAGE)
+        }
         (Method::POST, "/pre-otp/login") => {
             s.password_posts += 1;
             let ok = query(&uri, "service").is_some()
@@ -175,6 +193,9 @@ async fn handle(
                     Some("connect.sid=otp-ok; Path=/cas"),
                 )
             }
+        }
+        (Method::POST, "/cas/login-h") if s.refuse_code.is_some() => {
+            status_html(s.refuse_code.unwrap_or(StatusCode::OK), LOCKED_PAGE)
         }
         (Method::POST, "/cas/login-h") => {
             if form(&body, "ticket").as_deref() == Some("TK")
@@ -406,5 +427,48 @@ async fn reprise_de_cookies_ne_verifie_pas_le_mot_de_passe() {
         state.lock().unwrap().password_posts,
         1,
         "aucun POST du mauvais mot de passe"
+    );
+}
+
+/// Audit 2026-11-04 : une page de refus que le code ne connaît pas, après le POST du mot de passe,
+/// passait pour une connexion réussie. Elle doit donner une erreur, quel que soit le statut.
+#[tokio::test]
+async fn page_de_refus_inconnue_apres_le_mot_de_passe() {
+    for status in [
+        StatusCode::OK,
+        StatusCode::LOCKED,
+        StatusCode::INTERNAL_SERVER_ERROR,
+    ] {
+        let (state, base) = start(false).await;
+        state.lock().unwrap().refuse_password = Some(status);
+        let app = Url::parse(&format!("{base}/app/")).unwrap();
+        let mut b = browser(CookieJar::default());
+        let outcome = cas::open(&mut b, &server(&base), app, Some(ETU)).await;
+        assert!(
+            matches!(outcome, Err(CasError::Unexpected(_))),
+            "HTTP {status} : {outcome:?}"
+        );
+        assert_eq!(state.lock().unwrap().password_posts, 1);
+    }
+}
+
+/// Même règle après le code du second facteur : pas de ticket, pas de session.
+#[tokio::test]
+async fn page_de_refus_inconnue_apres_le_code() {
+    let (state, base) = start(true).await;
+    let app = Url::parse(&format!("{base}/app/")).unwrap();
+    let cas_server = server(&base);
+    let mut b = browser(CookieJar::default());
+    let Outcome::SecondFactor(challenge) = cas::open(&mut b, &cas_server, app, Some(ETU))
+        .await
+        .unwrap()
+    else {
+        panic!("second facteur attendu")
+    };
+    state.lock().unwrap().refuse_code = Some(StatusCode::OK);
+    let outcome = cas::submit_code(&mut b, &cas_server, &challenge, "123456", true).await;
+    assert!(
+        matches!(outcome, Err(CasError::Unexpected(_))),
+        "{outcome:?}"
     );
 }

@@ -127,7 +127,7 @@ pub async fn open(
     credentials: Option<Credentials<'_>>,
 ) -> Result<Outcome, CasError> {
     let page = browser.get(url).await?;
-    walk(browser, cas, page, credentials, true).await
+    walk(browser, cas, page, credentials, true, false).await
 }
 
 /// Envoie le code du second facteur, puis termine la connexion.
@@ -149,7 +149,7 @@ pub async fn submit_code(
     let page = browser
         .post_form(challenge.page_url.clone(), &fields, &challenge.page_url)
         .await?;
-    walk(browser, cas, page, None, remember_device).await
+    walk(browser, cas, page, None, remember_device, true).await
 }
 
 /// Ticket de service (`ST-…`) pour `service`, obtenu avec la session CAS du navigateur (TGC) sans
@@ -235,16 +235,29 @@ enum Kind {
     Other,
 }
 
+/// Cookies qui portent à eux seuls une session CAS (ticket-granting).
+pub const TICKET_GRANTING: [&str; 3] = ["TGC", "CASTGC", "CASTGT"];
+
+/// `code_posted` : la page de départ répond déjà à l'envoi d'un code du second facteur.
 async fn walk(
     browser: &mut Browser,
     cas: &CasServer,
     mut page: Page,
     credentials: Option<Credentials<'_>>,
     remember_device: bool,
+    code_posted: bool,
 ) -> Result<Outcome, CasError> {
     let mut posted = false;
     let mut remembered = false;
+    // Dernier secret posté, et ticket de service vu depuis.
+    let mut secret = if code_posted {
+        Secret::Code
+    } else {
+        Secret::Nothing
+    };
+    let mut ticket = false;
     loop {
+        ticket |= carries_ticket(&page);
         match classify(cas, &page) {
             Kind::Login(form) => {
                 let Some(credentials) = credentials else {
@@ -258,6 +271,8 @@ async fn walk(
                 let target = login_target(cas, &page.url, &form)?;
                 let fields = login_fields(&form, credentials);
                 posted = true;
+                secret = Secret::Password;
+                ticket = false;
                 page = browser.post_form(target, &fields, &page.url).await?;
             }
             Kind::Otp(mut challenge) => {
@@ -276,6 +291,16 @@ async fn walk(
             Kind::PasswordChange => return Err(CasError::Unsupported("password_change")),
             Kind::UnknownMfa => return Err(CasError::Unsupported("mfa")),
             Kind::Other => {
+                let host = cas.base.host_str().unwrap_or_default();
+                let granted = TICKET_GRANTING
+                    .iter()
+                    .any(|name| browser.jar.contains(host, name));
+                let evidence = Evidence {
+                    secret,
+                    ticket,
+                    granted,
+                };
+                accept(cas, &page, evidence)?;
                 return Ok(Outcome::SignedIn {
                     page,
                     password_posted: posted,
@@ -285,48 +310,109 @@ async fn walk(
     }
 }
 
+/// Secret posté pendant la marche.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Secret {
+    Nothing,
+    Password,
+    /// Code du second facteur.
+    Code,
+}
+
+/// Ce que la marche a vu avant d'arriver sur une page non reconnue.
+#[derive(Clone, Copy)]
+struct Evidence {
+    secret: Secret,
+    /// Ticket de service (`?ticket=…`) vu depuis le dernier secret posté.
+    ticket: bool,
+    /// Le pot contient un cookie ticket-granting du CAS.
+    granted: bool,
+}
+
+/// Une page non reconnue n'ouvre la session que sur une preuve positive. Sans cette règle, une
+/// page de refus que le code ne connaît pas (compte verrouillé, limitation, erreur 500) passait
+/// pour une connexion réussie.
+///
+/// - Le CAS qui répond autre chose qu'un 2xx : erreur.
+/// - Après un mot de passe ou un code : un ticket de service, ou un TGC émis par ce POST de mot
+///   de passe (connexion sans service). Le pot de départ d'une connexion n'a jamais de TGC.
+/// - Sans secret posté (page protégée, renouvellement), la page revient à l'appelant : c'est
+///   lui qui sait où la marche devait arriver (voir `refresh` dans `tonapi-providers`).
+fn accept(cas: &CasServer, page: &Page, evidence: Evidence) -> Result<(), CasError> {
+    if page.stopped_at.is_some() {
+        return Ok(());
+    }
+    let on_cas = cas.owns(&page.url);
+    if on_cas && !page.status.is_success() {
+        return Err(CasError::Unexpected(format!(
+            "le CAS répond HTTP {} pendant la connexion",
+            page.status.as_u16()
+        )));
+    }
+    let proven = match evidence.secret {
+        Secret::Nothing => true,
+        Secret::Code => evidence.ticket,
+        Secret::Password => evidence.ticket || evidence.granted,
+    };
+    if proven {
+        Ok(())
+    } else {
+        Err(CasError::Unexpected(
+            "page du CAS non reconnue, sans ticket de service".into(),
+        ))
+    }
+}
+
+/// Une redirection de la page mène à un ticket de service non vide. L'adresse demandée ne compte
+/// pas : la page esup-otp, où le code est posté, porte déjà le ticket du mot de passe.
+fn carries_ticket(page: &Page) -> bool {
+    page.hops.iter().skip(1).any(|url| {
+        url.query_pairs()
+            .any(|(key, value)| key == "ticket" && !value.is_empty())
+    })
+}
+
 fn classify(cas: &CasServer, page: &Page) -> Kind {
     if page.stopped_at.is_some() {
         return Kind::Other;
     }
-    let on_cas = cas.owns(&page.url);
+    // Toutes les pages reconnues sont servies par le CAS. Une page d'un autre hôte de la chaîne
+    // n'est même pas analysée : elle ne peut ni désigner l'API OTP appelée, ni recevoir le code,
+    // ni coûter une analyse HTML.
+    if !cas.owns(&page.url) {
+        return Kind::Other;
+    }
     let body = &page.body;
     let forms = forms::forms(body);
 
-    if on_cas
-        && let Some(form) = forms
-            .iter()
-            .find(|f| f.has_password && (f.has("execution") || f.has("lt")))
+    if let Some(form) = forms
+        .iter()
+        .find(|f| f.has_password && (f.has("execution") || f.has("lt")))
     {
         return Kind::Login(form.clone());
     }
-    // Second facteur et page « appareil » : seulement sur le CAS. Une page d'un autre hôte de
-    // la chaîne ne doit pas pouvoir désigner l'API OTP appelée ni recevoir le code.
-    if on_cas && let Some(challenge) = otp_challenge(page, &forms) {
+    if let Some(challenge) = otp_challenge(page, &forms) {
         return Kind::Otp(challenge);
     }
-    if on_cas
-        && let Some(form) = forms
-            .iter()
-            .find(|f| f.has("rememberMe") && f.has("ticket"))
+    if let Some(form) = forms
+        .iter()
+        .find(|f| f.has("rememberMe") && f.has("ticket"))
     {
         return Kind::Remember(form.clone());
     }
-    if on_cas {
-        let lower = body.to_lowercase();
-        if lower.contains("casmustchangepass")
-            || lower.contains("mot de passe a expiré")
-            || lower.contains("mot de passe expiré")
-            || lower.contains("password has expired")
-        {
-            return Kind::PasswordChange;
-        }
-        if forms.iter().any(|f| f.has("token") || f.has("otp")) || lower.contains("mfa-api") {
-            return Kind::UnknownMfa;
-        }
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            tracing::debug!("page du CAS non reconnue : {}", page_shape(body, &forms));
-        }
+    let lower = body.to_lowercase();
+    if lower.contains("casmustchangepass")
+        || lower.contains("mot de passe a expiré")
+        || lower.contains("mot de passe expiré")
+        || lower.contains("password has expired")
+    {
+        return Kind::PasswordChange;
+    }
+    if forms.iter().any(|f| f.has("token") || f.has("otp")) || lower.contains("mfa-api") {
+        return Kind::UnknownMfa;
+    }
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("page du CAS non reconnue : {}", page_shape(body, &forms));
     }
     Kind::Other
 }
