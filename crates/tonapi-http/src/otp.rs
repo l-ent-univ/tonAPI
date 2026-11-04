@@ -125,12 +125,11 @@ pub async fn push(
     'poll: while Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());
         let result = browser
-            .send(
+            .send_long_poll(
                 Method::GET,
                 socket.clone(),
                 headers.clone(),
-                None,
-                Some(poll_timeout.min(remaining + Duration::from_secs(1))),
+                poll_timeout.min(remaining + Duration::from_secs(1)),
             )
             .await;
         let body = match result {

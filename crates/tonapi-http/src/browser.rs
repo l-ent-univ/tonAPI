@@ -102,33 +102,67 @@ const PER_HOST: usize = 32;
 /// Attente maximale d'une place ; au-delà, le service est considéré comme saturé.
 const HOST_WAIT: Duration = Duration::from_secs(10);
 
+/// Longues interrogations (socket Engine.IO du push esup-otp) simultanées vers un même hôte. Elles
+/// restent ouvertes jusqu'à la réponse du téléphone : comptées à part, elles ne prennent pas les
+/// places des requêtes ordinaires du même hôte.
+const LONG_POLLS_PER_HOST: usize = 16;
+
 /// Au-delà de ce nombre d'hôtes suivis, ceux qui n'ont plus de requête en cours sont oubliés.
 const MAX_HOSTS: usize = 10_000;
 
 type HostMap = HashMap<String, Arc<tokio::sync::Semaphore>>;
 
 static HOSTS: LazyLock<Mutex<HostMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static LONG_POLLS: LazyLock<Mutex<HostMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Retire les hôtes dont toutes les places sont libres et que personne n'attend.
-fn forget_idle_hosts(map: &mut HostMap) {
-    if map.len() > MAX_HOSTS {
-        map.retain(|_, s| Arc::strong_count(s) > 1 || s.available_permits() < PER_HOST);
+/// File de places d'une requête.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Lane {
+    Normal,
+    LongPoll,
+}
+
+impl Lane {
+    fn capacity(self) -> usize {
+        match self {
+            Lane::Normal => PER_HOST,
+            Lane::LongPoll => LONG_POLLS_PER_HOST,
+        }
+    }
+
+    fn hosts(self) -> &'static Mutex<HostMap> {
+        match self {
+            Lane::Normal => &HOSTS,
+            Lane::LongPoll => &LONG_POLLS,
+        }
     }
 }
 
-async fn host_permit(url: &Url) -> Result<tokio::sync::OwnedSemaphorePermit, HttpError> {
+/// Retire les hôtes dont toutes les places sont libres et que personne n'attend.
+fn forget_idle_hosts(map: &mut HostMap, capacity: usize) {
+    if map.len() > MAX_HOSTS {
+        map.retain(|_, s| Arc::strong_count(s) > 1 || s.available_permits() < capacity);
+    }
+}
+
+async fn host_permit(
+    url: &Url,
+    lane: Lane,
+) -> Result<tokio::sync::OwnedSemaphorePermit, HttpError> {
     let host = format!(
         "{}:{}",
         url.host_str().unwrap_or_default(),
         url.port_or_known_default().unwrap_or(0)
     );
+    let capacity = lane.capacity();
     let semaphore = {
-        let mut map = HOSTS
+        let mut map = lane
+            .hosts()
             .lock()
             .map_err(|_| HttpError::Network("verrou des hôtes".to_owned()))?;
-        forget_idle_hosts(&mut map);
+        forget_idle_hosts(&mut map, capacity);
         map.entry(host)
-            .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(PER_HOST)))
+            .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(capacity)))
             .clone()
     };
     match tokio::time::timeout(HOST_WAIT, semaphore.acquire_owned()).await {
@@ -225,6 +259,24 @@ impl Browser {
         Ok((status, headers, text))
     }
 
+    /// Comme [`Browser::send`], pour une longue interrogation (socket du push) : comptée dans une
+    /// file à part, elle ne prive pas les autres requêtes du même hôte de leurs places.
+    pub async fn send_long_poll(
+        &mut self,
+        method: Method,
+        url: Url,
+        headers: HeaderMap,
+        timeout: Duration,
+    ) -> Result<(StatusCode, HeaderMap, String), HttpError> {
+        let trace_url = url.clone();
+        let (status, headers, bytes) = self
+            .send_in(Lane::LongPoll, method, url, headers, None, Some(timeout))
+            .await?;
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        trace_exchange(&trace_url, status, &headers, &text);
+        Ok((status, headers, text))
+    }
+
     /// Comme [`Browser::send`], corps brut (fichier PDF…), jamais tracé.
     pub async fn send_bytes(
         &mut self,
@@ -234,9 +286,22 @@ impl Browser {
         body: Option<String>,
         timeout: Option<Duration>,
     ) -> Result<(StatusCode, HeaderMap, Vec<u8>), HttpError> {
+        self.send_in(Lane::Normal, method, url, headers, body, timeout)
+            .await
+    }
+
+    async fn send_in(
+        &mut self,
+        lane: Lane,
+        method: Method,
+        url: Url,
+        headers: HeaderMap,
+        body: Option<String>,
+        timeout: Option<Duration>,
+    ) -> Result<(StatusCode, HeaderMap, Vec<u8>), HttpError> {
         let url = self.secure(url)?;
         // Tenu jusqu'à la fin de la lecture du corps.
-        let _permit = host_permit(&url).await?;
+        let _permit = host_permit(&url, lane).await?;
         let mut request = self.client.request(method, url.clone()).headers(headers);
         if let Some(cookie) = self.jar.header_for(&url, Self::now()) {
             request = request.header(header::COOKIE, cookie);
@@ -473,8 +538,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        Browser, BrowserOptions, HostMap, HttpError, MAX_BODY, MAX_HOSTS, PER_HOST, describe,
-        forget_idle_hosts,
+        Browser, BrowserOptions, HostMap, HttpError, LONG_POLLS_PER_HOST, Lane, MAX_BODY,
+        MAX_HOSTS, PER_HOST, describe, forget_idle_hosts, host_permit,
     };
     use crate::cookies::CookieJar;
 
@@ -575,15 +640,39 @@ mod tests {
         let _attente = attendu.clone();
         map.insert("attendu:443".to_owned(), attendu);
 
-        forget_idle_hosts(&mut map);
+        forget_idle_hosts(&mut map, PER_HOST);
         let mut restants: Vec<_> = map.keys().cloned().collect();
         restants.sort();
         assert_eq!(restants, ["attendu:443", "occupe:443"]);
 
         // Sous le plafond, rien n'est retiré.
         map.insert("libre:443".to_owned(), new());
-        forget_idle_hosts(&mut map);
+        forget_idle_hosts(&mut map, PER_HOST);
         assert_eq!(map.len(), 3);
+    }
+
+    /// Audit 2026-11-04 : les longues interrogations du push prenaient les places ordinaires de
+    /// l'hôte OTP. Elles ont leur propre file.
+    #[tokio::test]
+    async fn les_longues_interrogations_ont_leur_file() {
+        let url = Url::parse("https://otp-file.exemple.test/sockets/").unwrap();
+        let mut held = Vec::new();
+        for _ in 0..LONG_POLLS_PER_HOST {
+            held.push(host_permit(&url, Lane::LongPoll).await.unwrap());
+        }
+        // File des longues interrogations pleine : la requête ordinaire passe tout de suite.
+        let normal =
+            tokio::time::timeout(Duration::from_millis(100), host_permit(&url, Lane::Normal)).await;
+        assert!(matches!(normal, Ok(Ok(_))));
+        let extra = tokio::time::timeout(
+            Duration::from_millis(100),
+            host_permit(&url, Lane::LongPoll),
+        )
+        .await;
+        assert!(
+            extra.is_err(),
+            "la file des longues interrogations est bornée"
+        );
     }
 
     #[test]
