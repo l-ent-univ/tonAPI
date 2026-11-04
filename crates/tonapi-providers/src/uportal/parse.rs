@@ -23,22 +23,29 @@ const TECHNICAL_FOLDERS: [&str; 1] = ["column"];
 /// Extensions d'une icône, par opposition à une page d'application.
 const IMAGE_EXTENSIONS: [&str; 7] = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp"];
 
-/// Lien sans trace de l'étudiant : sans paramètre ni fragment (un lien de capacité, comme un
-/// flux iCal ou un numéro étudiant, y passe souvent), sans son identifiant, sans mot évoquant un
-/// ticket, un jeton ou une session.
+/// Lien sans trace de l'étudiant : sans fragment, sans son identifiant, sans mot évoquant un
+/// ticket, un jeton ou une session, et sans segment de chemin ni valeur de paramètre qui
+/// ressemble à un numéro ou un jeton (flux iCal, numéro étudiant, lien de capacité).
+///
+/// Un refus ne coûte qu'une requête de plus : dans le doute, le lien n'est pas partagé.
 pub(super) fn shareable(link: &str, account: &str) -> bool {
     let Ok(url) = Url::parse(link) else {
         return false;
     };
-    if url.fragment().is_some() {
+    if url.fragment().is_some() || !url.username().is_empty() || url.password().is_some() {
         return false;
     }
-    // Paramètres courts seulement (`?v=1`) : une valeur longue, un numéro ou un code
-    // hexadécimal (jeton, flux iCal, numéro étudiant) peut être propre à l'étudiant.
-    let personal_value = url.query_pairs().any(|(_, value)| {
-        value.len() > 8 || (value.len() >= 6 && value.chars().all(|c| c.is_ascii_hexdigit()))
-    });
-    if personal_value {
+    // Paramètres courts seulement (`?v=1`) : une valeur longue peut être propre à l'étudiant.
+    let personal_value = url
+        .query_pairs()
+        .any(|(_, value)| value.len() > 8 || token_like(&value));
+    let personal_segment = url
+        .path_segments()
+        .into_iter()
+        .flatten()
+        .flat_map(|segment| segment.split(['.', ';', ',']))
+        .any(token_like);
+    if personal_value || personal_segment {
         return false;
     }
     let lower = link.to_ascii_lowercase();
@@ -48,6 +55,16 @@ pub(super) fn shareable(link: &str, account: &str) -> bool {
     .iter()
     .any(|word| lower.contains(word));
     !personal && (account.is_empty() || !lower.contains(&account.to_ascii_lowercase()))
+}
+
+/// Numéro (4 chiffres ou plus), code hexadécimal ou UUID (6 caractères ou plus, avec un
+/// chiffre), ou longue chaîne avec des chiffres : ce qui ressemble à un identifiant personnel.
+fn token_like(part: &str) -> bool {
+    let len = part.len();
+    let digits = part.bytes().filter(u8::is_ascii_digit).count();
+    (len >= 4 && digits == len)
+        || (len >= 6 && digits > 0 && part.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
+        || (len >= 16 && digits > 0)
 }
 
 /// Lien d'un fragment de portlet : la source de son `<iframe>`, sinon son premier lien `<a>`

@@ -24,6 +24,26 @@ fn lien_partageable_entre_etudiants() {
     assert!(!shareable("https://app.exemple.test/?jsessionid=abc", ""));
 }
 
+/// Audit 2026-11-04 : un jeton ou un numéro dans le chemin passait le filtre, et le lien d'un
+/// étudiant pouvait être servi aux autres par le cache partagé.
+#[test]
+fn jeton_ou_numero_dans_le_chemin_jamais_partage() {
+    for link in [
+        "https://ade.exemple.test/cal/8241fc0e9a7b/edt.ics",
+        "https://app.exemple.test/dossier/21901234",
+        "https://app.exemple.test/d/3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+        "https://app.exemple.test/s/Ab3dEf6hIj9kLm2nOp5q",
+        "https://app.exemple.test/f/21901234.pdf",
+        "https://moi:secret@app.exemple.test/",
+    ] {
+        assert!(!shareable(link, "e2100"), "{link}");
+    }
+    assert!(shareable(
+        "https://app.exemple.test/ent/v2/index.html",
+        "e2100"
+    ));
+}
+
 #[test]
 fn lien_du_fragment_de_portlet() {
     let base = Url::parse("https://ent.exemple.test/uPortal/").unwrap();
