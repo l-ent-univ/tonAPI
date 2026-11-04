@@ -331,9 +331,13 @@ pub(super) fn decode_entities(input: &str) -> String {
     while let Some(start) = rest.find('&') {
         out.push_str(rest.get(..start).unwrap_or_default());
         let tail = rest.get(start..).unwrap_or_default();
+        // `;` cherché dans les 11 premiers octets seulement : un `&` sans `;` proche ne relit pas
+        // toute la fin du texte (quadratique sur des milliers de `&`).
         let decoded = tail
-            .find(';')
-            .filter(|end| *end <= 10)
+            .as_bytes()
+            .iter()
+            .take(11)
+            .position(|b| *b == b';')
             .and_then(|end| Some((entity(tail.get(1..end)?)?, end + 1)));
         if let Some((character, length)) = decoded {
             out.push(character);

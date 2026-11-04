@@ -38,10 +38,95 @@ fn selector(css: &str) -> Selector {
     Selector::parse(css).unwrap_or_else(|_| unreachable!("sélecteur constant : {css}"))
 }
 
+/// Imbrication au-delà de laquelle une page n'est pas analysée. html5ever parcourt la pile des
+/// éléments ouverts à chaque balise : sur des milliers de `<div>` imbriqués, le coût devient
+/// quadratique et bloque un fil du runtime. Une vraie page de connexion reste sous 100.
+const MAX_DEPTH: usize = 512;
+
+/// Éléments sans balise fermante.
+const VOID: [&str; 13] = [
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track",
+    "wbr",
+];
+
+/// Document analysé, ou `None` si la page est trop imbriquée pour l'être sans risque.
+fn parse(html: &str) -> Option<Html> {
+    if too_deep(html) {
+        tracing::debug!("page HTML trop imbriquée : non analysée");
+        return None;
+    }
+    Some(Html::parse_document(html))
+}
+
+/// Estimation linéaire de l'imbrication : balises ouvrantes moins fermantes, hors éléments vides,
+/// commentaires, scripts et styles. Elle surestime une page mal fermée, jamais l'inverse sur une
+/// page bien formée.
+fn too_deep(html: &str) -> bool {
+    let bytes = html.as_bytes();
+    let mut depth = 0usize;
+    let mut i = 0;
+    while let Some(offset) = bytes
+        .get(i..)
+        .and_then(|rest| rest.iter().position(|b| *b == b'<'))
+    {
+        i += offset + 1;
+        let rest = bytes.get(i..).unwrap_or_default();
+        if rest.starts_with(b"!--") {
+            i += find(rest, b"-->").map_or(rest.len(), |e| e + 3);
+            continue;
+        }
+        let closing = rest.first() == Some(&b'/');
+        let name_start = usize::from(closing);
+        let name_len = rest
+            .get(name_start..)
+            .unwrap_or_default()
+            .iter()
+            .take_while(|b| b.is_ascii_alphanumeric())
+            .count();
+        if name_len == 0 {
+            continue;
+        }
+        let name = rest
+            .get(name_start..name_start + name_len)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let tag_end = find(rest, b">").map_or(rest.len(), |e| e + 1);
+        let self_closing = rest.get(..tag_end).is_some_and(|t| t.ends_with(b"/>"));
+        if closing {
+            depth = depth.saturating_sub(1);
+        } else if !self_closing && !VOID.iter().any(|v| v.as_bytes() == name.as_slice()) {
+            depth += 1;
+            if depth > MAX_DEPTH {
+                return true;
+            }
+            // Contenu brut : un `<` de script n'ouvre rien.
+            if name == b"script" || name == b"style" {
+                let close = if name == b"script" {
+                    b"</script".as_slice()
+                } else {
+                    b"</style"
+                };
+                let after = rest.get(tag_end..).unwrap_or_default();
+                let lower = after.to_ascii_lowercase();
+                i += tag_end + find(&lower, close).unwrap_or(after.len());
+                continue;
+            }
+        }
+        i += tag_end;
+    }
+    false
+}
+
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
 /// Tous les formulaires de la page.
 #[must_use]
 pub fn forms(html: &str) -> Vec<Form> {
-    let document = Html::parse_document(html);
+    let Some(document) = parse(html) else {
+        return Vec::new();
+    };
     let form_selector = selector("form");
     let control_selector = selector("input, button, select, textarea");
     document
@@ -103,7 +188,7 @@ const WEAK: &[&str] = &["alert", "message", "messages"];
 /// Message d'erreur affiché par la page (CAS, OTP), s'il y en a un.
 #[must_use]
 pub fn error_message(html: &str) -> Option<String> {
-    let document = Html::parse_document(html);
+    let document = parse(html)?;
     let candidates = selector("div, p, span");
     let mut weak = None;
     for element in document.select(&candidates) {
@@ -138,7 +223,7 @@ pub fn error_message(html: &str) -> Option<String> {
 /// Titre de la page.
 #[must_use]
 pub fn title(html: &str) -> Option<String> {
-    let document = Html::parse_document(html);
+    let document = parse(html)?;
     document
         .select(&selector("title"))
         .next()
@@ -162,6 +247,31 @@ mod tests {
         <input type="checkbox" name="publicWorkstation" value="true"/>
         <button name="submitBtn" type="submit">Se connecter</button>
       </form></body></html>"#;
+
+    /// Audit 2026-11-04 : des milliers de balises imbriquées rendaient l'analyse quadratique.
+    #[test]
+    fn page_trop_imbriquee_non_analysee() {
+        let deep = format!(
+            "{}<form><input name=\"x\"></form>",
+            "<div>".repeat(MAX_DEPTH + 1)
+        );
+        let started = std::time::Instant::now();
+        assert!(forms(&deep).is_empty());
+        assert_eq!(error_message(&deep), None);
+        assert!(started.elapsed() < std::time::Duration::from_millis(200));
+
+        // Une page ordinaire, éléments vides, script et commentaire compris, reste lue.
+        let script = format!(
+            "<script>for(i=0;i<n;i++){{}}{}</script>",
+            "if(a<b)".repeat(600)
+        );
+        let normal = format!(
+            "<!-- <div><div> -->{script}<br><img src=x><p>{}</p>{CAS}",
+            "<br><input name=\"y\">".repeat(600)
+        );
+        assert!(!too_deep(&normal));
+        assert_eq!(forms(&normal).len(), 1);
+    }
 
     #[test]
     fn formulaire_cas() {

@@ -240,6 +240,9 @@ async fn download(net: &mut Net, link: &Url) -> Result<Feed, Problem> {
 
 // Lien du flux
 
+/// Longueur maximale d'un lien de flux.
+const MAX_LINK: usize = 2048;
+
 /// Premier lien `direct_cal.jsp?data=…` de la page qui vise `feed_host`.
 ///
 /// La page est de l'HTML Vaadin avec un état JSON : le lien y est en clair, mais on défait les
@@ -249,11 +252,25 @@ fn find_feed_link(body: &str, feed_host: &str, https_only: bool) -> Option<Url> 
         .replace("\\/", "/")
         .replace("\\u0026", "&")
         .replace("&amp;", "&");
+    let prefixes = [
+        format!("https://{feed_host}"),
+        format!("http://{feed_host}"),
+    ];
     text.match_indices("http").find_map(|(start, _)| {
         let candidate = text.get(start..)?;
-        let end = candidate
-            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '\\' | '`'))
-            .unwrap_or(candidate.len());
+        // Seuls les liens vers l'hôte du flux, et au plus `MAX_LINK` octets : sinon chaque
+        // `http` relirait toute la fin de la page (quadratique sur `httphttp…`).
+        if !prefixes.iter().any(|p| {
+            candidate
+                .get(..p.len())
+                .is_some_and(|c| c.eq_ignore_ascii_case(p))
+        }) {
+            return None;
+        }
+        let end = candidate.bytes().take(MAX_LINK).position(|b| {
+            b.is_ascii_whitespace() || matches!(b, b'"' | b'\'' | b'<' | b'>' | b'\\' | b'`')
+        });
+        let end = end.or((candidate.len() <= MAX_LINK).then_some(candidate.len()))?;
         feed_link(candidate.get(..end)?, feed_host, https_only)
     })
 }
@@ -309,6 +326,17 @@ mod tests {
         assert!(find_feed_link(&http, HOTE, true).is_none());
         assert!(find_feed_link(&http, HOTE, false).is_some());
         assert!(find_feed_link("<html>rien</html>", HOTE, true).is_none());
+    }
+
+    /// Audit 2026-11-04 : chaque `http` relisait toute la fin de la page.
+    #[test]
+    fn recherche_du_lien_lineaire() {
+        let page = format!("{}{}", "http".repeat(200_000), PAGE);
+        let started = std::time::Instant::now();
+        assert!(find_feed_link(&page, HOTE, true).is_some());
+        let long = format!("https://{HOTE}/{}", "a".repeat(MAX_LINK));
+        assert!(find_feed_link(&long, HOTE, true).is_none());
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[test]

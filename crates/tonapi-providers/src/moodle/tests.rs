@@ -569,3 +569,18 @@ fn les_futurs_sont_send(ctx: &mut Context<'_>, base: &Url, config: &HomeworkServ
     assert_send(&fetch_webservice(ctx, base, &LOCAL));
     assert_send(&sign_in(ctx, config, "u", "p"));
 }
+
+/// Audit 2026-11-04 : un `&` sans `;` proche relisait toute la fin du texte, et chaque `<meta`
+/// d'une même balise rescannait la fin de la page.
+#[test]
+fn entites_et_meta_refresh_en_temps_lineaire() {
+    assert_eq!(decode_entities("&amp;aéééé"), "&aéééé");
+    assert_eq!(decode_entities("&éééééééééé;"), "&éééééééééé;");
+    let from = Url::parse("https://idp.exemple.test/").unwrap();
+    let started = std::time::Instant::now();
+    let ampersands = format!("{};", "&".repeat(200_000));
+    assert_eq!(decode_entities(&ampersands), ampersands);
+    let metas = format!("{}>", "<meta".repeat(200_000));
+    assert!(html_redirect(&metas, &from).is_none());
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}

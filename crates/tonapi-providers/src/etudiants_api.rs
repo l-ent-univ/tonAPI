@@ -243,20 +243,28 @@ async fn get_json(net: &mut Net, url: Url) -> Result<Option<Value>, Problem> {
     Ok(serde_json::from_str(&body).ok())
 }
 
+/// Étapes (inscriptions) retenues au plus dans le dossier.
+const MAX_PROGRAMS: usize = 16;
+
 pub(crate) fn parse_record(value: &Value) -> Result<Record, Problem> {
     let root = value
         .as_object()
         .ok_or_else(|| upstream(PROVIDER, "dossier étudiant illisible"))?;
     // Plusieurs étapes possibles (double cursus) : leurs libellés, dans l'ordre, sans doublon.
+    // Au plus `MAX_PROGRAMS` : une réponse démesurée ne gonfle ni le calcul ni la réponse.
     let mut programs: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for step in root
         .get("etapes")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
     {
+        if programs.len() >= MAX_PROGRAMS {
+            break;
+        }
         if let Some(label) = text_or_number(step.get("libelle"))
-            && !programs.contains(&label)
+            && seen.insert(label.clone())
         {
             programs.push(label);
         }
@@ -535,6 +543,18 @@ pub(crate) fn parse_attestations(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Audit 2026-11-04 : `Vec::contains` rendait le dédoublonnage quadratique.
+    #[test]
+    fn etapes_bornees() {
+        let etapes: Vec<Value> = (0..50_000)
+            .map(|i| json!({ "libelle": format!("Étape {i}") }))
+            .collect();
+        let record = parse_record(&json!({ "etapes": etapes })).unwrap();
+        let program = record.program.unwrap();
+        assert_eq!(program.split(" ; ").count(), MAX_PROGRAMS);
+        assert!(program.starts_with("Étape 0 ; Étape 1"));
+    }
 
     #[test]
     fn numero_et_formation() {

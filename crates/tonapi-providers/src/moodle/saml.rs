@@ -135,9 +135,14 @@ pub(super) fn html_redirect(body: &str, from: &Url) -> Option<Url> {
 
 fn meta_refresh(body: &str) -> Option<&str> {
     let lower = body.to_ascii_lowercase();
+    // Fin de la dernière balise lue : un `<meta` qui tombe dedans n'est pas une nouvelle balise,
+    // et le relire rescannerait la même fin de page (quadratique sur `<meta<meta…>`).
+    let mut previous_end = 0;
     for (start, _) in lower.match_indices("<meta") {
-        // Sans `>` plus loin, aucune balise suivante ne se ferme non plus : on s'arrête (sinon
-        // chaque `<meta` relirait toute la fin de la page).
+        if start < previous_end {
+            continue;
+        }
+        // Sans `>` plus loin, aucune balise suivante ne se ferme non plus : on s'arrête.
         let Some(end) = lower
             .get(start..)
             .and_then(|rest| rest.find('>'))
@@ -145,6 +150,7 @@ fn meta_refresh(body: &str) -> Option<&str> {
         else {
             break;
         };
+        previous_end = end;
         let Some(tag) = lower.get(start..end) else {
             continue;
         };
