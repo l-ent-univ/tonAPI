@@ -59,7 +59,9 @@ impl IpLimiter {
     }
 
     fn allow(&self, ip: IpAddr, now: Instant) -> bool {
-        let ip = match ip {
+        // `::ffff:a.b.c.d` (serveur à l'écoute sur `[::]`) redevient une IPv4 : sinon le masque
+        // /64 met tous les clients IPv4 dans le même compartiment.
+        let ip = match ip.to_canonical() {
             IpAddr::V6(v6) => {
                 let mut s = v6.segments();
                 s[4..].fill(0);
@@ -105,10 +107,26 @@ impl Cidr {
             (addr, if addr.is_ipv4() { 32 } else { 128 })
         };
         let max = if addr.is_ipv4() { 32 } else { 128 };
-        (prefix <= max).then_some(Cidr { net: addr, prefix })
+        if prefix > max {
+            return None;
+        }
+        // `::ffff:10.0.0.0/104` désigne la plage IPv4 `10.0.0.0/8`.
+        match addr {
+            IpAddr::V6(v6) if prefix >= 96 => {
+                v6.to_ipv4_mapped()
+                    .map_or(Some(Cidr { net: addr, prefix }), |v4| {
+                        Some(Cidr {
+                            net: IpAddr::V4(v4),
+                            prefix: prefix - 96,
+                        })
+                    })
+            }
+            _ => Some(Cidr { net: addr, prefix }),
+        }
     }
 
     fn contains(&self, ip: IpAddr) -> bool {
+        let ip = ip.to_canonical();
         let mask = |bits: u32, prefix: u8| {
             if prefix == 0 {
                 0
@@ -138,7 +156,7 @@ fn client_ip(request: &Request, trusted: &[Cidr]) -> Option<IpAddr> {
     let peer = request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
-        .map(|c| c.0.ip())?;
+        .map(|c| c.0.ip().to_canonical())?;
     let is_trusted = |ip: IpAddr| trusted.iter().any(|c| c.contains(ip));
     if !is_trusted(peer) {
         return Some(peer);
@@ -154,6 +172,7 @@ fn client_ip(request: &Request, trusted: &[Cidr]) -> Option<IpAddr> {
             v.parse::<IpAddr>()
                 .ok()
                 .or_else(|| v.parse::<SocketAddr>().ok().map(|a| a.ip()))
+                .map(|ip| ip.to_canonical())
         })
         .collect::<Vec<_>>();
     Some(
@@ -265,6 +284,36 @@ mod tests {
         assert!(limiter.allow("2001:db8:1:2::1".parse().unwrap(), now));
         assert!(!limiter.allow("2001:db8:1:2::ffff".parse().unwrap(), now));
         assert!(limiter.allow("2001:db8:1:3::1".parse().unwrap(), now));
+    }
+
+    /// Audit 2026-11-04 : à l'écoute sur `[::]`, chaque client IPv4 arrive en `::ffff:a.b.c.d`.
+    /// Le masque /64 les mettait tous dans un seul compartiment.
+    #[test]
+    fn ipv4_mappee_comptee_par_adresse() {
+        let limiter = IpLimiter::new(1);
+        let now = Instant::now();
+        assert!(limiter.allow("::ffff:192.0.2.1".parse().unwrap(), now));
+        assert!(limiter.allow("::ffff:192.0.2.2".parse().unwrap(), now));
+        assert!(
+            !limiter.allow("192.0.2.1".parse().unwrap(), now),
+            "même client"
+        );
+
+        let lan = Cidr::parse("10.0.0.0/8").unwrap();
+        assert!(lan.contains("::ffff:10.0.0.2".parse().unwrap()));
+        let mapped = Cidr::parse("::ffff:10.0.0.0/104").unwrap();
+        assert!(mapped.contains("10.9.9.9".parse().unwrap()));
+        let trusted = [lan];
+        let proxied = request("[::ffff:10.0.0.2]:4000", Some("203.0.113.5"));
+        assert_eq!(
+            client_ip(&proxied, &trusted),
+            Some("203.0.113.5".parse().unwrap())
+        );
+        let direct = request("[::ffff:203.0.113.9]:4000", None);
+        assert_eq!(
+            client_ip(&direct, &trusted),
+            Some("203.0.113.9".parse().unwrap())
+        );
     }
 
     #[test]

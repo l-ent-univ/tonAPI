@@ -271,7 +271,14 @@ pub async fn login(
     match result {
         Ok(outcome) => outcome_response(&state, university, outcome),
         Err(problem) => {
-            if problem.code == ErrorCode::InvalidCredentials {
+            // Une page de refus non reconnue (`upstream_changed`) compte aussi : sinon un CAS qui
+            // verrouille le compte avec une page inconnue laisserait les essais sans limite.
+            if matches!(
+                problem.code,
+                ErrorCode::InvalidCredentials
+                    | ErrorCode::UpstreamChanged
+                    | ErrorCode::AccountActionRequired
+            ) {
                 attempt.failed();
             }
             Err(problem.into())
@@ -324,7 +331,7 @@ pub async fn mfa(
     // notifications en boucle sur le téléphone de l'étudiant.
     let limit_key = limit::key("mfa", &pending.university, &pending.username);
     let attempt = state.login_limiter.begin(&limit_key)?;
-    let outcome = tonapi_providers::complete_mfa(
+    let result = tonapi_providers::complete_mfa(
         university,
         pending,
         action,
@@ -332,11 +339,19 @@ pub async fn mfa(
         now,
         state.settings.session_ttl_secs,
     )
-    .await?;
-    if matches!(outcome, LoginOutcome::SecondFactor(..)) {
-        attempt.failed();
+    .await;
+    // Toute issue autre qu'une connexion compte, erreurs comprises.
+    match result {
+        Ok(outcome @ LoginOutcome::SignedIn(_)) => outcome_response(&state, university, outcome),
+        Ok(outcome) => {
+            attempt.failed();
+            outcome_response(&state, university, outcome)
+        }
+        Err(problem) => {
+            attempt.failed();
+            Err(problem.into())
+        }
     }
-    outcome_response(&state, university, outcome)
 }
 
 /// Identifiant et mot de passe de taille raisonnable : un identifiant démesuré gonflerait les
@@ -395,6 +410,7 @@ pub async fn service_login(
         })
         .unwrap_or_default();
     let limit_key = service_limit_key(&session.university, &provider, &request.username);
+    let _slot = state.account_slots.acquire(&session)?;
     let attempt = state.login_limiter.begin(&limit_key)?;
 
     let mut updated = session;
@@ -430,6 +446,7 @@ pub async fn service_login(
     responses(
         (status = 200, description = "Nouveau jeton", body = TokenResponse),
         (status = 401, description = "`invalid_token`, `session_expired` : se reconnecter", body = Problem, content_type = "application/problem+json"),
+        (status = 429, description = "`rate_limited` : trop de requêtes en cours pour ce compte", body = Problem, content_type = "application/problem+json"),
         (status = 502, description = "`service_unavailable`", body = Problem, content_type = "application/problem+json"),
     )
 )]
@@ -437,6 +454,8 @@ pub async fn refresh(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
+    // Comme les données : un compte ne prend pas à lui seul les places de l'hôte du CAS.
+    let _slot = state.account_slots.acquire(&session)?;
     let registry = state.registry.load_full();
     let university = university(&registry, &session.university)?;
     let session = tonapi_providers::refresh(
@@ -466,17 +485,19 @@ pub async fn refresh(
     responses(
         (status = 204, description = "Session terminée (la fermeture côté CAS est tentée, sans garantie)"),
         (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 429, description = "`rate_limited` : trop de requêtes en cours pour ce compte, réessayer", body = Problem, content_type = "application/problem+json"),
     )
 )]
 pub async fn logout(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
-) -> StatusCode {
+) -> Result<StatusCode, ApiError> {
+    let _slot = state.account_slots.acquire(&session)?;
     let registry = state.registry.load_full();
     if let Some(university) = registry.get(&session.university) {
         tonapi_providers::logout(university, &session).await;
     }
-    StatusCode::NO_CONTENT
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
