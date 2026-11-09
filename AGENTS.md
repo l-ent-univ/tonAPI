@@ -74,6 +74,7 @@ Si un contrôle est indisponible, indique la commande et la cause ; ne le décla
 | `tonapi-http` | HTTP, cookies, formulaires, parcours CAS et OTP |
 | `tonapi-providers` | Aiguillage des services, démo, SSO, couche réseau des fournisseurs |
 | `tonapi-server` | Routes axum `/v1`, OpenAPI, Scalar, rechargement |
+| `tonapi-metrics` | Compteurs et histogrammes au format Prometheus |
 | `tonapi-cli` | Binaire `tonapi` et commandes de maintenance |
 
 `universities/<id>/university.toml` contient la configuration d'une université et

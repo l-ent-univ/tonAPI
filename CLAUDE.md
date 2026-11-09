@@ -65,6 +65,7 @@ Application de l'étudiant
 tonapi-config : configuration université + remplacement par composante
 tonapi-core : modèles communs indépendants du logiciel universitaire
 tonapi-session : session chiffrée remise au client
+tonapi-metrics : compteurs et histogrammes servis sur /metrics
 tonapi-cli : configuration, schémas, rapports, OpenAPI
 ```
 

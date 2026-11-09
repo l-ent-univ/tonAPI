@@ -25,7 +25,7 @@ propriétaire.
 | Établissements | `demo`, `umontpellier` (4 composantes), `univ-montp3`, `univ-rennes` (2 composantes) | réels marqués `beta` ou `planned` ([../couverture.md](../couverture.md)) |
 | API | routes `/v1`, appel groupé, OpenAPI ([../api.md](../api.md)) | une route peut répondre `not_implemented` |
 | Session et SSO | jeton chiffré, CAS (`apereo`, `esup-otp-gateway`, `phpcas`), second facteur esup-otp, comptes de service | Rennes et SAML jamais essayés en réel |
-| Exploitation | clés obligatoires hors dev, répartiteurs de confiance, arrêt sur SIGTERM ([../exploitation.md](../exploitation.md)) | pas de `/readyz`, `/metrics`, Dockerfile |
+| Exploitation | clés obligatoires hors dev, répartiteurs de confiance, `/readyz` et arrêt en trois temps, journal JSON par requête, `/metrics` interne, Dockerfile ([../exploitation.md](../exploitation.md)) | image jamais construite hors CI ; limites non partagées entre instances ; accords des DSI et RGPD ([../production.md](../production.md)) |
 
 Fournisseurs branchés dans `crates/tonapi-providers/src/lib.rs` et testés contre de faux serveurs :
 `ade-ical-link`, `ade-myplanning`, `ade-portal-rest`, `scodoc-gateway`, `etudiants-api`,

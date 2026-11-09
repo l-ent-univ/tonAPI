@@ -17,6 +17,7 @@ Application de l'étudiant
 tonapi-config   fichiers TOML des universités et composantes, validation, schémas
 tonapi-core     modèles communs (cours, notes, mail…) et erreurs problem+json
 tonapi-session  jeton chiffré AES-256-GCM remis au client
+tonapi-metrics  compteurs et histogrammes (Prometheus), sans étiquette de compte
 tonapi-cli      binaire `tonapi` : validation, schémas, modèles, rapports, OpenAPI, clés
 ```
 
@@ -27,7 +28,8 @@ tonapi-cli      binaire `tonapi` : validation, schémas, modèles, rapports, Ope
 | `tonapi-session` | Format `v1.<kid>.<…>`, chiffrement, rotation des clés | `src/lib.rs` |
 | `tonapi-http` | `Browser` (redirections, cookies, TLS, limites), parcours CAS et esup-otp | `src/browser.rs`, `src/cas.rs`, `src/otp.rs` |
 | `tonapi-providers` | Aiguillage par service, un module par logiciel, connexion SSO | `src/lib.rs`, `src/sso.rs` |
-| `tonapi-server` | Routes axum, protections communes, appel groupé, rechargement | `src/lib.rs`, `src/guard.rs`, `src/routes/` |
+| `tonapi-server` | Routes axum, protections communes, journal d'accès, appel groupé, rechargement | `src/lib.rs`, `src/guard.rs`, `src/access.rs`, `src/routes/` |
+| `tonapi-metrics` | Métriques du processus, rendues en texte Prometheus | `src/lib.rs` |
 | `tonapi-cli` | Commandes de maintenance | `src/main.rs` |
 
 Une université n'est pas un fournisseur. Un fournisseur porte le nom d'un logiciel (ADE, ScoDoc,

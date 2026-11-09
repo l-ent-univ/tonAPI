@@ -1,10 +1,11 @@
 # Mise en production de tonAPI
 
 **Réponse courte : pas encore.** Les failles graves relevées en octobre 2026 sont corrigées
-([securite.md](securite.md)), mais il manque de quoi exploiter le service (journaux, métriques,
-conteneur, sondes) et l'accord des universités.
+([securite.md](securite.md)) et le service a depuis le 09/11/2026 de quoi être exploité (journal
+par requête, métriques, sondes, image). Il reste les réglages du déploiement (A5 à A8), l'accord
+des universités (A9) et le cadre RGPD (A10).
 
-Plan mis à jour le 01/11/2026. L'objectif fixé par le propriétaire du projet est d'ouvrir le
+Plan mis à jour le 09/11/2026. L'objectif fixé par le propriétaire du projet est d'ouvrir le
 service à au moins 100 000 étudiants : c'est un objectif, pas un nombre d'utilisateurs actuel. Ce
 plan reprend cinq revues en lecture seule du 31/10/2026 (session et serveur, HTTP et CAS,
 robustesse, console et dépendances, préparation à la charge). Les estimations de charge et
@@ -24,15 +25,30 @@ Exploitation courante (variables, clés, répartiteur) : [exploitation.md](explo
 | Certificats (C) | `tls.extra-ca` : chemin relatif sans `..`, fichier PEM vérifié par la validation |
 | Contrat client (B5) | conventions écrites dans [api.md](api.md) |
 
+## Fait le 09/11/2026
+
+| Point | État [code] |
+|---|---|
+| Journaux JSON (A1) | une ligne `tonapi::access` par requête : `request_id`, méthode, route modèle, statut, durée, code d'erreur, université, fournisseur ; `WARN` sur 5xx, `upstream_changed`, `service_unavailable` ; JSON par défaut hors dev (`TONAPI_LOG_FORMAT`) |
+| Métriques (A2) | `GET /metrics` sur `TONAPI_METRICS_ADDR` seulement : requêtes et durées par route, erreurs par code et université, appels sortants par hôte, attente et saturation des places, taille des jetons. Reste : règles d'alerte et tableaux de bord côté supervision |
+| Conteneur (A3) | `Dockerfile` en deux étapes (bookworm-slim, `libssl3`, `ca-certificates`, utilisateur 10001), configuration validée à la construction ; Rust figé à 1.98.1 ; la CI construit l'image et interroge `/readyz`. Reste : publier l'image dans un registre, épingler les images de base par empreinte |
+| Sondes (A4) | `/readyz` à 503 pendant l'arrêt ; arrêt en trois temps (`TONAPI_DRAIN_SECS`, puis `TONAPI_GRACE_SECS`) ; aucune sonde ne contacte une université |
+| Taille du jeton (A5) | mesurable par `tonapi_session_token_bytes` ; valeur réelle encore à relever |
+
+Vérifié localement le 09/11/2026 : binaire hors dev avec `/readyz` 200 puis 503 après SIGTERM
+pendant que `/healthz` répond encore, journal JSON, `/metrics` absent du port public. L'image
+n'a pas été construite sur le poste de développement [non exécuté] : la première preuve viendra
+du job `image` de la CI.
+
 ## A. Bloquant avant le premier étudiant réel
 
 | # | Action | Pourquoi | Effort [déduit] |
 |---|---|---|---|
-| A1 | Journaux JSON : une ligne par requête (route modèle, statut, durée, code d'erreur, université, fournisseur, `x-request-id`), jamais d'identifiant étudiant ni de jeton ; `upstream_changed` et `service_unavailable` en WARN | aujourd'hui, à `info`, aucune ligne par requête | 4–6 h |
-| A2 | `/metrics` (port interne) : requêtes, appels sortants par hôte, attente des places par hôte, issues de connexion, taille des jetons ; alertes 5xx par université, p95, saturation, hausse de `upstream_changed` | sans cela, une université en panne ou un ENT qui change de format passe inaperçu | 8–12 h |
-| A3 | Dockerfile multi-étapes (bookworm-slim, libssl3, ca-certificates, utilisateur non root, `TONAPI_ADDR=0.0.0.0:8080`), configuration dans l'image, compilateur figé dans `rust-toolchain.toml` (aujourd'hui `stable`), image construite en CI | rien n'existe pour déployer | 4–6 h |
-| A4 | `/readyz` distinct de `/healthz`, à 503 pendant l'arrêt ; sondes qui n'interrogent jamais une université | un redéploiement couperait des connexions en cours | 1–2 h |
-| A5 | Mesurer la taille réelle du jeton (Béziers, Paul-Valéry) ; régler le répartiteur (en-têtes ≥ 32 Ko) | jeton estimé à 4–12 Ko [déduit] : erreurs 400/502 avec les valeurs par défaut de nginx | 2 h |
+| ~~A1~~ | Fait le 09/11/2026. Journaux JSON : une ligne par requête (route modèle, statut, durée, code d'erreur, université, fournisseur, `x-request-id`), jamais d'identifiant étudiant ni de jeton ; `upstream_changed` et `service_unavailable` en WARN | aujourd'hui, à `info`, aucune ligne par requête | 4–6 h |
+| A2 | Fait côté code le 09/11/2026 ; reste les alertes. `/metrics` (port interne) : requêtes, appels sortants par hôte, attente des places par hôte, issues de connexion, taille des jetons ; alertes 5xx par université, p95, saturation, hausse de `upstream_changed` | sans cela, une université en panne ou un ENT qui change de format passe inaperçu | 8–12 h |
+| ~~A3~~ | Fait le 09/11/2026 (publication de l'image à prévoir). Dockerfile multi-étapes (bookworm-slim, libssl3, ca-certificates, utilisateur non root, `TONAPI_ADDR=0.0.0.0:8080`), configuration dans l'image, compilateur figé dans `rust-toolchain.toml` (aujourd'hui `stable`), image construite en CI | rien n'existe pour déployer | 4–6 h |
+| ~~A4~~ | Fait le 09/11/2026. `/readyz` distinct de `/healthz`, à 503 pendant l'arrêt ; sondes qui n'interrogent jamais une université | un redéploiement couperait des connexions en cours | 1–2 h |
+| A5 | Lire `tonapi_session_token_bytes` après des connexions réelles (Béziers, Paul-Valéry) ; régler le répartiteur (en-têtes ≥ 32 Ko) | jeton estimé à 4–12 Ko [déduit] : erreurs 400/502 avec les valeurs par défaut de nginx | 2 h |
 | A6 | Délai du répartiteur ≥ 130 s sur `/v1/auth/mfa` et ≥ 70 s sur `/v1/overview` et `/v1/documents/{id}`, ou attente de notification à 50 s avec relance par le client | sinon le répartiteur coupe (504) avant la réponse, puis seconde notification sur le téléphone ; réglage décrit dans [exploitation.md](exploitation.md#derrière-un-répartiteur) | 1 h |
 | A7 | Clés de session dans un gestionnaire de secrets, sauvegardées ; rotation selon [exploitation.md](exploitation.md#clés-de-session-et-rotation) | perdre les clés déconnecte tout le monde et relance le second facteur | 3 h |
 | A8 | Déclarer les répartiteurs dans `TONAPI_TRUSTED_PROXIES` au déploiement ; laisser `TONAPI_DOCS` coupé (la page `/docs` charge Scalar depuis un CDN sans version fixée) | sans répartiteur déclaré, la limite par adresse voit l'IP du répartiteur pour tous | 0,5 h |
@@ -85,7 +101,8 @@ au banc (B6).
 
 ## Ordre conseillé
 
-1. A1 à A8 (environ 3 jours de travail [déduit]), en parallèle des démarches A9 et A10.
+1. A5 à A8 au premier déploiement (environ 1 jour [déduit]), alertes A2, en parallèle des
+   démarches A9 et A10.
 2. B1 à B8 (environ 4 jours [déduit]), puis le banc de charge.
 3. Ouverture progressive : une université pilote, quelques centaines d'étudiants, mesures, puis
    élargissement.
