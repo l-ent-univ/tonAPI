@@ -128,6 +128,12 @@ pub enum CasFlavor {
 pub struct MfaConfig {
     /// Racine de l'API esup-otp-api.
     pub api_url: Url,
+    /// Page protégée dont le CAS exige le second facteur même quand la connexion ne l'a pas
+    /// demandé (le mail Zimbra à Montpellier). Ouverte juste après le mot de passe : si le CAS
+    /// y demande le second facteur, la connexion le demande aussi, et la session sert ensuite
+    /// à ce service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step_up_url: Option<Url>,
 }
 
 /// Passage par une fédération SAML : fournisseur de service → WAYF → IdP → CAS.

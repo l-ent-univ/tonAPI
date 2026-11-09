@@ -52,6 +52,7 @@ flavor = "apereo"                          # apereo (défaut), esup-otp-gateway,
 
 [sso.mfa]                                  # second facteur esup-otp, si l'université en demande un
 api-url = "https://otp-api.exemple.fr/"
+step-up-url = "https://mail.exemple.fr/…"  # facultatif : service qui seul exige le second facteur
 
 [sso.saml]                                 # fédération SAML branchée sur ce CAS (Moodle, mail)
 wayf-url = "https://wayf.exemple.fr/"
@@ -62,6 +63,10 @@ allowed-hosts = ["exemple.fr", "renater.fr"]
 - `apereo` : formulaire avec `execution` (Apereo CAS 5 à 7).
 - `esup-otp-gateway` : esup-otp-cas-server devant Apereo CAS (`/cas` puis `/pre-otp`).
 - `phpcas` : formulaire avec jeton `lt` (CAS 1 et 2).
+- `step-up-url` : page d'entrée d'un service pour lequel le CAS exige le second facteur alors que
+  la connexion ne le demande pas (le mail à Montpellier). La connexion l'ouvre juste après le mot
+  de passe ; si le CAS y demande le second facteur, la connexion répond `mfaRequired`. Sans ce
+  réglage, ce service renvoie `session_expired` à chaque essai, reconnexion comprise.
 - `kind = "demo"` est réservé à l'université `demo` (identifiants `demo` / `demo`) ; la validation
   le refuse ailleurs.
 

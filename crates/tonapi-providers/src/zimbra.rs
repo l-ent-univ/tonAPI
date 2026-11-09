@@ -8,7 +8,8 @@
 //! - Cookie absent de la session, ou refusé (`AUTH_REQUIRED`, `AUTH_EXPIRED`, HTTP 401) : la chaîne
 //!   de connexion est rejouée **une seule fois**.
 //! - Le CAS redemande le mot de passe ou un second facteur (souvent à l'ouverture du mail) :
-//!   `session_expired`, l'étudiant doit se reconnecter.
+//!   `session_expired`, l'étudiant doit se reconnecter. Quand le CAS exige le second facteur pour
+//!   le mail seulement, `[sso.mfa] step-up-url` le fait demander dès la connexion.
 //! - Un webmail derrière une fédération SAML (formulaire `SAMLResponse`) n'est pas pris en charge :
 //!   `not_implemented`.
 

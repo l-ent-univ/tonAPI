@@ -222,6 +222,33 @@ async fn prompt(
     ))
 }
 
+/// Ouvre la page `[sso.mfa] step-up-url` juste après le mot de passe. Certains CAS exigent le
+/// second facteur pour un service seulement (le mail à Montpellier) : sans ce passage, la
+/// connexion réussit sans lui et ce service renvoie ensuite `session_expired` à chaque essai,
+/// reconnexion comprise. Une page inaccessible ne fait pas échouer la connexion.
+async fn step_up(
+    university: &ResolvedUniversity,
+    cas: &CasServer,
+    browser: &mut Browser,
+) -> Option<OtpChallenge> {
+    let Sso::Cas(config) = &university.university.sso else {
+        return None;
+    };
+    let url = config.mfa.as_ref()?.step_up_url.clone()?;
+    match cas::open(browser, cas, url, None).await {
+        Ok(Outcome::SecondFactor(mut challenge)) => {
+            // Même navigateur, quelques instants après le POST du mot de passe vérifié.
+            challenge.password_posted = true;
+            Some(challenge)
+        }
+        Ok(Outcome::SignedIn { .. }) => None,
+        Err(error) => {
+            tracing::debug!("page du second facteur renforcé inaccessible : {error}");
+            None
+        }
+    }
+}
+
 /// Connexion avec identifiant et mot de passe. Le mot de passe n'est posté qu'une fois.
 pub async fn login(
     university: &ResolvedUniversity,
@@ -262,6 +289,9 @@ pub async fn login(
                 ..
             } => {
                 reached_cas(&browser, &cas)?;
+                if let Some(challenge) = step_up(university, &cas, &mut browser).await {
+                    return prompt(session, &mut browser, &challenge, None, input.now).await;
+                }
                 let session = signed_in(session, &browser, input.now, input.ttl_secs);
                 return Ok(LoginOutcome::SignedIn(
                     crate::with_detected_establishment(university, session, input.now, input.net)

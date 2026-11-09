@@ -795,6 +795,14 @@
           "description": "Racine de l'API esup-otp-api.",
           "format": "uri",
           "type": "string"
+        },
+        "step-up-url": {
+          "description": "Page protégée dont le CAS exige le second facteur même quand la connexion ne l'a pas\ndemandé (le mail Zimbra à Montpellier). Ouverte juste après le mot de passe : si le CAS\ny demande le second facteur, la connexion le demande aussi, et la session sert ensuite\nà ce service.",
+          "format": "uri",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

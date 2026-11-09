@@ -19,6 +19,9 @@ flavor = "esup-otp-gateway"
 
 [sso.mfa]
 api-url = "https://otp-api.umontpellier.fr/"
+# Le CAS exige le second facteur pour le mail seulement (vu le 2026-10-13 et le 2026-11-09) :
+# la connexion ouvre l'entrée du mail pour le demander tout de suite.
+step-up-url = "https://mail.etu.umontpellier.fr/public/preauthetu.jsp"
 
 # Nouvel ENT (octobre 2026) : portail à tuiles avec son client CAS, à la place d'uPortal.
 # [vu] pages publiques : api/config, entrée cas/login?next=/, service cas/callback.
