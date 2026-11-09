@@ -36,9 +36,10 @@ Exploitation courante (variables, clés, répartiteur) : [exploitation.md](explo
 | Taille du jeton (A5) | mesurable par `tonapi_session_token_bytes` ; valeur réelle encore à relever |
 
 Vérifié localement le 09/11/2026 : binaire hors dev avec `/readyz` 200 puis 503 après SIGTERM
-pendant que `/healthz` répond encore, journal JSON, `/metrics` absent du port public. L'image
-n'a pas été construite sur le poste de développement [non exécuté] : la première preuve viendra
-du job `image` de la CI.
+pendant que `/healthz` répond encore, journal JSON, `/metrics` absent du port public. Image
+construite le même jour avec Docker 29 sans buildx (arm64, 193 Mo) : `/readyz` 200, connexion
+`demo`, utilisateur 10001, arrêt propre en 5 s sur `docker stop`. Le job `image` de la CI
+(amd64) n'a pas encore tourné [non exécuté].
 
 ## A. Bloquant avant le premier étudiant réel
 

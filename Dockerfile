@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-#
 # Image de tonapi-server, avec la CLI `tonapi` (keygen, validate) et la configuration des
 # universités. Construction : `docker build -t tonapi .` depuis la racine du dépôt.
 # Exploitation (variables, sondes, arrêt) : Docs/exploitation.md.
@@ -12,9 +10,8 @@ FROM rust:1.98.1-bookworm AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
-    cargo build --release --locked -p tonapi-server -p tonapi-cli \
+# Sans `RUN --mount` : l'image se construit aussi avec l'ancien constructeur (Docker sans buildx).
+RUN cargo build --release --locked -p tonapi-server -p tonapi-cli \
     && mkdir -p /out \
     && cp target/release/tonapi-server target/release/tonapi /out/
 COPY universities universities
