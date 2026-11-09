@@ -26,7 +26,10 @@ impl IntoResponse for ApiError {
             StatusCode::from_u16(self.0.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let unauthorized = status == StatusCode::UNAUTHORIZED;
         let limited = status == StatusCode::TOO_MANY_REQUESTS;
+        let code = self.0.code;
         let mut response = (status, axum::Json(self.0)).into_response();
+        // Lu par le journal d'accès et les métriques.
+        response.extensions_mut().insert(code);
         let headers = response.headers_mut();
         headers.insert(
             header::CONTENT_TYPE,

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::{Method, StatusCode};
@@ -136,6 +136,46 @@ impl Lane {
             Lane::LongPoll => &LONG_POLLS,
         }
     }
+
+    /// Étiquette des métriques.
+    fn label(self) -> &'static str {
+        match self {
+            Lane::Normal => "normal",
+            Lane::LongPoll => "long_poll",
+        }
+    }
+}
+
+/// Hôte d'une URL pour les métriques : nom, et port s'il n'est pas celui du schéma.
+fn host_label(url: &Url) -> String {
+    let host = url.host_str().unwrap_or_default();
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_owned(),
+    }
+}
+
+/// Mesure d'un échange avec une université, enregistrée à la fin quelle que soit l'issue.
+struct Exchange {
+    host: String,
+    started: Instant,
+    /// Classe de statut ; `error` tant qu'aucune réponse n'est arrivée.
+    outcome: &'static str,
+}
+
+impl Drop for Exchange {
+    fn drop(&mut self) {
+        let host = self.host.as_str();
+        tonapi_metrics::inc(
+            "tonapi_upstream_requests_total",
+            &[("host", host), ("outcome", self.outcome)],
+        );
+        tonapi_metrics::observe(
+            "tonapi_upstream_duration_seconds",
+            &[("host", host)],
+            self.started.elapsed().as_secs_f64(),
+        );
+    }
 }
 
 /// Retire les hôtes dont toutes les places sont libres et que personne n'attend.
@@ -165,11 +205,22 @@ async fn host_permit(
             .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(capacity)))
             .clone()
     };
-    match tokio::time::timeout(HOST_WAIT, semaphore.acquire_owned()).await {
-        Ok(Ok(permit)) => Ok(permit),
-        _ => Err(HttpError::Network(
+    let started = Instant::now();
+    if let Ok(Ok(permit)) = tokio::time::timeout(HOST_WAIT, semaphore.acquire_owned()).await {
+        tonapi_metrics::observe(
+            "tonapi_upstream_wait_seconds",
+            &[("lane", lane.label())],
+            started.elapsed().as_secs_f64(),
+        );
+        Ok(permit)
+    } else {
+        tonapi_metrics::inc(
+            "tonapi_upstream_saturated_total",
+            &[("host", &host_label(url)), ("lane", lane.label())],
+        );
+        Err(HttpError::Network(
             "trop de requêtes simultanées vers ce service".to_owned(),
-        )),
+        ))
     }
 }
 
@@ -312,8 +363,14 @@ impl Browser {
         if let Some(timeout) = timeout {
             request = request.timeout(timeout);
         }
+        let mut exchange = Exchange {
+            host: host_label(&url),
+            started: Instant::now(),
+            outcome: "error",
+        };
         let mut response = request.send().await?;
         let status = response.status();
+        exchange.outcome = tonapi_metrics::status_class(status.as_u16());
         let headers = response.headers().clone();
         for value in headers.get_all(header::SET_COOKIE) {
             if let Ok(value) = value.to_str() {

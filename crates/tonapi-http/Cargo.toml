@@ -16,6 +16,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio = { version = "1.53.3", features = ["sync", "time"] }
 tonapi-config.workspace = true
+tonapi-metrics.workspace = true
 tonapi-session.workspace = true
 tracing = "0.1.44"
 url.workspace = true

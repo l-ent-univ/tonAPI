@@ -19,7 +19,7 @@ use super::establishment_choice;
 use crate::auth::AuthSession;
 use crate::error::{ApiError, invalid};
 use crate::respond::no_store;
-use crate::{AppState, limit};
+use crate::{AppState, access, limit};
 
 /// Un ancien jeton reste utilisable pour reprendre ses cookies pendant ce délai après expiration :
 /// l'appareil mémorisé par le CAS vaut 30 jours.
@@ -197,10 +197,22 @@ fn outcome_response(
 }
 
 fn seal(state: &AppState, session: &SessionData) -> Result<String, ApiError> {
-    state
+    let token = state
         .keys
         .seal(session)
-        .map_err(|_| ErrorCode::Internal.into())
+        .map_err(|_| ApiError::from(ErrorCode::Internal))?;
+    access::token_issued(&token);
+    Ok(token)
+}
+
+/// Réponse ou erreur marquée de l'université (identifiant de configuration, jamais la valeur
+/// reçue) pour le journal d'accès et les métriques.
+fn tagged(result: Result<Response, ApiError>, university: &ResolvedUniversity) -> Response {
+    let mut response = result.unwrap_or_else(IntoResponse::into_response);
+    response
+        .extensions_mut()
+        .insert(access::University(university.university.id.clone()));
+    response
 }
 
 /// Connexion avec le compte universitaire.
@@ -268,7 +280,7 @@ pub async fn login(
         },
     )
     .await;
-    match result {
+    let response = match result {
         Ok(outcome) => outcome_response(&state, university, outcome),
         Err(problem) => {
             // Une page de refus non reconnue (`upstream_changed`) compte aussi : sinon un CAS qui
@@ -283,7 +295,8 @@ pub async fn login(
             }
             Err(problem.into())
         }
-    }
+    };
+    Ok(tagged(response, university))
 }
 
 /// Second facteur : notification sur le téléphone ou code.
@@ -341,7 +354,7 @@ pub async fn mfa(
     )
     .await;
     // Toute issue autre qu'une connexion compte, erreurs comprises.
-    match result {
+    let response = match result {
         Ok(outcome @ LoginOutcome::SignedIn(_)) => outcome_response(&state, university, outcome),
         Ok(outcome) => {
             attempt.failed();
@@ -351,7 +364,8 @@ pub async fn mfa(
             attempt.failed();
             Err(problem.into())
         }
-    }
+    };
+    Ok(tagged(response, university))
 }
 
 /// Identifiant et mot de passe de taille raisonnable : un identifiant démesuré gonflerait les

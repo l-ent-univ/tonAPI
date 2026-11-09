@@ -10,7 +10,7 @@ use tonapi_session::SessionData;
 use utoipa::ToSchema;
 
 use crate::error::ApiError;
-use crate::{AppState, SESSION_HEADER};
+use crate::{AppState, SESSION_HEADER, access};
 
 /// Réponse de données.
 #[derive(Serialize, ToSchema)]
@@ -112,6 +112,9 @@ where
         // Même en erreur, un fournisseur a pu renouveler des cookies ou retirer un jeton refusé.
         Err(problem) => {
             let mut response = ApiError::from(problem).into_response();
+            response
+                .extensions_mut()
+                .insert(access::University(original.university.clone()));
             no_store(&mut response);
             if session != original {
                 attach_session(state, &session, &mut response)?;
@@ -119,7 +122,11 @@ where
             return Ok(response);
         }
     };
+    let provider = fetched.provider;
     let mut response = finish(fetched, &session);
+    let extensions = response.extensions_mut();
+    extensions.insert(access::University(original.university.clone()));
+    extensions.insert(access::Provider(provider));
     no_store(&mut response);
     if session != original {
         attach_session(state, &session, &mut response)?;
@@ -141,6 +148,7 @@ pub fn attach_session(
     response: &mut Response,
 ) -> Result<(), ApiError> {
     let token = state.keys.seal(session).map_err(|_| ErrorCode::Internal)?;
+    access::token_issued(&token);
     let value = HeaderValue::from_str(&token).map_err(|_| ErrorCode::Internal)?;
     response.headers_mut().insert(SESSION_HEADER, value);
     Ok(())

@@ -1,5 +1,6 @@
 //! Serveur HTTP de tonAPI : routes `/v1`, spécification OpenAPI et documentation Scalar.
 
+mod access;
 mod auth;
 mod error;
 mod guard;
@@ -11,6 +12,7 @@ mod slots;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use arc_swap::ArcSwap;
 use axum::Router;
@@ -18,7 +20,6 @@ use axum::http::{HeaderName, Method, header};
 use tonapi_config::Registry;
 use tonapi_session::SessionKeys;
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa_axum::router::OpenApiRouter;
@@ -55,6 +56,24 @@ pub struct AppState {
     login_limiter: Arc<limit::LoginLimiter>,
     ip_limiter: Arc<guard::IpLimiter>,
     account_slots: Arc<slots::AccountSlots>,
+    draining: Arc<AtomicBool>,
+}
+
+/// Disponibilité de l'instance, lue par `/readyz`.
+#[derive(Clone)]
+pub struct Readiness(Arc<AtomicBool>);
+
+impl Readiness {
+    /// Arrêt annoncé : `/readyz` répond 503 pour que le répartiteur retire l'instance, alors que
+    /// les requêtes continuent d'être servies.
+    pub fn drain(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    #[must_use]
+    pub fn draining(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
 }
 
 impl AppState {
@@ -68,7 +87,14 @@ impl AppState {
             login_limiter: Arc::default(),
             ip_limiter,
             account_slots: Arc::default(),
+            draining: Arc::default(),
         }
+    }
+
+    /// Poignée de disponibilité, à garder par le code qui gère l'arrêt.
+    #[must_use]
+    pub fn readiness(&self) -> Readiness {
+        Readiness(self.draining.clone())
     }
 }
 
@@ -125,7 +151,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     api_router().into_openapi()
 }
 
-/// Application complète : routes, `/openapi.json`, `/docs`, CORS, traces.
+/// Application complète : routes, `/openapi.json`, `/docs`, CORS, journal d'accès.
 pub fn app(state: AppState) -> Router {
     let (router, api) = api_router().split_for_parts();
     let spec = api.clone();
@@ -133,7 +159,7 @@ pub fn app(state: AppState) -> Router {
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::PUT])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
-        .expose_headers([HeaderName::from_static(SESSION_HEADER)]);
+        .expose_headers([HeaderName::from_static(SESSION_HEADER), access::REQUEST_ID]);
     let docs = state.settings.docs;
     let router = if docs {
         router
@@ -153,5 +179,22 @@ pub fn app(state: AppState) -> Router {
         ))
         .with_state(state)
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn(access::log))
+}
+
+/// Application interne : `GET /metrics` au format texte de Prometheus. À servir sur une adresse
+/// que le répartiteur public n'expose pas (`TONAPI_METRICS_ADDR`).
+pub fn metrics_app() -> Router {
+    Router::new().route(
+        "/metrics",
+        axum::routing::get(|| async {
+            (
+                [(
+                    header::CONTENT_TYPE,
+                    "text/plain; version=0.0.4; charset=utf-8",
+                )],
+                tonapi_metrics::render(),
+            )
+        }),
+    )
 }

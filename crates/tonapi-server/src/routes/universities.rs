@@ -26,6 +26,33 @@ pub async fn health(State(state): State<AppState>) -> Json<Health> {
     })
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct Ready {
+    status: &'static str,
+}
+
+/// Disponibilité de l'instance pour le répartiteur : 503 pendant l'arrêt. Ne contacte aucune
+/// université.
+#[utoipa::path(get, path = "/readyz", tag = "service", security(()), responses(
+    (status = 200, description = "Prête à recevoir des requêtes", body = Ready),
+    (status = 503, description = "`service_unavailable` : arrêt en cours ou aucune université chargée", body = Problem, content_type = "application/problem+json"),
+))]
+pub async fn ready(State(state): State<AppState>) -> Result<Json<Ready>, ApiError> {
+    if state.readiness().draining() {
+        return Err(not_ready("arrêt en cours"));
+    }
+    if state.registry.load().is_empty() {
+        return Err(not_ready("aucune université chargée"));
+    }
+    Ok(Json(Ready { status: "ready" }))
+}
+
+fn not_ready(detail: &str) -> ApiError {
+    let mut problem = Problem::new(ErrorCode::ServiceUnavailable).detail(detail);
+    problem.status = 503;
+    problem.into()
+}
+
 /// Connexion attendue par l'université.
 #[derive(Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]

@@ -24,6 +24,7 @@ tonapi-core = { path = "crates/tonapi-core" }
 tonapi-config = { path = "crates/tonapi-config" }
 tonapi-session = { path = "crates/tonapi-session" }
 tonapi-http = { path = "crates/tonapi-http" }
+tonapi-metrics = { path = "crates/tonapi-metrics" }
 tonapi-providers = { path = "crates/tonapi-providers" }
 tonapi-server = { path = "crates/tonapi-server" }
 

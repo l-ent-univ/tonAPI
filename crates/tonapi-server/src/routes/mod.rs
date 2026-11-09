@@ -17,6 +17,7 @@ use crate::AppState;
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(universities::health))
+        .routes(routes!(universities::ready))
         .routes(routes!(universities::list))
         .routes(routes!(universities::detail))
         .routes(routes!(session::login))

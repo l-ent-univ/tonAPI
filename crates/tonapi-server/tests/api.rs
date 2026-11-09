@@ -8,15 +8,19 @@ use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tonapi_config::Registry;
-use tonapi_server::{AppState, Settings, app};
+use tonapi_server::{AppState, Settings, app, metrics_app};
 use tonapi_session::SessionKeys;
 use tower::ServiceExt;
 
 fn server() -> Router {
+    app(state())
+}
+
+fn state() -> AppState {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../universities");
     let (registry, report) = Registry::load(&dir);
     assert!(report.is_ok());
-    app(AppState::new(
+    AppState::new(
         registry,
         SessionKeys::ephemeral().unwrap(),
         Settings {
@@ -26,7 +30,7 @@ fn server() -> Router {
             docs: true,
             auth_per_ip: 120,
         },
-    ))
+    )
 }
 
 struct Reply {
@@ -515,4 +519,94 @@ async fn appel_groupe_en_parallele() {
 
     let r = call(&app, "GET", "/v1/overview", None, None).await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn disponibilite_pendant_l_arret() {
+    let state = state();
+    let readiness = state.readiness();
+    let app = app(state);
+    let r = call(&app, "GET", "/readyz", None, None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.body["status"], "ready");
+
+    readiness.drain();
+    let r = call(&app, "GET", "/readyz", None, None).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(r.body["code"], "service_unavailable");
+    // L'instance sert encore les requêtes pendant que le répartiteur la retire.
+    let r = call(&app, "GET", "/healthz", None, None).await;
+    assert_eq!(r.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn identifiant_de_requete() {
+    let app = server();
+    let r = call(&app, "GET", "/healthz", None, None).await;
+    let generated = r.headers["x-request-id"].to_str().unwrap().to_owned();
+    assert!(!generated.is_empty());
+    let r = call(&app, "GET", "/healthz", None, None).await;
+    assert_ne!(r.headers["x-request-id"], generated.as_str());
+
+    let reused = |id: &'static str| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(
+                    Request::get("/healthz")
+                        .header("x-request-id", id)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            response.headers()["x-request-id"]
+                .to_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    assert_eq!(reused("lb-42.a_b").await, "lb-42.a_b");
+    // Valeur douteuse remplacée : rien de ce qui vient du client n'entre tel quel au journal.
+    assert_ne!(reused("a b").await, "a b");
+}
+
+#[tokio::test]
+async fn metriques_par_route_modele_sans_valeur_de_compte() {
+    let app = server();
+    let r = login(&app, "demo", json!({})).await;
+    let token = r.body["token"].as_str().unwrap().to_owned();
+    let r = call(
+        &app,
+        "GET",
+        "/v1/documents/doc-secret-42",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert!(r.status.is_client_error() || r.status.is_success());
+    let _ = login(&app, "demo", json!({ "password": "faux" })).await;
+
+    let response = metrics_app()
+        .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response.headers()[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/plain; version=0.0.4")
+    );
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let text = String::from_utf8(bytes.to_vec()).unwrap();
+    assert!(
+        text.contains("tonapi_requests_total{route=\"/v1/auth/login\",status=\"200\"}"),
+        "{text}"
+    );
+    assert!(text.contains("route=\"/v1/documents/{id}\""), "{text}");
+    assert!(text.contains("tonapi_errors_total{code=\"invalid_credentials\",university=\"demo\"}"));
+    assert!(text.contains("tonapi_session_token_bytes_count"));
+    assert!(!text.contains("doc-secret-42"));
+    assert!(!text.contains(&token));
 }
