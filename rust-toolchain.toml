@@ -1,3 +1,5 @@
 [toolchain]
-channel = "stable"
+# Version figée : mêmes résultats en local, en CI et dans l'image (Dockerfile). À monter
+# volontairement, avec la ligne FROM du Dockerfile et le job CI.
+channel = "1.98.1"
 components = ["rustfmt", "clippy"]

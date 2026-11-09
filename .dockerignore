@@ -1,0 +1,13 @@
+# Seuls Cargo.*, rust-toolchain.toml, crates/ et universities/ entrent dans l'image.
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!crates/
+!universities/
+# Jamais : réglages locaux (clés de session de dev), exports, artefacts.
+**/.claude
+**/.env
+**/*.har
+**/target
+**/.DS_Store
