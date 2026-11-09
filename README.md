@@ -41,6 +41,19 @@ Puis ouvre <http://127.0.0.1:5173>. Les identifiants ne partent que vers une API
 ta machine, et le champ du mot de passe est vidé après l'envoi. Les comptes mémorisés gardent leur
 jeton chiffré dans le stockage local du navigateur, jamais le mot de passe.
 
+## Déployer avec Docker
+
+```bash
+cp .env.example .env
+docker compose build
+docker compose run --rm --entrypoint tonapi tonapi keygen k1   # coller la ligne dans .env
+docker compose up -d
+```
+
+L'API écoute alors sur `127.0.0.1:8080`, à placer derrière un reverse proxy HTTPS. Derrière
+Nginx Proxy Manager, `compose.proxy.yaml` la branche plutôt sur un réseau Docker partagé. Guide
+complet, réglages du proxy et dépannage : [Docs/docker.md](Docs/docker.md).
+
 ## Ajouter ton IUT ou ta fac
 
 Compte 15 à 30 minutes, sans savoir coder : [le guide pas à pas](Docs/ajouter-un-etablissement.md).

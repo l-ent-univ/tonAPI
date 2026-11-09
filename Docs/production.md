@@ -31,7 +31,7 @@ Exploitation courante (variables, clés, répartiteur) : [exploitation.md](explo
 |---|---|
 | Journaux JSON (A1) | une ligne `tonapi::access` par requête : `request_id`, méthode, route modèle, statut, durée, code d'erreur, université, fournisseur ; `WARN` sur 5xx, `upstream_changed`, `service_unavailable` ; JSON par défaut hors dev (`TONAPI_LOG_FORMAT`) |
 | Métriques (A2) | `GET /metrics` sur `TONAPI_METRICS_ADDR` seulement : requêtes et durées par route, erreurs par code et université, appels sortants par hôte, attente et saturation des places, taille des jetons. Reste : règles d'alerte et tableaux de bord côté supervision |
-| Conteneur (A3) | `Dockerfile` en deux étapes (bookworm-slim, `libssl3`, `ca-certificates`, utilisateur 10001), configuration validée à la construction ; Rust figé à 1.98.1 ; la CI construit l'image et interroge `/readyz`. Reste : publier l'image dans un registre, épingler les images de base par empreinte |
+| Conteneur (A3) | `compose.yaml` et guide [docker.md](docker.md) ; `Dockerfile` en deux étapes (bookworm-slim, `libssl3`, `ca-certificates`, utilisateur 10001), configuration validée à la construction ; Rust figé à 1.98.1 ; la CI construit l'image et interroge `/readyz`. Reste : publier l'image dans un registre, épingler les images de base par empreinte |
 | Sondes (A4) | `/readyz` à 503 pendant l'arrêt ; arrêt en trois temps (`TONAPI_DRAIN_SECS`, puis `TONAPI_GRACE_SECS`) ; aucune sonde ne contacte une université |
 | Taille du jeton (A5) | mesurable par `tonapi_session_token_bytes` ; valeur réelle encore à relever |
 

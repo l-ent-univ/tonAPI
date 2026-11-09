@@ -1,0 +1,73 @@
+# tonAPI avec Docker Compose : une instance, derrière un reverse proxy HTTPS.
+# Proxy installé sur l'hôte : ce fichier seul (API sur 127.0.0.1:8080).
+# Proxy en conteneur (Nginx Proxy Manager…) : ajouter compose.proxy.yaml.
+# Mode d'emploi complet : Docs/docker.md.
+#
+#   cp .env.example .env                                   # puis y mettre la clé de session
+#   docker compose build
+#   docker compose run --rm --entrypoint tonapi tonapi keygen k1
+#   docker compose up -d
+#   docker compose ps                                      # état « healthy » attendu
+#
+# Les valeurs viennent de .env (jamais versionné) ; celles notées « défaut » s'appliquent quand
+# la variable n'y est pas.
+
+name: tonapi
+
+services:
+  tonapi:
+    build: .
+    image: tonapi:${TONAPI_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      # Obligatoire : `kid:base64[,kid:base64…]`, générée par `tonapi keygen`. Vide, le serveur
+      # refuse de démarrer (jamais de clé jetable) ; `build` et `run … keygen` restent possibles.
+      TONAPI_SESSION_KEYS: ${TONAPI_SESSION_KEYS:-}
+      # Adresse vue par le serveur pour les connexions qui arrivent par le port publié ci-dessous :
+      # la passerelle du réseau `tonapi`. Seules ces connexions font lire X-Forwarded-For.
+      TONAPI_TRUSTED_PROXIES: ${TONAPI_TRUSTED_PROXIES:-172.28.0.1}
+      TONAPI_SESSION_TTL_SECS: ${TONAPI_SESSION_TTL_SECS:-43200}
+      TONAPI_AUTH_PER_IP: ${TONAPI_AUTH_PER_IP:-120}
+      TONAPI_METRICS_ADDR: 0.0.0.0:9090
+      TONAPI_DRAIN_SECS: ${TONAPI_DRAIN_SECS:-5}
+      TONAPI_GRACE_SECS: ${TONAPI_GRACE_SECS:-130}
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      # Boucle locale seulement : le répartiteur HTTPS de l'hôte (nginx, Caddy…) relaie vers ce
+      # port. Ne pas publier sur 0.0.0.0 : le serveur parle HTTP sans chiffrement.
+      - "127.0.0.1:${TONAPI_PORT:-8080}:8080"
+      # Métriques Prometheus, boucle locale seulement (ou retirer et lire depuis le réseau).
+      - "127.0.0.1:${TONAPI_METRICS_PORT:-9090}:9090"
+    networks:
+      - tonapi
+    healthcheck:
+      # L'image n'a ni curl ni wget : requête HTTP écrite à la main par bash.
+      test:
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /readyz HTTP/1.0\r\n\r\n' >&3 && head -n 1 <&3 | grep -q ' 200 '
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    # Retrait (TONAPI_DRAIN_SECS) + fin des requêtes en cours (TONAPI_GRACE_SECS) + marge.
+    stop_grace_period: 140s
+    # Le serveur n'écrit rien sur disque : système de fichiers en lecture seule, aucun privilège.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+
+networks:
+  tonapi:
+    ipam:
+      config:
+        - subnet: ${TONAPI_SUBNET:-172.28.0.0/24}
+          gateway: ${TONAPI_GATEWAY:-172.28.0.1}

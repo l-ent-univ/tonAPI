@@ -12,6 +12,7 @@ Commence par la ligne qui correspond à ce que tu veux faire. Les pages décrive
 | Écrire ou corriger un fichier TOML | [configuration.md](configuration.md) |
 | Savoir quels logiciels sont pris en charge | [fournisseurs.md](fournisseurs.md) |
 | Savoir ce qui a été essayé, où et quand | [couverture.md](couverture.md) |
+| Déployer avec Docker Compose | [docker.md](docker.md) |
 | Déployer et exploiter le serveur | [exploitation.md](exploitation.md) |
 | Savoir ce qui manque avant une ouverture au public | [production.md](production.md) |
 | Évaluer la sécurité, signaler une faille | [securite.md](securite.md) |

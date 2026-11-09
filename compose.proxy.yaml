@@ -1,0 +1,28 @@
+# Complément de compose.yaml quand le reverse proxy tourne lui aussi dans Docker sur la même
+# machine (Nginx Proxy Manager, Traefik, Caddy…). Mode d'emploi : Docs/docker.md, section
+# « Derrière Nginx Proxy Manager ».
+#
+# Activé par `COMPOSE_FILE=compose.yaml:compose.proxy.yaml` dans .env, ou à la main :
+#   docker compose -f compose.yaml -f compose.proxy.yaml up -d
+#
+# Effet : l'API n'est plus publiée sur l'hôte ; le proxy la joint par le réseau partagé, à
+# l'adresse `tonapi:8080`. Les métriques restent sur 127.0.0.1.
+
+services:
+  tonapi:
+    ports: !override
+      - "127.0.0.1:${TONAPI_METRICS_PORT:-9090}:9090"
+    networks:
+      - tonapi
+      - proxy
+    environment:
+      # Réseau partagé avec le proxy, et lui seul : toute machine de ce réseau est crue sur
+      # X-Forwarded-For.
+      TONAPI_TRUSTED_PROXIES: ${TONAPI_TRUSTED_PROXIES:-172.29.0.0/24}
+
+networks:
+  proxy:
+    # Créé une fois à la main (voir Docs/docker.md), commun aux deux projets Compose : ni l'un ni
+    # l'autre ne le supprime avec `down`.
+    external: true
+    name: ${TONAPI_PROXY_NETWORK:-tonapi-proxy}
