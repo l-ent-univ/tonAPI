@@ -89,13 +89,23 @@ construction : une image ne peut pas contenir une configuration invalide.
    secrets. La perdre déconnecte tout le monde ; la divulguer permet de lire et de fabriquer des
    sessions.
 
+   Générer aussi le jeton des métriques et le coller dans `.env` :
+
+   ```bash
+   openssl rand -base64 48 | tr -d '=+/\n'
+   ```
+
+   ```dotenv
+   TONAPI_METRICS_TOKEN=…
+   ```
+
 4. Démarrer :
 
    ```bash
    docker compose up -d
    ```
 
-   Sans `TONAPI_SESSION_KEYS`, le serveur refuse de démarrer. Le conteneur reste en
+   Sans `TONAPI_SESSION_KEYS` ou sans `TONAPI_METRICS_TOKEN`, le serveur refuse de démarrer. Le conteneur reste en
    `Restarting`, et `docker compose logs tonapi` affiche `TONAPI_SESSION_KEYS` puis
    `aucune clé`.
 
@@ -335,6 +345,7 @@ selon le mode réseau de Docker, ils pourraient arriver par la passerelle de con
 | `COMPOSE_FILE` | `compose.yaml` | `compose.yaml:compose.proxy.yaml` derrière NPM |
 | `TONAPI_PROXY_NETWORK` | `tonapi-proxy` | réseau partagé avec NPM (avec `compose.proxy.yaml`) |
 | `TONAPI_PORT` | `8080` | port de l'API sur `127.0.0.1` (sans `compose.proxy.yaml`) |
+| `TONAPI_METRICS_TOKEN` | obligatoire | jeton de `GET /metrics`, 32 caractères au moins ; sans lui le serveur refuse de démarrer |
 | `TONAPI_METRICS_PORT` | `9090` | port des métriques sur `127.0.0.1` |
 | `TONAPI_TRUSTED_PROXIES` | `172.28.0.1`, ou `172.29.0.0/24` avec `compose.proxy.yaml` | adresses dont on lit `X-Forwarded-For` |
 | `TONAPI_SESSION_TTL_SECS` | `43200` (12 h) | durée d'un jeton |
@@ -390,18 +401,24 @@ docker compose logs --no-log-prefix tonapi | jq 'select(.target == "tonapi::acce
 
 ## Métriques
 
+`/metrics` n'existe pas sur le port de l'API et exige le jeton `TONAPI_METRICS_TOKEN` de `.env` :
+
 ```bash
-curl -s http://127.0.0.1:9090/metrics
+curl -s -H "Authorization: Bearer $TONAPI_METRICS_TOKEN" http://127.0.0.1:9090/metrics
 ```
 
-Pour Prometheus sur la même machine :
+Pour Prometheus sur la même machine, le jeton est lu dans un fichier réservé à Prometheus :
 
 ```yaml
 scrape_configs:
   - job_name: tonapi
+    authorization:
+      credentials_file: /etc/prometheus/tonapi-metrics-token
     static_configs:
       - targets: ["127.0.0.1:9090"]
 ```
+
+Ne créez dans Nginx Proxy Manager ni hôte ni flux vers `tonapi:9090`.
 
 Pour un Prometheus dans un autre conteneur, le placer sur le réseau `tonapi_tonapi` et viser
 `tonapi:9090` : le port publié sur l'hôte n'est alors plus utile. Ne pas le mettre sur

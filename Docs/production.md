@@ -20,7 +20,7 @@ Exploitation courante (variables, clés, répartiteur) : [exploitation.md](explo
 | Répartiteurs de confiance (A8) | `TONAPI_TRUSTED_PROXIES` (adresses ou plages) ; `X-Forwarded-For` lu seulement depuis ces adresses ; `TONAPI_TRUST_PROXY` refusé au démarrage |
 | Documentation hors dev (A8) | `/docs` et `/openapi.json` coupés par défaut hors `TONAPI_ENV=dev` (`TONAPI_DOCS`) |
 | Configuration figée (B8) | rechargement de `universities/` coupé par défaut hors dev (`TONAPI_RELOAD`) |
-| Plafond par compte | 4 requêtes de données simultanées par compte (`slots.rs`), `429` au-delà |
+| Plafond par compte | 4 requêtes de données simultanées par compte (`limit/account.rs`), `429` au-delà |
 | Déconnexion CAS (B7) | `POST /v1/auth/logout` ferme la session CAS, au mieux, en 5 s |
 | Certificats (C) | `tls.extra-ca` : chemin relatif sans `..`, fichier PEM vérifié par la validation |
 | Contrat client (B5) | conventions écrites dans [api.md](api.md) |

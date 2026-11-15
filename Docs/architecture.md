@@ -28,7 +28,7 @@ tonapi-cli      binaire `tonapi` : validation, schémas, modèles, rapports, Ope
 | `tonapi-session` | Format `v1.<kid>.<…>`, chiffrement, rotation des clés | `src/lib.rs` |
 | `tonapi-http` | `Browser` (redirections, cookies, TLS, limites), parcours CAS et esup-otp | `src/browser.rs`, `src/cas.rs`, `src/otp.rs` |
 | `tonapi-providers` | Aiguillage par service, un module par logiciel, connexion SSO | `src/lib.rs`, `src/sso.rs` |
-| `tonapi-server` | Routes axum, protections communes, journal d'accès, appel groupé, rechargement | `src/lib.rs`, `src/guard.rs`, `src/access.rs`, `src/routes/` |
+| `tonapi-server` | Routes axum, protections communes, journal d'accès, appel groupé, rechargement | `src/lib.rs`, `src/guard.rs`, `src/limit/`, `src/access.rs`, `src/routes/` |
 | `tonapi-metrics` | Métriques du processus, rendues en texte Prometheus | `src/lib.rs` |
 | `tonapi-cli` | Commandes de maintenance | `src/main.rs` |
 
@@ -46,7 +46,7 @@ Exemple : `GET /v1/grades` [code].
 2. `AuthSession` lit `Authorization: Bearer …` et ouvre le jeton avec les clés du serveur. Jeton
    illisible : `invalid_token` ; expiré : `session_expired` ; jeton provisoire du second facteur :
    `invalid_token`.
-3. `AccountSlots` réserve une des 4 places du compte (`slots.rs`) ; au-delà, `rate_limited`.
+3. `AccountSlots` réserve une des 4 places du compte (`limit/account.rs`) ; au-delà, `rate_limited`.
 4. La configuration courante est lue (`ArcSwap`, remplacée d'un bloc au rechargement).
    `services_for(composante)` fusionne les services de l'université et ceux de la composante.
 5. `tonapi_providers::grades` choisit le bras qui correspond au `provider` configuré :
@@ -63,7 +63,7 @@ Exemple : `GET /v1/grades` [code].
 
 1. La composante de départ est celle choisie par l'étudiant (`establishment`), sinon la
    composante `default = true` de l'université.
-2. Le limiteur réserve un essai pour ce compte avant tout appel au CAS (`limit.rs`).
+2. Le limiteur réserve un essai pour ce compte avant tout appel au CAS (`limit/login.rs`).
 3. Le navigateur suit l'entrée de l'université jusqu'au CAS et poste le mot de passe une fois.
    Les cookies d'un `previousToken` du même compte peuvent faire reconnaître l'appareil ; seuls
    ceux que reçoit le CAS sont repris, sans le TGC.
@@ -104,9 +104,9 @@ Le serveur ne garde pas de sessions étudiantes, mais il a un état de fonctionn
 |---|---|---|
 | Configuration des universités | `AppState.registry` | jusqu'au rechargement ou redémarrage |
 | Clés de session | `AppState.keys` | durée du processus |
-| Échecs de connexion par compte | `limit.rs` | fenêtre de 15 min |
-| Demandes de connexion par adresse | `guard.rs` | fenêtre de 60 s |
-| Requêtes en cours par compte | `slots.rs` | durée de la requête |
+| Échecs de connexion par compte | `limit/login.rs` | fenêtre de 15 min |
+| Demandes de connexion par adresse | `limit/ip.rs` | fenêtre de 60 s |
+| Requêtes en cours par compte | `limit/account.rs` | durée de la requête |
 | Places par hôte universitaire | `tonapi-http/src/browser.rs` | durée de la requête |
 | Clients HTTP et connexions réutilisées | `tonapi-http/src/browser.rs` | durée du processus |
 | Cache commun à tous les étudiants | `tonapi-providers/src/cache.rs` | signatures GWT et arbre ADE : 1 h ; liens de portlets uPortal sans paramètre : 6 h |
