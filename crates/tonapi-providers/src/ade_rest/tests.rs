@@ -278,6 +278,30 @@ fn groupes_de_l_arbre() {
 }
 
 #[test]
+fn noeud_au_nom_vide_ignore() {
+    let tree = json!({"data": {"category": [{"category": "trainee", "branch": [
+        {"id": 10, "name": "BUT Démo", "leaf": [
+            {"id": 11, "name": ""},
+            {"id": 12, "name": "  "},
+            {"id": 13, "name": "TD 1"},
+        ]},
+        {"id": 20, "name": "", "leaf": [{"id": 21, "name": "TD 2"}]},
+    ]}]}});
+    let groups = parse_groups(&tree, &[]).unwrap();
+    let found: Vec<_> = groups
+        .iter()
+        .map(|g| (g.id.as_str(), g.path.join(" / ")))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("13", "BUT Démo / TD 1".to_owned()),
+            ("21", "TD 2".to_owned())
+        ]
+    );
+}
+
+#[test]
 fn arbre_incomplet_ou_trop_profond() {
     let sans_nom = json!({"data": {"category": [{"category": "trainee", "leaf": [{"id": 1}]}]}});
     assert_eq!(

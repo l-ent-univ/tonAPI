@@ -140,10 +140,20 @@ fn walk_tree(
     }
     let id =
         id_string(node.get("id")).ok_or_else(|| upstream(PROVIDER, "nœud de l'arbre sans `id`"))?;
-    let name =
-        str_field(node, "name").ok_or_else(|| upstream(PROVIDER, "nœud de l'arbre sans `name`"))?;
-    path.push(name.to_owned());
     let children = child_nodes(node);
+    let Some(name) = str_field(node, "name") else {
+        // [vu] Rennes, 15/11/2026 : l'arbre contient des nœuds dont `name` est une chaîne vide.
+        // Un tel nœud n'est pas un groupe affichable ; ses enfants gardent le chemin du parent.
+        // Un `name` absent ou d'un autre type reste un changement de format.
+        if !node.get("name").is_some_and(Value::is_string) {
+            return Err(upstream(PROVIDER, "nœud de l'arbre sans `name`"));
+        }
+        for child in children {
+            walk_tree(child, path, selected, out, depth + 1)?;
+        }
+        return Ok(());
+    };
+    path.push(name.to_owned());
     let is_selected = selected.contains(&id);
     // Une feuille est un groupe sélectionnable ; une branche n'apparaît que si l'étudiant l'a
     // choisie (le comportement d'une ressource parente n'est pas confirmé).
