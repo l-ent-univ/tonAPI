@@ -1,5 +1,5 @@
 #:schema ../../../schema/establishment.schema.json
-# IUT de Béziers. Sources : Docs/recherche/Montpellier/scodoc.md, cas-iut-beziers.md, moodle.md, lien-ade.md.
+# IUT de Béziers. Sources : Docs/recherche/Montpellier/ (scodoc.md, cas-iut-beziers.md, moodle.md, lien-ade.md).
 
 id = "iut-beziers"
 name = "IUT de Béziers"
@@ -13,16 +13,16 @@ signal = "enrollment-component"
 prefix = "BE2"
 weight = 3
 
-# Arbre ADE : racine `Iutb` (ex. `Iutb.MMI 1ère année BUT.TDB.`).
-[[affiliation.rules]]
-signal = "ade-group-path"
-prefix = "Iutb"
-weight = 3
-
 # Mon Dossier Web, onglet Inscriptions.
 [[affiliation.rules]]
 signal = "enrollment-component"
 contains = "I.U.T. de Béziers"
+weight = 3
+
+# Arbre ADE : racine `Iutb` (ex. `Iutb.MMI 1ère année BUT.TDB.`).
+[[affiliation.rules]]
+signal = "ade-group-path"
+prefix = "Iutb"
 weight = 3
 
 # Adresse postale des attributs CAS (`postalAddress`), champs séparés par `$`.
@@ -33,12 +33,6 @@ suffix = "$BEZIERS"
 [[affiliation.rules]]
 signal = "room-address"
 contains = "iut de béziers"
-
-# cas.iutbeziers.fr n'envoie pas son intermédiaire GandiCert (émis par DigiCert Global Root G2).
-# Source : http://cacerts.digicert.com/GandiCert.crt (AIA du certificat), converti en PEM le
-# 27/10/2026 ; SHA-256 33:37:D4:E4:…:0A:FF:E1, valable jusqu'au 16/04/2034.
-[tls]
-extra-ca = ["certs/gandicert.pem"]
 
 # Passerelle ScoDoc derrière le CAS de l'IUT (phpCAS, identifiant prenom.nom, pas celui de l'UM).
 [services.grades]
@@ -56,3 +50,9 @@ sign-in = { kind = "own-cas", base-url = "https://cas.iutbeziers.fr:8443/", flav
 provider = "moodle-webservice"
 base-url = "https://moodle-but.iutbeziers.fr/moodle/"
 sign-in = { kind = "local-password" }
+
+# cas.iutbeziers.fr n'envoie pas son intermédiaire GandiCert (émis par DigiCert Global Root G2).
+# Source : http://cacerts.digicert.com/GandiCert.crt (AIA du certificat), converti en PEM le
+# 27/10/2026 ; SHA-256 33:37:D4:E4:…:0A:FF:E1, valable jusqu'au 16/04/2034.
+[tls]
+extra-ca = ["certs/gandicert.pem"]

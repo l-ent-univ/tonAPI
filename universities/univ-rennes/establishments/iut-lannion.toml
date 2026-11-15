@@ -1,5 +1,5 @@
 #:schema ../../../schema/establishment.schema.json
-# IUT de Lannion. Sources : Docs/recherche/Rennes/scodoc.md, emploi-du-temps.md.
+# IUT de Lannion. Sources : Docs/recherche/Rennes/scodoc.md, Docs/recherche/Rennes/emploi-du-temps.md.
 
 id = "iut-lannion"
 name = "IUT de Lannion"
@@ -16,7 +16,7 @@ weight = 3
 provider = "scodoc-gateway"
 base-url = "https://notes9.iutlan.univ-rennes1.fr/"
 
-# [incertain] champs d'absences supposés identiques à Béziers.
+# [déduit] champs d'absences supposés identiques à Béziers.
 [services.absences]
 provider = "scodoc-gateway"
 base-url = "https://notes9.iutlan.univ-rennes1.fr/"

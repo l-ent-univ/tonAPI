@@ -46,7 +46,7 @@ impl fmt::Display for Issue {
         }
         write!(f, "{}", self.message)?;
         if let Some(s) = &self.suggestion {
-            write!(f, " — voulez-vous dire `{s}` ?")?;
+            write!(f, " (voulez-vous dire `{s}` ?)")?;
         }
         Ok(())
     }

@@ -3,4 +3,5 @@
 
 id = "fac"
 name = "Faculté ou école de l'Université de Montpellier"
+status = "beta"
 default = true

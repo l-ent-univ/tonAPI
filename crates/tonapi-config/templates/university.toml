@@ -2,6 +2,7 @@
 # Université `{id}`. Seuls `id`, `name` et `[sso]` sont obligatoires ; un service absent n'est pas proposé.
 # Remplacez chaque « <à remplir> » et chaque `a-remplir.invalid`, puis lancez `tonapi validate`.
 # Liste des fournisseurs et de leurs paramètres : `tonapi providers`.
+# Au-dessus de chaque section, notez la provenance : `# [vu] fait observé, JJ/MM/AAAA. Source : chemin`.
 
 id = "{id}"
 name = "<à remplir>"
@@ -21,7 +22,7 @@ base-url = "https://a-remplir.invalid/cas/"   # racine du CAS, sans /login
 
 # Portail (ENT), pour la liste des applications et le profil.
 # [portal]
-# kind = "uportal5"        # uportal5 | uportal4-prolongation
+# kind = "uportal5"        # uportal5 | uportal4-prolongation | tiles-portal
 # base-url = "https://ent.exemple.fr/"
 
 # [services.timetable]

@@ -9,8 +9,8 @@ status = "beta"
 [links]
 website = "https://www.univ-rennes.fr/"
 account-help = "https://sesame.univ-rennes.fr/comptes/"
-account-activation = "https://sesame.univ-rennes1.fr/motdepasse/public/activate"
 password-reset = "https://docinfo.univ-rennes1.fr/documentation/compte-jai-oublie-mon-mot-de-passe"
+account-activation = "https://sesame.univ-rennes1.fr/motdepasse/public/activate"
 
 # Apereo CAS 7. Second facteur esup-otp pour certains comptes seulement. Docs/recherche/Rennes/cas-rennes.md
 [sso]

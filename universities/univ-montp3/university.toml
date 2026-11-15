@@ -1,5 +1,5 @@
 #:schema ../../schema/university.schema.json
-# Université Paul-Valéry Montpellier 3. Source : reports/univ-montp3.md (observations du 27/10/2026).
+# Université Paul-Valéry Montpellier 3. Sources : reports/univ-montp3.md (observations du 27/10/2026).
 
 id = "univ-montp3"
 name = "Université Paul-Valéry Montpellier 3"
@@ -27,7 +27,6 @@ base-url = "https://monupv.univ-montp3.fr/uPortal/"
 [services.timetable]
 provider = "ade-myplanning"
 base-url = "https://mon-planning.univ-montp3.fr/"
-project-id = 1
 
 # [vu] application de scolarité (Angular) derrière le CAS, `api/etudiants/notes`. Format des
 # semestres lu dans le client public [code] ; aucun relevé réel observé (compte sans note).
@@ -44,7 +43,6 @@ base-url = "https://scolarite.univ-montp3.fr/"
 [services.homework]
 provider = "moodle-ajax"
 base-url = "https://moodle.univ-montp3.fr/"
-entry = "cas"
 
 # [vu] BlueMind 5.7.5 : `mail.etu.univ-montp3.fr` redirige vers `mail.etu.umpv.fr`, connexion
 # par le CAS puis API REST. Observé le 27/10/2026.

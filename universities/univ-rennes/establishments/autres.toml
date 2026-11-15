@@ -3,4 +3,5 @@
 
 id = "autres"
 name = "Autre composante de l'Université de Rennes"
+status = "beta"
 default = true

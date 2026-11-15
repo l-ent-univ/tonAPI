@@ -19,11 +19,11 @@ flavor = "esup-otp-gateway"
 
 [sso.mfa]
 api-url = "https://otp-api.umontpellier.fr/"
-# Le CAS exige le second facteur pour le mail seulement (vu le 2026-10-13 et le 2026-11-09) :
+# Le CAS exige le second facteur pour le mail seulement ([vu] 13/10/2026 et 09/11/2026) :
 # la connexion ouvre l'entrée du mail pour le demander tout de suite.
 step-up-url = "https://mail.etu.umontpellier.fr/public/preauthetu.jsp"
 
-# Nouvel ENT (octobre 2026) : portail à tuiles avec son client CAS, à la place d'uPortal.
+# Nouvel ENT, en service depuis octobre 2026 : portail à tuiles avec son client CAS, à la place d'uPortal.
 # [vu] pages publiques : api/config, entrée cas/login?next=/, service cas/callback.
 [portal]
 kind = "tiles-portal"
@@ -46,7 +46,6 @@ label = "Relevés de notes"
 [services.homework]
 provider = "moodle-ajax"
 base-url = "https://moodle.umontpellier.fr/"
-entry = "cas"
 
 # Zimbra, préauthentification CAS. Le second facteur est souvent demandé ici.
 [services.mail]
