@@ -1,6 +1,6 @@
 //! Emploi du temps ADE, API REST du portail (`<portail>/RestApi/`), derrière le CAS de l'université.
 //!
-//! Parcours, d'après `Docs/recherche/Rennes/apis/ade-portal-rest.md` :
+//! Parcours, d'après `docs/recherche/rennes/apis/ade-portal-rest.md` :
 //!
 //! 1. `POST sso/accessToken` donne un jeton SSO court ; s'il est vide (HTTP 200 + `errMsg`), on
 //!    traverse le CAS avec le TGC de la session ([`Net::open_protected`]) puis on réessaie ;

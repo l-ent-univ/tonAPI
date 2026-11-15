@@ -1,5 +1,5 @@
 # Complément de compose.yaml quand le reverse proxy tourne lui aussi dans Docker sur la même
-# machine (Nginx Proxy Manager, Traefik, Caddy…). Mode d'emploi : Docs/docker.md, section
+# machine (Nginx Proxy Manager, Traefik, Caddy…). Mode d'emploi : docs/exploitation/docker.md, section
 # « Derrière Nginx Proxy Manager ».
 #
 # Activé par `COMPOSE_FILE=compose.yaml:compose.proxy.yaml` dans .env, ou à la main :
@@ -24,7 +24,7 @@ services:
 
 networks:
   proxy:
-    # Créé une fois à la main (voir Docs/docker.md), commun aux deux projets Compose : ni l'un ni
+    # Créé une fois à la main (voir docs/exploitation/docker.md), commun aux deux projets Compose : ni l'un ni
     # l'autre ne le supprime avec `down`.
     external: true
     name: ${TONAPI_PROXY_NETWORK:-tonapi-proxy}

@@ -12,8 +12,8 @@
 //! donnent `session_expired` ; le fournisseur rouvre alors le portail par le CAS (TGC de la
 //! session) et réessaie **une seule fois**.
 //!
-//! Sources : `Docs/recherche/Montpellier/ent.md` (uPortal 4.3.1, confirmé avec un compte réel),
-//! `Docs/recherche/Rennes/apis/uportal5.md` (uPortal 5 : seule la réponse invitée a été observée, la forme
+//! Sources : `docs/recherche/montpellier/ent.md` (uPortal 4.3.1, confirmé avec un compte réel),
+//! `docs/recherche/rennes/apis/uportal5.md` (uPortal 5 : seule la réponse invitée a été observée, la forme
 //! d'une session connectée est lue dans le code d'un client tiers).
 
 use reqwest::header::{self, HeaderMap, HeaderValue};

@@ -1,7 +1,7 @@
 //! Conventions propres à ADE dans les champs iCal : salles, enseignants, groupes, statut et type
 //! de séance.
 
-// Heuristiques tirées de `Docs/recherche/Montpellier/emploi-du-temps.md` §5 (code d'iCalFormater, observées
+// Heuristiques tirées de `docs/recherche/montpellier/emploi-du-temps.md` §5 (code d'iCalFormater, observées
 // à Montpellier) : [déduit] du seul flux de l'UM, à ne pas supposer valables ailleurs.
 
 /// Au plus autant de salles, enseignants ou groupes par séance : le dédoublonnage reste rapide

@@ -1,6 +1,6 @@
 // Référence de la console : fournisseurs, essais réels et codes d'erreur.
-// Tenue à la main à partir du code (`crates/tonapi-providers/src/`), des rapports (`reports/`) et
-// de `Docs/agents/contexte.md`. À mettre à jour quand un fournisseur ou un essai change.
+// Tenue à la main à partir du code (`crates/tonapi-providers/src/`), des rapports (`docs/rapports/`) et
+// de `docs/agents/contexte.md`. À mettre à jour quand un fournisseur ou un essai change.
 "use strict";
 
 // État d'essai d'un fournisseur : `reel` (essayé avec un compte réel), `faux` (faux serveurs
@@ -20,7 +20,7 @@ window.TONAPI_FOURNISSEURS = [
       "Le lien change quand l'étudiant modifie ses groupes : il est relu une fois si le flux devient illisible.",
     ],
     config: 'provider = "ade-ical-link"\nlink-page = "https://app.exemple.fr/prose-etudiant/protected/ical"\nfeed-host = "ade.exemple.fr"',
-    fichiers: ["crates/tonapi-providers/src/ade_ical.rs", "Docs/recherche/Montpellier/emploi-du-temps.md"],
+    fichiers: ["crates/tonapi-providers/src/ade_ical.rs", "docs/recherche/montpellier/emploi-du-temps.md"],
   },
   {
     id: "ade-myplanning",
@@ -36,7 +36,7 @@ window.TONAPI_FOURNISSEURS = [
       "Les types GWT de la requête de connexion sont ceux d'ADE 6.x : une version majeure différente peut les changer.",
     ],
     config: 'provider = "ade-myplanning"\nbase-url = "https://planning.exemple.fr/"\nproject-id = 1',
-    fichiers: ["crates/tonapi-providers/src/ade_myplanning.rs", "reports/univ-montp3.md"],
+    fichiers: ["crates/tonapi-providers/src/ade_myplanning.rs", "docs/rapports/univ-montp3.md"],
   },
   {
     id: "ade-portal-rest",
@@ -49,7 +49,7 @@ window.TONAPI_FOURNISSEURS = [
       "Ouvre le portail ADE derrière le CAS, obtient un jeton (accessToken, ssologin, refreshtoken), lit la sélection de groupes puis les événements de chaque ressource.",
     limites: ["Format réel de la sélection personnelle inconnu.", "Jamais essayé avec un vrai compte."],
     config: 'provider = "ade-portal-rest"\nbase-url = "https://planning.exemple.fr/portal/"',
-    fichiers: ["crates/tonapi-providers/src/ade_rest.rs", "Docs/recherche/Rennes/emploi-du-temps.md"],
+    fichiers: ["crates/tonapi-providers/src/ade_rest.rs", "docs/recherche/rennes/emploi-du-temps.md"],
   },
   {
     id: "scodoc-gateway",
@@ -62,7 +62,7 @@ window.TONAPI_FOURNISSEURS = [
       "Lit dataPremièreConnexion de la passerelle. Avec un CAS propre à la composante, l'étudiant se connecte une fois au service ; seuls les cookies du service restent dans la session.",
     limites: ["Semestre courant seulement.", "La variante par le CAS de l'université n'a pas été essayée en réel."],
     config: 'provider = "scodoc-gateway"\nbase-url = "https://scodoc.exemple.fr/"\nsign-in = { kind = "university-cas" }',
-    fichiers: ["crates/tonapi-providers/src/scodoc.rs", "Docs/recherche/Montpellier/scodoc.md"],
+    fichiers: ["crates/tonapi-providers/src/scodoc.rs", "docs/recherche/montpellier/scodoc.md"],
   },
   {
     id: "etudiants-api",
@@ -79,7 +79,7 @@ window.TONAPI_FOURNISSEURS = [
     ],
     config:
       '# Notes, examens\nprovider = "etudiants-api"\nbase-url = "https://scolarite.exemple.fr/"\n\n# Documents\nprovider = "etudiants-api"\nbase-url = "https://scolarite.exemple.fr/"\ncertificate-url = "https://ent.exemple.fr/certificat"\n\n# Profil\nprovider = "portal"\nrecord = { kind = "etudiants-api", base-url = "https://scolarite.exemple.fr/" }',
-    fichiers: ["crates/tonapi-providers/src/etudiants_api.rs", "reports/univ-montp3.md"],
+    fichiers: ["crates/tonapi-providers/src/etudiants_api.rs", "docs/rapports/univ-montp3.md"],
   },
   {
     id: "moodle-ajax",
@@ -92,7 +92,7 @@ window.TONAPI_FOURNISSEURS = [
       "Entre dans Moodle par le CAS, lit le sesskey de la page, puis appelle core_calendar_get_action_events_by_timesort. Un seul nouvel essai si Moodle signale une session perdue.",
     limites: ["Seuls les devoirs à faire apparaissent.", "L'entrée Shibboleth (Rennes) n'a pas été essayée en réel."],
     config: 'provider = "moodle-ajax"\nbase-url = "https://moodle.exemple.fr/"\nentry = "cas"',
-    fichiers: ["crates/tonapi-providers/src/moodle.rs", "Docs/recherche/Montpellier/moodle.md"],
+    fichiers: ["crates/tonapi-providers/src/moodle.rs", "docs/recherche/montpellier/moodle.md"],
   },
   {
     id: "moodle-webservice",
@@ -131,7 +131,7 @@ window.TONAPI_FOURNISSEURS = [
       "L'API valide elle-même un ticket CAS émis pour l'application : tonAPI demande ce ticket avec la session sans l'utiliser, lit le dossier, puis télécharge le PDF avec les jetons de l'attestation. Un ticket neuf par appel ; l'envoi par courriel n'est jamais appelé.",
     limites: ["Aucune attestation réelle observée : ce que le téléchargement exige en plus des jetons est inconnu."],
     config: 'provider = "ardemat"\nbase-url = "https://app.exemple.fr/ardemat-api/"\nservice-url = "https://app.exemple.fr/ardemat/"',
-    fichiers: ["crates/tonapi-providers/src/ardemat.rs", "Docs/recherche/Montpellier/research/pistes-api.md"],
+    fichiers: ["crates/tonapi-providers/src/ardemat.rs", "docs/recherche/montpellier/notes/pistes-api.md"],
   },
   {
     id: "bluemind",
@@ -144,7 +144,7 @@ window.TONAPI_FOURNISSEURS = [
       "Ouvre le webmail par le CAS, lit la clé de session dans session-infos.js, puis interroge l'API REST (dossiers, identifiants triés, messages) avec X-BM-ApiKey.",
     limites: ["Boîte de réception seulement, 20 derniers messages."],
     config: 'provider = "bluemind"\nbase-url = "https://mail.exemple.fr/"',
-    fichiers: ["crates/tonapi-providers/src/bluemind.rs", "reports/univ-montp3.md"],
+    fichiers: ["crates/tonapi-providers/src/bluemind.rs", "docs/rapports/univ-montp3.md"],
   },
   {
     id: "tiles-portal",
@@ -157,7 +157,7 @@ window.TONAPI_FOURNISSEURS = [
       "Entre par le client CAS du portail. Le profil et les signaux de composante viennent des attributs CAS, les applications des tuiles.",
     limites: ["Logiciel non identifié."],
     config: '[portal]\nkind = "tiles-portal"\nbase-url = "https://ent.exemple.fr/"',
-    fichiers: ["crates/tonapi-providers/src/tiles_portal.rs", "Docs/recherche/Montpellier/ent.md"],
+    fichiers: ["crates/tonapi-providers/src/tiles_portal.rs", "docs/recherche/montpellier/ent.md"],
   },
   {
     id: "portal",

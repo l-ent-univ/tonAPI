@@ -1,7 +1,7 @@
 # tonAPI avec Docker Compose : une instance, derrière un reverse proxy HTTPS.
 # Proxy installé sur l'hôte : ce fichier seul (API sur 127.0.0.1:8080).
 # Proxy en conteneur (Nginx Proxy Manager…) : ajouter compose.proxy.yaml.
-# Mode d'emploi complet : Docs/docker.md.
+# Mode d'emploi complet : docs/exploitation/docker.md.
 #
 #   cp .env.example .env                                   # puis y mettre la clé de session
 #   docker compose build

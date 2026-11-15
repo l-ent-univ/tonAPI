@@ -3,7 +3,7 @@
 //! Parcours : la page d'entrée du webmail passe par le CAS (TGC de la session, sans mot de passe) et
 //! finit par la préauthentification Zimbra, qui pose le cookie `ZM_AUTH_TOKEN`. La boîte se lit
 //! ensuite en SOAP au format JSON (`/service/soap/SearchRequest`, `GetFolderRequest`), avec ce seul
-//! cookie. Sources : `Docs/recherche/Montpellier/ent.md` (« Mail : Zimbra »), `Docs/recherche/Rennes/mail-et-autres.md`.
+//! cookie. Sources : `docs/recherche/montpellier/ent.md` (« Mail : Zimbra »), `docs/recherche/rennes/mail-et-autres.md`.
 //!
 //! - Cookie absent de la session, ou refusé (`AUTH_REQUIRED`, `AUTH_EXPIRED`, HTTP 401) : la chaîne
 //!   de connexion est rejouée **une seule fois**.

@@ -33,7 +33,7 @@ jobs:
       - name: JSON Schema à jour
         run: cargo run --locked -q -p tonapi-cli -- schema --check
       - name: Rapports sans donnée personnelle
-        run: cargo run --locked -q -p tonapi-cli -- report check reports/*.md
+        run: cargo run --locked -q -p tonapi-cli -- report check docs/rapports/*.md
 
   image:
     runs-on: ubuntu-latest

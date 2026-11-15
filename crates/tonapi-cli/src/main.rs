@@ -53,7 +53,7 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Rapports d'établissement (`reports/*.md`) écrits avec le prompt d'ajout.
+    /// Rapports d'établissement (`docs/rapports/*.md`) écrits avec le prompt d'ajout.
     Report {
         #[command(subcommand)]
         what: ReportCommand,

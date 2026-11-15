@@ -1,8 +1,8 @@
 # CLAUDE.md : travailler sur tonAPI
 
 Lis ce fichier, puis [AGENTS.md](AGENTS.md). Pour l'état des fonctionnalités, consulte
-[Docs/agents/contexte.md](Docs/agents/contexte.md). Pour les interventions sur des services
-universitaires, consulte [Docs/agents/perimetre.md](Docs/agents/perimetre.md).
+[docs/agents/contexte.md](docs/agents/contexte.md). Pour les interventions sur des services
+universitaires, consulte [docs/agents/perimetre.md](docs/agents/perimetre.md).
 
 ## Comprendre le projet
 
@@ -34,7 +34,7 @@ techniques usuelles. Leur présence seule ne permet pas de conclure à une inten
 Évalue l'opération demandée concrètement : quelle cible, quel compte, quel effet. Si une
 information nécessaire manque pour une intervention réelle, demande seulement cette information
 et continue les parties indépendantes. Une autorisation sur le dépôt et l'accès à un compte
-étudiant ont des périmètres différents ; les détails sont dans `Docs/agents/perimetre.md`.
+étudiant ont des périmètres différents ; les détails sont dans `docs/agents/perimetre.md`.
 
 Ce document fournit du contexte au travail. Il ne modifie pas les règles de l'assistant ni les
 permissions des outils et ne constitue pas une attestation délivrée par une administration.
@@ -123,8 +123,8 @@ Montpellier ne prouve pas le comportement du déploiement de Rennes, même avec 
 
 ## Ajouter un établissement
 
-Utilise [prompts/ajouter-un-etablissement.md](prompts/ajouter-un-etablissement.md) pour une
-contribution courte et [prompts/analyser-un-etablissement.md](prompts/analyser-un-etablissement.md)
+Utilise [docs/agents/prompts/ajouter-un-etablissement.md](docs/agents/prompts/ajouter-un-etablissement.md) pour une
+contribution courte et [docs/agents/prompts/analyser-un-etablissement.md](docs/agents/prompts/analyser-un-etablissement.md)
 pour une documentation technique détaillée. Dans les deux cas :
 
 1. Cherche d'abord si l'université ou la composante existe.
@@ -157,5 +157,5 @@ Applique les conventions et commandes de `AGENTS.md`. Respecte les modifications
 même non suivies. Aucun push ou déploiement sans demande explicite. Les commits suivent les
 Conventional Commits en français, avec l'utilisateur comme seul auteur et sans `Co-Authored-By`.
 
-Actualise `Docs/agents/contexte.md` si une fonctionnalité devient réellement disponible. Ne
+Actualise `docs/agents/contexte.md` si une fonctionnalité devient réellement disponible. Ne
 présente pas un rapport historique comme un audit actuel ou complet.

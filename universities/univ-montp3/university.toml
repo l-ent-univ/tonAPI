@@ -1,5 +1,5 @@
 #:schema ../../schema/university.schema.json
-# Université Paul-Valéry Montpellier 3. Sources : reports/univ-montp3.md (observations du 27/10/2026).
+# Université Paul-Valéry Montpellier 3. Sources : docs/rapports/univ-montp3.md (observations du 27/10/2026).
 
 id = "univ-montp3"
 name = "Université Paul-Valéry Montpellier 3"

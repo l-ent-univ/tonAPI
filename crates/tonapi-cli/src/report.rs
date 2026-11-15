@@ -1,4 +1,4 @@
-//! `tonapi report check` : contrôle d'un rapport d'établissement (`reports/*.md`) avant de le
+//! `tonapi report check` : contrôle d'un rapport d'établissement (`docs/rapports/*.md`) avant de le
 //! committer.
 //!
 //! Claude écrit le rapport en ne notant que des structures ; ceci est le second filet. Une seule

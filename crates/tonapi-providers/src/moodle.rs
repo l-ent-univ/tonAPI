@@ -414,7 +414,7 @@ fn login_required(sign_in: &SignIn) -> Problem {
 
 /// `login/token.php` vérifie un mot de passe local : il échoue toujours pour un compte CAS ou
 /// Shibboleth. Le jeton par `admin/tool/mobile/launch.php` n'a jamais été essayé sur un vrai
-/// Moodle (Docs/recherche/Rennes/moodle.md §10.3).
+/// Moodle (docs/recherche/rennes/moodle.md §10.3).
 fn no_token_by_sso() -> Problem {
     Problem::new(ErrorCode::NotImplemented).detail(
         "moodle-webservice : pas de jeton avec une connexion par CAS (`login/token.php` demande un \

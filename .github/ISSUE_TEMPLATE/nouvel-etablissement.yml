@@ -44,7 +44,7 @@ body:
     id: fichiers
     attributes:
       label: Fichiers produits par Claude
-      description: Glisse ici `reports/<id>.md` et le fichier `.toml`, si tu les as.
+      description: Glisse ici `docs/rapports/<id>.md` et le fichier `.toml`, si tu les as.
   - type: checkboxes
     id: confidentialite
     attributes:

@@ -12,7 +12,7 @@
 //!   et ne garde que les cookies dans `tokens["scodoc.<hôte>"]` ; jamais le mot de passe. Les
 //!   requêtes suivantes n'utilisent que ce jeton, jamais les cookies de l'université.
 //!
-//! Source des formats : `Docs/recherche/Montpellier/scodoc.md` et `Docs/recherche/Rennes/scodoc.md`.
+//! Source des formats : `docs/recherche/montpellier/scodoc.md` et `docs/recherche/rennes/scodoc.md`.
 
 use std::fmt::Display;
 use std::time::Duration;

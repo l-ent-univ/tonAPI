@@ -1,6 +1,6 @@
 //! Fournisseur `ade-ical-link` : emploi du temps ADE lu dans le flux iCal personnel de l'étudiant.
 //!
-//! Chaîne suivie (`Docs/recherche/Montpellier/lien-ade.md` et `emploi-du-temps.md` §9) :
+//! Chaîne suivie (`docs/recherche/montpellier/lien-ade.md` et `emploi-du-temps.md` §9) :
 //! 1. la page `link-page` de la configuration, derrière le CAS de l'université, contient le lien du
 //!    flux `…/direct_cal.jsp?data=<hex>,1` ;
 //! 2. ce lien se télécharge sans cookie, mais uniquement sur `feed-host` : un lien lu sur une page

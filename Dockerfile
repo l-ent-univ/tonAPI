@@ -1,6 +1,6 @@
 # Image de tonapi-server, avec la CLI `tonapi` (keygen, validate) et la configuration des
 # universités. Construction : `docker build -t tonapi .` depuis la racine du dépôt.
-# Exploitation (variables, sondes, arrêt) : Docs/exploitation.md.
+# Exploitation (variables, sondes, arrêt) : docs/exploitation/serveur.md.
 #
 # Les images de base sont désignées par leur version ; les épingler aussi par empreinte
 # (`@sha256:…`) dans la chaîne de livraison.

@@ -8,14 +8,14 @@ explicatifs et messages d'erreur. Respecte les identifiants de code et conventio
 
 | Besoin | Source |
 |---|---|
-| Trouver la bonne page de documentation | [Docs/README.md](Docs/README.md) |
-| Comprendre le produit et son état | [Docs/agents/contexte.md](Docs/agents/contexte.md) |
-| Définir une intervention sur un service réel | [Docs/agents/perimetre.md](Docs/agents/perimetre.md) |
+| Trouver la bonne page de documentation | [docs/README.md](docs/README.md) |
+| Comprendre le produit et son état | [docs/agents/contexte.md](docs/agents/contexte.md) |
+| Définir une intervention sur un service réel | [docs/agents/perimetre.md](docs/agents/perimetre.md) |
 | Développer un fournisseur | [crates/tonapi-providers/README.md](crates/tonapi-providers/README.md) |
-| Écrire une configuration TOML | [Docs/configuration.md](Docs/configuration.md) |
-| Connaître le contrat de l'API | [Docs/api.md](Docs/api.md) |
-| Ajouter un établissement | [prompts/ajouter-un-etablissement.md](prompts/ajouter-un-etablissement.md) |
-| Documenter un ENT en détail | [prompts/analyser-un-etablissement.md](prompts/analyser-un-etablissement.md) |
+| Écrire une configuration TOML | [docs/guide/configuration.md](docs/guide/configuration.md) |
+| Connaître le contrat de l'API | [docs/guide/api.md](docs/guide/api.md) |
+| Ajouter un établissement | [docs/agents/prompts/ajouter-un-etablissement.md](docs/agents/prompts/ajouter-un-etablissement.md) |
+| Documenter un ENT en détail | [docs/agents/prompts/analyser-un-etablissement.md](docs/agents/prompts/analyser-un-etablissement.md) |
 
 Les règles techniques communes sont ici. `CLAUDE.md` apporte à Claude le contexte détaillé.
 Les autres documents apportent des faits et des procédures spécialisées. Les instructions de la
@@ -43,7 +43,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo run -q -p tonapi-cli -- validate universities
 cargo run -q -p tonapi-cli -- schema --check
-cargo run -q -p tonapi-cli -- report check reports/*.md
+cargo run -q -p tonapi-cli -- report check docs/rapports/*.md
 ```
 
 Les cinq premières sont requises avant chaque commit. La sixième fait aussi partie de la CI et
@@ -78,8 +78,8 @@ Si un contrôle est indisponible, indique la commande et la cause ; ne le décla
 | `tonapi-cli` | Binaire `tonapi` et commandes de maintenance |
 
 `universities/<id>/university.toml` contient la configuration d'une université et
-`universities/<id>/establishments/*.toml` ses remplacements par composante. `schema/` est généré. `Docs/` contient la documentation (index `Docs/README.md`) et la recherche datée (`Docs/recherche/`), `prompts/` les procédures pour
-agents et `reports/` les rapports structurés.
+`universities/<id>/establishments/*.toml` ses remplacements par composante. `schema/` est généré. `docs/` contient la documentation (index `docs/README.md`) et la recherche datée (`docs/recherche/`), `docs/agents/prompts/` les procédures pour
+agents et `docs/rapports/` les rapports structurés.
 
 ## Contrats techniques
 

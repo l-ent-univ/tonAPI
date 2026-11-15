@@ -24,7 +24,7 @@ Le journal affiche `configuration chargée` avec le nombre d'universités, puis 
 Essai sans compte : université `demo`, identifiant `demo`, mot de passe `demo`.
 
 `TONAPI_ENV=dev` crée une clé de session temporaire et recharge `universities/` à chaque
-modification. Hors dev, voir [Docs/exploitation.md](Docs/exploitation.md).
+modification. Hors dev, voir [docs/exploitation/serveur.md](docs/exploitation/serveur.md).
 
 ## Tester avec un compte réel
 
@@ -52,24 +52,24 @@ docker compose up -d
 
 L'API écoute alors sur `127.0.0.1:8080`, à placer derrière un reverse proxy HTTPS. Derrière
 Nginx Proxy Manager, `compose.proxy.yaml` la branche plutôt sur un réseau Docker partagé. Guide
-complet, réglages du proxy et dépannage : [Docs/docker.md](Docs/docker.md).
+complet, réglages du proxy et dépannage : [docs/exploitation/docker.md](docs/exploitation/docker.md).
 
 ## Ajouter ton IUT ou ta fac
 
-Sans savoir coder : [le guide pas à pas](Docs/ajouter-un-etablissement.md).
+Sans savoir coder : [le guide pas à pas](docs/guide/ajouter-un-etablissement.md).
 Claude explore ton ENT pendant que tu te connectes toi-même, puis écrit la configuration et un
 rapport sans données de compte.
 
 ## Documentation
 
-Index et parcours de lecture : [Docs/README.md](Docs/README.md).
+Index et parcours de lecture : [docs/README.md](docs/README.md).
 
 ## Outils
 
 ```bash
 cargo run -q -p tonapi-cli -- validate universities    # vérifie les configurations
 cargo run -q -p tonapi-cli -- providers                # fournisseurs et paramètres
-cargo run -q -p tonapi-cli -- report check reports/*.md
+cargo run -q -p tonapi-cli -- report check docs/rapports/*.md
 ```
 
 ## Licence

@@ -2,7 +2,7 @@
 
 Un fournisseur = un logiciel (ADE, ScoDoc, Moodle…), jamais une université. Tout ce qui varie d'un site à l'autre vient de la configuration (`tonapi-config`).
 
-Catalogue des fournisseurs, limites et essais réels : [Docs/fournisseurs.md](../../Docs/fournisseurs.md).
+Catalogue des fournisseurs, limites et essais réels : [../../docs/reference/fournisseurs.md](../../docs/reference/fournisseurs.md).
 
 ## Forme d'un module
 
@@ -34,6 +34,6 @@ L'aiguillage (`src/lib.rs`) appelle `fetch_…` dans le bras du fournisseur. Une
 
 ## Tests
 
-- Fixtures **synthétiques** dans `tests/fixtures/<logiciel>/`, construites d'après la recherche de `Docs/recherche/` : aucune donnée réelle, noms et valeurs inventés (`Camille Demo`, `e00000000000`).
+- Fixtures **synthétiques** dans `tests/fixtures/<logiciel>/`, construites d'après la recherche de `docs/recherche/` : aucune donnée réelle, noms et valeurs inventés (`Camille Demo`, `e00000000000`).
 - Tests unitaires de l'analyse dans le module (`#[cfg(test)]`) : cas normal, champs manquants, valeurs non numériques, fuseau horaire.
 - Test de bout en bout dans `tests/<logiciel>_mock.rs` : un faux serveur axum local et `Context { net: NetSettings { https_only: false }, … }`. Aucun test ne contacte un vrai service.
