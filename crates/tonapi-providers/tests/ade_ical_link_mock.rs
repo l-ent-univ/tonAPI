@@ -18,8 +18,8 @@ use tonapi_session::SessionData;
 
 use common::{query, redirect};
 
-const SEMAINE: &str = include_str!("fixtures/ade_ical/semaine.ics");
-const PAGE: &str = include_str!("fixtures/ade_ical/page-ical.html");
+const SEMAINE: &str = include_str!("fixtures/ade_ical_link/semaine.ics");
+const PAGE: &str = include_str!("fixtures/ade_ical_link/page-ical.html");
 const FEED_PATH: &str = "/jsp/custom/modules/plannings/direct_cal.jsp";
 const TOKEN_KEY: &str = "ade.ical";
 /// `data=` que le faux serveur ADE accepte (valeur inventée, voir la fixture de la page).

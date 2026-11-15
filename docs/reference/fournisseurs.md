@@ -38,11 +38,27 @@ Points principaux :
 
 ### Emploi du temps (ADE)
 
+ADE n'a pas une interface unique : selon sa version et son déploiement, un établissement expose
+un flux iCal, le client MyPlanning ou le portail web. Chaque interface est un fournisseur à part,
+rangé dans `crates/tonapi-providers/src/ade/`. Le numéro de version d'ADE n'est pas visible d'un
+compte étudiant [vu, Rennes, 15/11/2026] : on choisit le fournisseur d'après l'interface observée.
+
+| Ce qu'on observe dans le navigateur | Fournisseur |
+|---|---|
+| un lien iCal `direct_cal.jsp?data=…` proposé par une application de l'ENT | `ade-ical-link` |
+| une page `direct/myplanning.jsp` et des requêtes `…ServiceProxy` (GWT) | `ade-myplanning` |
+| une adresse en `/portal/` et des requêtes `RestApi/portal/…` | `ade-portal-rest` |
+
+Deux déploiements d'une même interface diffèrent aussi. À Rennes, la sélection personnelle peut
+être vide alors qu'ADE attribue une ressource à l'étudiant, l'arbre contient des nœuds au nom
+vide et compte 6 928 groupes [vu, 15/11/2026]. Ces écarts se corrigent dans le fournisseur, par
+une analyse tolérante et un test, pas par un nouveau fournisseur.
+
 | Fournisseur | Parcours | Essai réel | Limites |
 |---|---|---|---|
 | `ade-ical-link` | page authentifiée qui contient le lien `direct_cal.jsp` (prose à Montpellier), puis flux iCal | Université de Montpellier (compte de l'IUT de Béziers), 27/10/2026 [vu] | `/v1/timetable/groups` répond `not_implemented` : le flux ne contient que les séances |
 | `ade-myplanning` | appels GWT-RPC de MyPlanning pour les ressources de l'étudiant, puis `anonymous_cal.jsp` | Paul-Valéry, 27/10/2026, groupes compris [vu] | types GWT d'ADE 6.x ; groupes limités à ceux de l'étudiant |
-| `ade-portal-rest` | API REST du portail ADE (`sso/accessToken`, `ssologin`, projets) | aucun : faux serveurs seulement [code] | format réel de la sélection personnelle [inconnu] |
+| `ade-portal-rest` | API REST du portail ADE (`sso/accessToken`, `ssologin`, projets) ; ressources de la sélection personnelle, sinon celles qu'ADE attribue | IUT de Lannion, 15/11/2026, groupes compris [vu] | format d'une sélection personnelle non vide [inconnu] ; la liste des groupes rend tout l'arbre de l'université |
 
 ### Notes et absences
 

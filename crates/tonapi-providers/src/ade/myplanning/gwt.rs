@@ -445,7 +445,7 @@ pub(super) fn gwt_long(value: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ade_myplanning::tree::TREE_ROOT;
+    use crate::ade::myplanning::tree::TREE_ROOT;
     use url::Url;
 
     /// Réponse de connexion synthétique : un critère (champ 1) de deux codes inventés.

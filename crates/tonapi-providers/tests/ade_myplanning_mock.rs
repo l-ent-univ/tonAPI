@@ -18,7 +18,7 @@ use tonapi_session::SessionData;
 
 use common::{has_cookie, query, redirect};
 
-const SEMAINE: &str = include_str!("fixtures/ade_ical/semaine.ics");
+const SEMAINE: &str = include_str!("fixtures/ade_ical_link/semaine.ics");
 const PERMUTATION: &str = "1987F1EF14DA1BA12007E141147356DC";
 const POLICY_DIRECT: &str = "AF8E80FD952FAE1F1E1D64FCA0763541";
 const POLICY_WEB: &str = "5EB99F51B592E97DD3B5315B286394D6";

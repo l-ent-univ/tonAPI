@@ -360,10 +360,11 @@ mod tests {
 
     use super::*;
 
-    const SEMAINE: &str = include_str!("../../tests/fixtures/ade_ical/semaine.ics");
+    const SEMAINE: &str = include_str!("../../../tests/fixtures/ade_ical_link/semaine.ics");
     const CHANGEMENT_HEURE: &str =
-        include_str!("../../tests/fixtures/ade_ical/changement-heure.ics");
-    const INCOMPLET: &str = include_str!("../../tests/fixtures/ade_ical/evenement-incomplet.ics");
+        include_str!("../../../tests/fixtures/ade_ical_link/changement-heure.ics");
+    const INCOMPLET: &str =
+        include_str!("../../../tests/fixtures/ade_ical_link/evenement-incomplet.ics");
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()

@@ -59,6 +59,7 @@ Indices utiles, à confirmer par l'observation et le code :
 | layout.jsp, prolongation_ENT | uPortal 4 | uportal4-prolongation |
 | /api/v4-3/dlm/layout.json | uPortal 5 | uportal5 |
 | direct_cal.jsp avec lien personnel | ADE iCal | ade-ical-link |
+| direct/myplanning.jsp, requêtes ServiceProxy | ADE MyPlanning (GWT) | ade-myplanning |
 | /portal/RestApi/ | Portail ADE | ade-portal-rest |
 | /services/data.php | Passerelle ScoDoc | scodoc-gateway |
 | /lib/ajax/service.php | Moodle web | moodle-ajax |

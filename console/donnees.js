@@ -20,7 +20,7 @@ window.TONAPI_FOURNISSEURS = [
       "Le lien change quand l'étudiant modifie ses groupes : il est relu une fois si le flux devient illisible.",
     ],
     config: 'provider = "ade-ical-link"\nlink-page = "https://app.exemple.fr/prose-etudiant/protected/ical"\nfeed-host = "ade.exemple.fr"',
-    fichiers: ["crates/tonapi-providers/src/ade_ical.rs", "docs/recherche/montpellier/emploi-du-temps.md"],
+    fichiers: ["crates/tonapi-providers/src/ade/ical_link.rs", "docs/recherche/montpellier/emploi-du-temps.md"],
   },
   {
     id: "ade-myplanning",
@@ -36,20 +36,20 @@ window.TONAPI_FOURNISSEURS = [
       "Les types GWT de la requête de connexion sont ceux d'ADE 6.x : une version majeure différente peut les changer.",
     ],
     config: 'provider = "ade-myplanning"\nbase-url = "https://planning.exemple.fr/"\nproject-id = 1',
-    fichiers: ["crates/tonapi-providers/src/ade_myplanning.rs", "docs/rapports/univ-montp3.md"],
+    fichiers: ["crates/tonapi-providers/src/ade/myplanning.rs", "docs/rapports/univ-montp3.md"],
   },
   {
     id: "ade-portal-rest",
     logiciel: "Portail ADE (REST)",
     services: ["timetable", "timetable-groups"],
     ligne: ["CAS", "accessToken", "ssologin", "événements"],
-    essai: "faux",
-    essais: [],
+    essai: "reel",
+    essais: ["IUT de Lannion, 15/11/2026"],
     comment:
-      "Ouvre le portail ADE derrière le CAS, obtient un jeton (accessToken, ssologin, refreshtoken), lit la sélection de groupes puis les événements de chaque ressource.",
-    limites: ["Format réel de la sélection personnelle inconnu.", "Jamais essayé avec un vrai compte."],
+      "Ouvre le portail ADE derrière le CAS, obtient un jeton (accessToken, ssologin, refreshtoken), lit la sélection de groupes de l'étudiant, sinon les ressources qu'ADE lui attribue, puis les événements de chaque ressource.",
+    limites: ["Format d'une sélection personnelle non vide inconnu.", "La liste des groupes rend tout l'arbre de l'université (6 928 groupes à Rennes)."],
     config: 'provider = "ade-portal-rest"\nbase-url = "https://planning.exemple.fr/portal/"',
-    fichiers: ["crates/tonapi-providers/src/ade_rest.rs", "docs/recherche/rennes/emploi-du-temps.md"],
+    fichiers: ["crates/tonapi-providers/src/ade/portal_rest.rs", "docs/recherche/rennes/emploi-du-temps.md"],
   },
   {
     id: "scodoc-gateway",
@@ -57,7 +57,7 @@ window.TONAPI_FOURNISSEURS = [
     services: ["grades", "absences"],
     ligne: ["CAS (université ou composante)", "doAuth.php", "data.php"],
     essai: "reel",
-    essais: ["IUT de Béziers (CAS propre), 27/10/2026"],
+    essais: ["IUT de Béziers (CAS propre), 27/10/2026", "IUT de Lannion (CAS de l'université), 15/11/2026"],
     comment:
       "Lit dataPremièreConnexion de la passerelle. Avec un CAS propre à la composante, l'étudiant se connecte une fois au service ; seuls les cookies du service restent dans la session.",
     limites: ["Semestre courant seulement.", "La variante par le CAS de l'université n'a pas été essayée en réel."],
@@ -87,7 +87,7 @@ window.TONAPI_FOURNISSEURS = [
     services: ["homework"],
     ligne: ["CAS ou Shibboleth", "/my/ + sesskey", "lib/ajax/service.php"],
     essai: "reel",
-    essais: ["Université de Montpellier, 27/10/2026", "Université Paul-Valéry, 27/10/2026"],
+    essais: ["Université de Montpellier, 27/10/2026", "Université Paul-Valéry, 27/10/2026", "IUT de Lannion (Shibboleth), 15/11/2026"],
     comment:
       "Entre dans Moodle par le CAS, lit le sesskey de la page, puis appelle core_calendar_get_action_events_by_timesort. Un seul nouvel essai si Moodle signale une session perdue.",
     limites: ["Seuls les devoirs à faire apparaissent.", "L'entrée Shibboleth (Rennes) n'a pas été essayée en réel."],
@@ -205,6 +205,10 @@ window.TONAPI_VERIFIE = {
   "umontpellier/iut-beziers": {
     date: "27 et 28/10/2026",
     services: { profile: "ok", timetable: "ok", grades: "ok", absences: "ok", homework: "ok", mail: "ok", apps: "ok", documents: "vide" },
+  },
+  "univ-rennes/iut-lannion": {
+    date: "15/11/2026",
+    services: { profile: "ok", timetable: "ok", grades: "ok", absences: "vide", homework: "ok", apps: "ok" },
   },
 };
 

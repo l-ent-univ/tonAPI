@@ -6,7 +6,9 @@ Catalogue des fournisseurs, limites et essais réels : [../../docs/reference/fou
 
 ## Forme d'un module
 
-`src/<logiciel>.rs` (ex. `scodoc.rs`, `zimbra.rs`) contient deux couches. Quand le fichier grossit, l'analyse part dans des sous-modules d'un dossier du même nom, sans `mod.rs` : `moodle/{parse,saml}.rs`, `uportal/parse.rs`, `scodoc/parse.rs`, `ade_rest/parse.rs`, `ade_ical/{ics,fields,vaadin}.rs`, `ade_myplanning/{gwt,tree}.rs`.
+`src/<logiciel>.rs` (ex. `scodoc.rs`, `zimbra.rs`) contient deux couches. Quand le fichier grossit, l'analyse part dans des sous-modules d'un dossier du même nom, sans `mod.rs` : `moodle/{parse,saml}.rs`, `uportal/parse.rs`, `scodoc/parse.rs`, `ade/portal_rest/parse.rs`, `ade/ical_link/{ics,fields,vaadin}.rs`, `ade/myplanning/{gwt,tree}.rs`.
+
+Un logiciel qui a plusieurs interfaces selon sa version ou son déploiement a un dossier, avec un fournisseur par interface : `ade/{ical_link,myplanning,portal_rest}.rs`, décrits dans `src/ade.rs`. Un écart entre deux déploiements de la même interface se traite dans son fournisseur, par une analyse tolérante et un test.
 
 Trois modules servent à plusieurs fournisseurs :
 

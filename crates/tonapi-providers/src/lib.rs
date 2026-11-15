@@ -4,9 +4,7 @@
 //! Un service absent donne `service_absent` (avec le lien quand il y en a un) ; une fonction qu'un
 //! fournisseur ne peut pas assurer (groupes d'un lien iCal, par exemple) donne `not_implemented`.
 
-mod ade_ical;
-mod ade_myplanning;
-mod ade_rest;
+mod ade;
 mod ardemat;
 mod bluemind;
 mod cache;
@@ -245,11 +243,12 @@ pub async fn timetable(
             feed_host,
             ..
         }) => {
-            let courses = ade_ical::fetch_timetable(ctx, link_page, feed_host, from, to).await?;
+            let courses =
+                ade::ical_link::fetch_timetable(ctx, link_page, feed_host, from, to).await?;
             Ok(fetched(courses, "ade-ical-link"))
         }
         Some(TimetableService::AdePortalRest { base_url, .. }) => {
-            let courses = ade_rest::fetch_timetable(ctx, base_url, from, to).await?;
+            let courses = ade::portal_rest::fetch_timetable(ctx, base_url, from, to).await?;
             Ok(fetched(courses, "ade-portal-rest"))
         }
         Some(TimetableService::AdeMyplanning {
@@ -258,7 +257,7 @@ pub async fn timetable(
             ..
         }) => {
             let courses =
-                ade_myplanning::fetch_timetable(ctx, base_url, *project_id, from, to).await?;
+                ade::myplanning::fetch_timetable(ctx, base_url, *project_id, from, to).await?;
             Ok(fetched(courses, "ade-myplanning"))
         }
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
@@ -273,9 +272,9 @@ pub async fn timetable_groups(
     let services = ctx.services();
     match &services.timetable {
         Some(TimetableService::Demo) => Ok(fetched(demo::groups(), "demo")),
-        Some(TimetableService::AdeIcalLink { .. }) => Err(ade_ical::groups_unsupported()),
+        Some(TimetableService::AdeIcalLink { .. }) => Err(ade::ical_link::groups_unsupported()),
         Some(TimetableService::AdePortalRest { base_url, .. }) => {
-            let groups = ade_rest::fetch_groups(ctx, base_url).await?;
+            let groups = ade::portal_rest::fetch_groups(ctx, base_url).await?;
             Ok(fetched(groups, "ade-portal-rest"))
         }
         Some(TimetableService::AdeMyplanning {
@@ -283,7 +282,7 @@ pub async fn timetable_groups(
             project_id,
             ..
         }) => Ok(fetched(
-            ade_myplanning::fetch_groups(ctx, base_url, *project_id).await?,
+            ade::myplanning::fetch_groups(ctx, base_url, *project_id).await?,
             "ade-myplanning",
         )),
         Some(TimetableService::Link(_) | TimetableService::None) | None => {

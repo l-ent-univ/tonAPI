@@ -29,7 +29,7 @@ use url::Url;
 use std::time::Duration;
 
 use crate::Context;
-use crate::ade_ical::{is_calendar, parse_timetable};
+use crate::ade::ical_link::{is_calendar, parse_timetable};
 use crate::cache::Shared;
 use crate::common::{root, token_key, university_tz};
 use crate::net::{Net, upstream};

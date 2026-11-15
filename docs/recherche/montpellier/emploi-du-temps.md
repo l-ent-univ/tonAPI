@@ -205,7 +205,7 @@ Texte affiché : « Lien d'agenda au format iCal […] Attention ce lien iCal n'
 > "location": "protected/ical", "state": {"href": …}, "link": 1}], "syncId", "clientId"}`.
 > Naviguer directement vers la vue déjà affichée ne suffit pas : il faut passer par une autre vue
 > (`protected/resume`) puis revenir. Format du lien inchangé. Implémenté dans
-> `crates/tonapi-providers/src/ade_ical.rs` (`VaadinPage`).
+> `crates/tonapi-providers/src/ade/ical_link.rs` (`VaadinPage`).
 
 ### 9.3 Propriétés vérifiées
 | Propriété | Résultat |

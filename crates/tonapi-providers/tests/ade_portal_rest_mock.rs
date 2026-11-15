@@ -20,8 +20,8 @@ use url::Url;
 
 use common::{has_cookie, query};
 
-const EVENTS: &str = include_str!("fixtures/ade_rest/events.json");
-const TREE: &str = include_str!("fixtures/ade_rest/resourcestree.json");
+const EVENTS: &str = include_str!("fixtures/ade_portal_rest/events.json");
+const TREE: &str = include_str!("fixtures/ade_portal_rest/resourcestree.json");
 const EVENTS_PATH: &str =
     "resources;14961/startdate;09012026/enddate;09302026/level;=8/field;Nom;CODEZ_RESOURCE;OWNER;";
 

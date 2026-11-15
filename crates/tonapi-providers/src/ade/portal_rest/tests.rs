@@ -3,11 +3,11 @@ use super::*;
 use chrono_tz::Europe::Paris;
 use serde_json::json;
 
-const EVENTS: &str = include_str!("../../tests/fixtures/ade_rest/events.json");
-const EVENTS_DST: &str = include_str!("../../tests/fixtures/ade_rest/events_dst.json");
-const TREE: &str = include_str!("../../tests/fixtures/ade_rest/resourcestree.json");
-const SSOLOGIN: &str = include_str!("../../tests/fixtures/ade_rest/ssologin.json");
-const SELECTION: &str = include_str!("../../tests/fixtures/ade_rest/selection.json");
+const EVENTS: &str = include_str!("../../../tests/fixtures/ade_portal_rest/events.json");
+const EVENTS_DST: &str = include_str!("../../../tests/fixtures/ade_portal_rest/events_dst.json");
+const TREE: &str = include_str!("../../../tests/fixtures/ade_portal_rest/resourcestree.json");
+const SSOLOGIN: &str = include_str!("../../../tests/fixtures/ade_portal_rest/ssologin.json");
+const SELECTION: &str = include_str!("../../../tests/fixtures/ade_portal_rest/selection.json");
 
 fn json_of(raw: &str) -> Value {
     serde_json::from_str(raw).expect("fixture JSON")

@@ -310,7 +310,7 @@ fn host_matches(url: &Url, feed_host: &str) -> bool {
 mod tests {
     use super::*;
 
-    const PAGE: &str = include_str!("../tests/fixtures/ade_ical/page-ical.html");
+    const PAGE: &str = include_str!("../../tests/fixtures/ade_ical_link/page-ical.html");
     const HOTE: &str = "ade.example.test";
 
     #[test]
