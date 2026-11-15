@@ -242,7 +242,12 @@ pub async fn login(
     let registry = state.registry.load_full();
     let university = university(&registry, &request.university)?;
     let limit_key = limit::key("login", &request.university, &request.username);
-    let attempt = state.login_limiter.begin(&limit_key)?;
+    let attempt = state
+        .login_limiter
+        .begin(&limit_key)
+        .inspect_err(|problem| {
+            record_login(&university.university.id, problem.code.as_str());
+        })?;
 
     let now = Utc::now();
     let previous_cookies = request
@@ -296,7 +301,26 @@ pub async fn login(
             Err(problem.into())
         }
     };
+    record_login(&university.university.id, login_outcome(&response));
     Ok(tagged(response, university))
+}
+
+/// Résultat d'une connexion pour la métrique : `success`, `second_factor` ou le code d'erreur
+/// stable. Valeurs en nombre fini, jamais une donnée reçue.
+fn login_outcome(response: &Result<Response, ApiError>) -> &'static str {
+    match response {
+        Ok(response) if response.status() == StatusCode::ACCEPTED => "second_factor",
+        Ok(_) => "success",
+        Err(error) => error.0.code.as_str(),
+    }
+}
+
+/// `tonapi_login_total` : `university` est l'identifiant de configuration.
+fn record_login(university: &str, outcome: &str) {
+    tonapi_metrics::inc(
+        "tonapi_login_total",
+        &[("university", university), ("outcome", outcome)],
+    );
 }
 
 /// Second facteur : notification sur le téléphone ou code.

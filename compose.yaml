@@ -29,6 +29,10 @@ services:
       TONAPI_SESSION_TTL_SECS: ${TONAPI_SESSION_TTL_SECS:-43200}
       TONAPI_AUTH_PER_IP: ${TONAPI_AUTH_PER_IP:-120}
       TONAPI_METRICS_ADDR: 0.0.0.0:9090
+      # Obligatoire (32 caractères au moins, à générer, jamais écrit dans un fichier suivi) :
+      # l'écouteur est sur 0.0.0.0 dans le conteneur, donc lisible depuis tout réseau où il est
+      # attaché (dont le réseau partagé du proxy) ; sans jeton valide, le serveur refuse de démarrer.
+      TONAPI_METRICS_TOKEN: ${TONAPI_METRICS_TOKEN:-}
       TONAPI_DRAIN_SECS: ${TONAPI_DRAIN_SECS:-5}
       TONAPI_GRACE_SECS: ${TONAPI_GRACE_SECS:-130}
       RUST_LOG: ${RUST_LOG:-info}
@@ -36,7 +40,8 @@ services:
       # Boucle locale seulement : le répartiteur HTTPS de l'hôte (nginx, Caddy…) relaie vers ce
       # port. Ne pas publier sur 0.0.0.0 : le serveur parle HTTP sans chiffrement.
       - "127.0.0.1:${TONAPI_PORT:-8080}:8080"
-      # Métriques Prometheus, boucle locale seulement (ou retirer et lire depuis le réseau).
+      # Métriques Prometheus : boucle locale de l'hôte seulement, jamais 0.0.0.0 ; le jeton
+      # TONAPI_METRICS_TOKEN reste exigé par le serveur.
       - "127.0.0.1:${TONAPI_METRICS_PORT:-9090}:9090"
     networks:
       - tonapi

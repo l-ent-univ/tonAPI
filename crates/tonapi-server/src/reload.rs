@@ -9,6 +9,15 @@ use notify::{RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 use tonapi_config::Registry;
 
+/// Publie le nombre d'universités chargées.
+pub(crate) fn report_loaded(count: usize) {
+    tonapi_metrics::set(
+        "tonapi_universities_loaded",
+        &[],
+        i64::try_from(count).unwrap_or(i64::MAX),
+    );
+}
+
 /// Surveille `dir` et recharge les universités après chaque modification.
 ///
 /// Le nouveau contenu n'est servi que si tous les fichiers sont valides : un fichier en cours
@@ -37,6 +46,7 @@ pub fn watch(
             let Ok((next, report)) =
                 tokio::task::spawn_blocking(move || Registry::load(&source)).await
             else {
+                tonapi_metrics::inc("tonapi_config_reloads_total", &[("result", "interrupted")]);
                 tracing::warn!(
                     "rechargement interrompu : la configuration précédente reste servie"
                 );
@@ -44,8 +54,11 @@ pub fn watch(
             };
             if report.is_ok() {
                 tracing::info!(universities = next.len(), "universités rechargées");
+                report_loaded(next.len());
                 registry.store(Arc::new(next));
+                tonapi_metrics::inc("tonapi_config_reloads_total", &[("result", "ok")]);
             } else {
+                tonapi_metrics::inc("tonapi_config_reloads_total", &[("result", "rejected")]);
                 for issue in &report.rejected {
                     tracing::warn!("{issue}");
                 }

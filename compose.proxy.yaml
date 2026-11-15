@@ -6,7 +6,9 @@
 #   docker compose -f compose.yaml -f compose.proxy.yaml up -d
 #
 # Effet : l'API n'est plus publiée sur l'hôte ; le proxy la joint par le réseau partagé, à
-# l'adresse `tonapi:8080`. Les métriques restent sur 127.0.0.1.
+# l'adresse `tonapi:8080`. Les métriques restent sur 127.0.0.1 et exigent
+# TONAPI_METRICS_TOKEN (hérité de compose.yaml) : le conteneur étant aussi sur le réseau du proxy,
+# tout conteneur de ce réseau atteint le port 9090 ; seul le jeton l'empêche de les lire.
 
 services:
   tonapi:

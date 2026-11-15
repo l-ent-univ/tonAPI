@@ -28,6 +28,13 @@ tonapi-metrics = { path = "crates/tonapi-metrics" }
 tonapi-providers = { path = "crates/tonapi-providers" }
 tonapi-server = { path = "crates/tonapi-server" }
 
+# Pas de `panic = "abort"` : `routes/overview.rs` et les tâches par connexion comptent sur
+# l'isolation d'une panique (elle n'arrête qu'une requête, pas le processus).
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

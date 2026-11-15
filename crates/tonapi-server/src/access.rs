@@ -56,8 +56,26 @@ fn request_id(request: &Request) -> String {
         )
 }
 
+/// Requête en cours dans la jauge `tonapi_http_requests_in_flight`. Retirée au `Drop` : une
+/// requête abandonnée par le client (futur annulé) ne laisse pas la jauge gonflée.
+struct InFlight;
+
+impl InFlight {
+    fn enter() -> Self {
+        tonapi_metrics::add("tonapi_http_requests_in_flight", &[], 1);
+        InFlight
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        tonapi_metrics::add("tonapi_http_requests_in_flight", &[], -1);
+    }
+}
+
 /// Intergiciel le plus externe : mesure toute la requête, garde et CORS compris.
 pub async fn log(request: Request, next: Next) -> Response {
+    let _in_flight = InFlight::enter();
     let started = Instant::now();
     let id = request_id(&request);
     let method = request.method().clone();

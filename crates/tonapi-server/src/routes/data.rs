@@ -268,7 +268,13 @@ pub async fn documents(
 /// Fichier binaire (PDF le plus souvent).
 #[derive(ToSchema)]
 #[schema(value_type = String, format = Binary)]
-pub struct File(#[allow(dead_code)] Vec<u8>);
+pub struct File(
+    #[allow(
+        dead_code,
+        reason = "type de schéma OpenAPI seulement : le champ n'est jamais lu"
+    )]
+    Vec<u8>,
+);
 
 /// Fichier d'un document marqué `downloadable`, en pièce jointe.
 #[utoipa::path(

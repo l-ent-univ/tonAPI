@@ -30,7 +30,7 @@ impl AccountSlots {
             session.university,
             session.username.trim().to_lowercase()
         );
-        let semaphore = {
+        let (semaphore, accounts) = {
             let mut map = self
                 .accounts
                 .lock()
@@ -38,11 +38,19 @@ impl AccountSlots {
             if map.len() >= MAX_ACCOUNTS {
                 map.retain(|_, s| Arc::strong_count(s) > 1 || s.available_permits() < PER_ACCOUNT);
             }
-            map.entry(key)
+            let semaphore = map
+                .entry(key)
                 .or_insert_with(|| Arc::new(Semaphore::new(PER_ACCOUNT)))
-                .clone()
+                .clone();
+            (semaphore, map.len())
         };
+        tonapi_metrics::set(
+            "tonapi_limiter_entries",
+            &[("limiter", "slots")],
+            i64::try_from(accounts).unwrap_or(i64::MAX),
+        );
         semaphore.try_acquire_owned().map_err(|_| {
+            tonapi_metrics::inc("tonapi_rate_limited_total", &[("limiter", "slots")]);
             Problem::new(ErrorCode::RateLimited).detail(format!(
                 "{PER_ACCOUNT} requêtes en cours au plus pour un même compte : attendre leurs réponses"
             ))

@@ -151,5 +151,6 @@ pub fn attach_session(
     access::token_issued(&token);
     let value = HeaderValue::from_str(&token).map_err(|_| ErrorCode::Internal)?;
     response.headers_mut().insert(SESSION_HEADER, value);
+    tonapi_metrics::inc("tonapi_session_renewed_total", &[]);
     Ok(())
 }

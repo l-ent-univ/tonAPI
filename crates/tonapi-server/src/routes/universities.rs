@@ -2,6 +2,8 @@
 
 use axum::Json;
 use axum::extract::{Path, State};
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use tonapi_config::{PortalConfig, ResolvedUniversity, Sso, Status};
 use tonapi_core::{ErrorCode, Problem, ServiceStatus};
@@ -173,8 +175,35 @@ fn summary(u: &ResolvedUniversity) -> UniversitySummary {
     security(()),
     responses((status = 200, description = "Succès", body = Vec<UniversitySummary>))
 )]
-pub async fn list(State(state): State<AppState>) -> Json<Vec<UniversitySummary>> {
-    Json(state.registry.load().iter().map(summary).collect())
+pub async fn list(State(state): State<AppState>) -> Response {
+    cacheable(
+        &state,
+        Json(
+            state
+                .registry
+                .load()
+                .iter()
+                .map(summary)
+                .collect::<Vec<_>>(),
+        ),
+    )
+}
+
+/// Durée pendant laquelle un navigateur ou un cache partagé garde le catalogue des universités :
+/// une configuration ne change qu'au déploiement.
+const CATALOG_MAX_AGE: &str = "public, max-age=300";
+
+/// Ajoute `Cache-Control: public, max-age=300` à une réponse réussie du catalogue, sauf si
+/// `Settings::cache_catalog` est faux (dev, configuration rechargée à chaud).
+fn cacheable(state: &AppState, body: impl IntoResponse) -> Response {
+    let mut response = body.into_response();
+    if state.settings.cache_catalog {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static(CATALOG_MAX_AGE),
+        );
+    }
+    response
 }
 
 /// Détail d'une université : services, composantes, liens.
@@ -192,7 +221,7 @@ pub async fn list(State(state): State<AppState>) -> Json<Vec<UniversitySummary>>
 pub async fn detail(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<UniversityDetail>, ApiError> {
+) -> Result<Response, ApiError> {
     let registry = state.registry.load();
     let u = registry.get(&id).ok_or_else(|| {
         Problem::new(ErrorCode::UnknownUniversity).detail(format!("`{id}` n'est pas servie"))
@@ -212,31 +241,34 @@ pub async fn detail(
         })
     })
     .collect();
-    Ok(Json(UniversityDetail {
-        id: u.university.id.clone(),
-        name: u.university.name.clone(),
-        short_name: u.university.short_name.clone(),
-        status: status(u.university.status),
-        timezone: u.university.timezone.clone(),
-        login: login(u),
-        portal: match u.university.portal {
-            PortalConfig::Uportal4Prolongation { .. } => Some("uportal4-prolongation"),
-            PortalConfig::Uportal5 { .. } => Some("uportal5"),
-            PortalConfig::TilesPortal { .. } => Some("tiles-portal"),
-            PortalConfig::None => None,
-        },
-        links,
-        services: service_statuses(&u.university.services),
-        establishments: u
-            .establishments
-            .values()
-            .map(|e| EstablishmentDetail {
-                id: e.id.clone(),
-                name: e.name.clone(),
-                default: e.default,
-                status: status(e.status),
-                services: service_statuses(&u.services_for(Some(&e.id))),
-            })
-            .collect(),
-    }))
+    Ok(cacheable(
+        &state,
+        Json(UniversityDetail {
+            id: u.university.id.clone(),
+            name: u.university.name.clone(),
+            short_name: u.university.short_name.clone(),
+            status: status(u.university.status),
+            timezone: u.university.timezone.clone(),
+            login: login(u),
+            portal: match u.university.portal {
+                PortalConfig::Uportal4Prolongation { .. } => Some("uportal4-prolongation"),
+                PortalConfig::Uportal5 { .. } => Some("uportal5"),
+                PortalConfig::TilesPortal { .. } => Some("tiles-portal"),
+                PortalConfig::None => None,
+            },
+            links,
+            services: service_statuses(&u.university.services),
+            establishments: u
+                .establishments
+                .values()
+                .map(|e| EstablishmentDetail {
+                    id: e.id.clone(),
+                    name: e.name.clone(),
+                    default: e.default,
+                    status: status(e.status),
+                    services: service_statuses(&u.services_for(Some(&e.id))),
+                })
+                .collect(),
+        }),
+    ))
 }

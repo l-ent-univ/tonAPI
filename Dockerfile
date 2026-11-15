@@ -32,7 +32,8 @@ ENV TONAPI_ADDR=0.0.0.0:8080 \
     TONAPI_LOG_FORMAT=json
 USER 10001
 # 8080 : API. Métriques sur un port interne seulement si TONAPI_METRICS_ADDR est défini
-# (par exemple 0.0.0.0:9090, à ne pas publier hors du réseau de supervision).
+# (par exemple 0.0.0.0:9090, à ne pas publier hors du réseau de supervision) ; hors boucle locale,
+# TONAPI_METRICS_TOKEN (32 caractères au moins) est obligatoire et le serveur refuse de démarrer sans.
 EXPOSE 8080
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/tonapi-server"]

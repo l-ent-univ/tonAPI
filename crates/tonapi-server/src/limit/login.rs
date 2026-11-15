@@ -89,7 +89,7 @@ impl LoginLimiter {
     /// Réserve un essai, ou refuse si le compte a déjà trop d'échecs et d'essais en cours.
     pub fn begin(&self, key: &str) -> Result<Attempt<'_>, Problem> {
         let now = Instant::now();
-        let allowed = self.with(|map| {
+        let (allowed, entries) = self.with(|map| {
             if map.len() >= MAX_KEYS && self.purge_due(now) {
                 map.retain(|_, e| {
                     e.failures.retain(|t| now.duration_since(*t) < WINDOW);
@@ -98,13 +98,19 @@ impl LoginLimiter {
             }
             let entry = map.entry(key.to_owned()).or_default();
             entry.failures.retain(|t| now.duration_since(*t) < WINDOW);
-            if entry.failures.len() + entry.in_flight >= MAX_FAILURES {
-                return false;
+            let allowed = entry.failures.len() + entry.in_flight < MAX_FAILURES;
+            if allowed {
+                entry.in_flight += 1;
             }
-            entry.in_flight += 1;
-            true
+            (allowed, map.len())
         });
+        tonapi_metrics::set(
+            "tonapi_limiter_entries",
+            &[("limiter", "login")],
+            i64::try_from(entries).unwrap_or(i64::MAX),
+        );
         if !allowed {
+            tonapi_metrics::inc("tonapi_rate_limited_total", &[("limiter", "login")]);
             return Err(Problem::new(ErrorCode::RateLimited).detail(format!(
                 "{MAX_FAILURES} échecs de connexion en {} minutes : réessayez plus tard",
                 WINDOW.as_secs() / 60

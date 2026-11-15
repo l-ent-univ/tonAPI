@@ -1,18 +1,23 @@
 //! Métriques du processus, servies au format texte de Prometheus par `tonapi-server` sur un port
 //! interne (`TONAPI_METRICS_ADDR`).
 //!
-//! Les noms sont déclarés une fois dans [`METRICS`] ; une étiquette ne porte jamais d'identifiant
-//! d'étudiant, de jeton ni d'URL complète : route modèle, statut, code d'erreur, université
-//! (identifiant de configuration) ou hôte contacté. Au-delà de [`MAX_SERIES`] séries par
-//! métrique, les nouvelles combinaisons sont comptées dans `tonapi_metrics_dropped_total` au lieu
-//! de faire grossir la mémoire.
+//! Les noms sont déclarés une fois dans `METRICS` ; une étiquette ne porte jamais d'identifiant
+//! d'étudiant, d'adresse IP, de jeton ni d'URL complète : route modèle, statut, code d'erreur,
+//! université (identifiant de configuration), limiteur, résultat ou hôte contacté. Au-delà de
+//! `MAX_SERIES` séries par métrique, les nouvelles combinaisons sont comptées dans
+//! `tonapi_metrics_dropped_total` au lieu de faire grossir la mémoire.
+//!
+//! Trois natures : compteur ([`inc`]), jauge ([`set`], [`add`]) et histogramme ([`observe`]).
+//! [`render`] copie l'état sous verrou puis formate hors verrou : un scrape ne retarde pas les
+//! requêtes. Sous Linux, la mémoire résidente et les descripteurs de fichiers du processus sont
+//! lus dans `/proc/self` à chaque scrape.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 /// Séries au plus par métrique.
-pub const MAX_SERIES: usize = 1000;
+pub(crate) const MAX_SERIES: usize = 1000;
 
 /// Durées d'une requête à tonAPI, en secondes (jusqu'au délai de 130 s du second facteur).
 const REQUEST_SECONDS: &[f64] = &[
@@ -29,22 +34,24 @@ const TOKEN_BYTES: &[f64] = &[
 
 /// Nature d'une métrique.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Kind {
+pub(crate) enum Kind {
     Counter,
+    /// Valeur qui monte et descend (requêtes en cours, entrées d'une table…).
+    Gauge,
     /// Histogramme avec ses bornes supérieures, croissantes.
     Histogram(&'static [f64]),
 }
 
 /// Déclaration d'une métrique.
 #[derive(Debug)]
-pub struct Metric {
-    pub name: &'static str,
-    pub help: &'static str,
-    pub kind: Kind,
+pub(crate) struct Metric {
+    pub(crate) name: &'static str,
+    pub(crate) help: &'static str,
+    pub(crate) kind: Kind,
 }
 
 /// Toutes les métriques de tonAPI.
-pub const METRICS: &[Metric] = &[
+pub(crate) const METRICS: &[Metric] = &[
     Metric {
         name: "tonapi_requests_total",
         help: "Requêtes reçues, par route modèle et statut HTTP.",
@@ -86,6 +93,56 @@ pub const METRICS: &[Metric] = &[
         kind: Kind::Histogram(TOKEN_BYTES),
     },
     Metric {
+        name: "tonapi_rate_limited_total",
+        help: "Demandes refusées par un limiteur (ip : connexions par adresse ; login : échecs par compte ; slots : requêtes simultanées par compte).",
+        kind: Kind::Counter,
+    },
+    Metric {
+        name: "tonapi_login_total",
+        help: "Demandes de connexion à une université, par résultat (success, second_factor ou code d'erreur stable).",
+        kind: Kind::Counter,
+    },
+    Metric {
+        name: "tonapi_config_reloads_total",
+        help: "Rechargements de la configuration des universités, par résultat (ok, rejected, interrupted).",
+        kind: Kind::Counter,
+    },
+    Metric {
+        name: "tonapi_session_renewed_total",
+        help: "Réponses qui renvoient un jeton mis à jour dans l'en-tête TonAPI-Session.",
+        kind: Kind::Counter,
+    },
+    Metric {
+        name: "tonapi_http_requests_in_flight",
+        help: "Requêtes HTTP en cours de traitement.",
+        kind: Kind::Gauge,
+    },
+    Metric {
+        name: "tonapi_limiter_entries",
+        help: "Entrées suivies par chaque limiteur (ip : adresses ; login : comptes ; slots : comptes avec requêtes simultanées).",
+        kind: Kind::Gauge,
+    },
+    Metric {
+        name: "tonapi_universities_loaded",
+        help: "Universités actuellement chargées depuis la configuration.",
+        kind: Kind::Gauge,
+    },
+    Metric {
+        name: "process_resident_memory_bytes",
+        help: "Mémoire résidente du processus, en octets (Linux seulement).",
+        kind: Kind::Gauge,
+    },
+    Metric {
+        name: "process_open_fds",
+        help: "Descripteurs de fichiers ouverts par le processus (Linux seulement).",
+        kind: Kind::Gauge,
+    },
+    Metric {
+        name: "process_max_fds",
+        help: "Limite souple de descripteurs de fichiers du processus (Linux seulement).",
+        kind: Kind::Gauge,
+    },
+    Metric {
         name: "tonapi_metrics_dropped_total",
         help: "Observations ignorées : trop de séries pour une métrique.",
         kind: Kind::Counter,
@@ -103,13 +160,20 @@ struct Histogram {
     count: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct Store {
     counters: BTreeMap<&'static str, BTreeMap<Labels, u64>>,
+    gauges: BTreeMap<&'static str, BTreeMap<Labels, i64>>,
     histograms: BTreeMap<&'static str, BTreeMap<Labels, Histogram>>,
 }
 
 static STORE: LazyLock<Mutex<Store>> = LazyLock::new(Mutex::default);
+
+/// Verrou du magasin. Un verrou empoisonné (panique d'un autre fil) n'éteint pas les métriques :
+/// chaque mise à jour est un incrément isolé, l'état reste utilisable.
+fn lock() -> MutexGuard<'static, Store> {
+    STORE.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn find(name: &str) -> Option<&'static Metric> {
     METRICS.iter().find(|m| m.name == name)
@@ -129,13 +193,47 @@ pub fn inc(name: &'static str, pairs: &[(&'static str, &str)]) {
         debug_assert!(false, "compteur non déclaré : {name}");
         return;
     };
-    let Ok(mut store) = STORE.lock() else { return };
+    let mut store = lock();
     let series = store.counters.entry(name).or_default();
     let key = labels(pairs);
     if let Some(value) = series.get_mut(&key) {
         *value += 1;
     } else if series.len() < MAX_SERIES {
         series.insert(key, 1);
+    } else {
+        dropped(&mut store, name);
+    }
+}
+
+/// Fixe la valeur d'une jauge.
+pub fn set(name: &'static str, pairs: &[(&'static str, &str)], value: i64) {
+    update_gauge(name, pairs, |current| *current = value);
+}
+
+/// Ajoute `delta` (négatif pour retirer) à une jauge, qui part de 0.
+pub fn add(name: &'static str, pairs: &[(&'static str, &str)], delta: i64) {
+    update_gauge(name, pairs, |current| {
+        *current = current.saturating_add(delta);
+    });
+}
+
+fn update_gauge(name: &'static str, pairs: &[(&'static str, &str)], apply: impl FnOnce(&mut i64)) {
+    let Some(Metric {
+        kind: Kind::Gauge, ..
+    }) = find(name)
+    else {
+        debug_assert!(false, "jauge non déclarée : {name}");
+        return;
+    };
+    let mut store = lock();
+    let series = store.gauges.entry(name).or_default();
+    let key = labels(pairs);
+    if let Some(value) = series.get_mut(&key) {
+        apply(value);
+    } else if series.len() < MAX_SERIES {
+        let mut value = 0;
+        apply(&mut value);
+        series.insert(key, value);
     } else {
         dropped(&mut store, name);
     }
@@ -154,7 +252,7 @@ pub fn observe(name: &'static str, pairs: &[(&'static str, &str)], value: f64) {
     if !value.is_finite() {
         return;
     }
-    let Ok(mut store) = STORE.lock() else { return };
+    let mut store = lock();
     let series = store.histograms.entry(name).or_default();
     let key = labels(pairs);
     if !series.contains_key(&key) && series.len() >= MAX_SERIES {
@@ -187,17 +285,34 @@ fn dropped(store: &mut Store, name: &'static str) {
 }
 
 /// Toutes les séries, au format texte de Prometheus (version 0.0.4).
+///
+/// L'état est copié sous verrou, puis formaté hors verrou : un scrape ne bloque ni `inc`, ni
+/// `set`, ni `add`, ni `observe`.
 #[must_use]
 pub fn render() -> String {
-    let Ok(store) = STORE.lock() else {
-        return String::new();
-    };
+    let mut snapshot = lock().clone();
+    for (name, value) in process_samples() {
+        snapshot
+            .gauges
+            .entry(name)
+            .or_default()
+            .insert(Vec::new(), value);
+    }
+    format_store(&snapshot)
+}
+
+fn format_store(store: &Store) -> String {
     let mut out = String::new();
     for metric in METRICS {
+        let kind = match metric.kind {
+            Kind::Counter => "counter",
+            Kind::Gauge => "gauge",
+            Kind::Histogram(_) => "histogram",
+        };
+        let _ = writeln!(out, "# HELP {} {}", metric.name, metric.help);
+        let _ = writeln!(out, "# TYPE {} {kind}", metric.name);
         match metric.kind {
             Kind::Counter => {
-                let _ = writeln!(out, "# HELP {} {}", metric.name, metric.help);
-                let _ = writeln!(out, "# TYPE {} counter", metric.name);
                 for (labels, value) in store.counters.get(metric.name).into_iter().flatten() {
                     let _ = writeln!(
                         out,
@@ -207,9 +322,17 @@ pub fn render() -> String {
                     );
                 }
             }
+            Kind::Gauge => {
+                for (labels, value) in store.gauges.get(metric.name).into_iter().flatten() {
+                    let _ = writeln!(
+                        out,
+                        "{}{} {value}",
+                        metric.name,
+                        format_labels(labels, None)
+                    );
+                }
+            }
             Kind::Histogram(bounds) => {
-                let _ = writeln!(out, "# HELP {} {}", metric.name, metric.help);
-                let _ = writeln!(out, "# TYPE {} histogram", metric.name);
                 for (labels, histogram) in store.histograms.get(metric.name).into_iter().flatten() {
                     let mut cumulative = 0;
                     for (bound, count) in bounds.iter().zip(&histogram.buckets) {
@@ -248,6 +371,62 @@ pub fn render() -> String {
         }
     }
     out
+}
+
+/// Mesures du processus lues dans `/proc/self` : mémoire résidente, descripteurs ouverts et leur
+/// limite. Une lecture qui échoue omet simplement la mesure.
+#[cfg(target_os = "linux")]
+fn process_samples() -> Vec<(&'static str, i64)> {
+    let mut samples = Vec::new();
+    if let Some(bytes) = std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|text| parse_resident_bytes(&text))
+    {
+        samples.push(("process_resident_memory_bytes", bytes));
+    }
+    if let Ok(entries) = std::fs::read_dir("/proc/self/fd") {
+        // Le répertoire lu occupe lui-même un descripteur pendant le décompte.
+        let open = entries.count().saturating_sub(1);
+        samples.push(("process_open_fds", i64::try_from(open).unwrap_or(i64::MAX)));
+    }
+    if let Some(limit) = std::fs::read_to_string("/proc/self/limits")
+        .ok()
+        .and_then(|text| parse_max_fds(&text))
+    {
+        samples.push(("process_max_fds", limit));
+    }
+    samples
+}
+
+/// Hors Linux, pas de `/proc` : les métriques `process_*` restent déclarées mais sans valeur.
+#[cfg(not(target_os = "linux"))]
+fn process_samples() -> Vec<(&'static str, i64)> {
+    Vec::new()
+}
+
+/// Mémoire résidente en octets, d'après `/proc/self/status` (ligne `VmRSS:  1234 kB`).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_resident_bytes(status: &str) -> Option<i64> {
+    let kib: i64 = status
+        .lines()
+        .find_map(|line| line.strip_prefix("VmRSS:"))?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()?;
+    kib.checked_mul(1024)
+}
+
+/// Limite souple de descripteurs, d'après `/proc/self/limits` ; `None` si elle est illimitée.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_max_fds(limits: &str) -> Option<i64> {
+    limits
+        .lines()
+        .find_map(|line| line.strip_prefix("Max open files"))?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn format_labels(labels: &Labels, le: Option<&str>) -> String {
@@ -310,6 +489,29 @@ mod tests {
     }
 
     #[test]
+    fn chaque_metrique_a_une_aide_en_francais_et_un_type() {
+        let text = render();
+        for metric in METRICS {
+            assert!(!metric.help.trim().is_empty(), "{}", metric.name);
+            assert!(
+                text.contains(&format!("# HELP {} {}\n", metric.name, metric.help)),
+                "{}",
+                metric.name
+            );
+            let kind = match metric.kind {
+                Kind::Counter => "counter",
+                Kind::Gauge => "gauge",
+                Kind::Histogram(_) => "histogram",
+            };
+            assert!(
+                text.contains(&format!("# TYPE {} {kind}\n", metric.name)),
+                "{}",
+                metric.name
+            );
+        }
+    }
+
+    #[test]
     fn compteur_et_histogramme_au_format_prometheus() {
         inc(
             "tonapi_errors_total",
@@ -334,6 +536,28 @@ mod tests {
     }
 
     #[test]
+    fn jauge_fixee_puis_ajustee() {
+        set("tonapi_limiter_entries", &[("limiter", "test_jauge")], 5);
+        add("tonapi_limiter_entries", &[("limiter", "test_jauge")], 3);
+        add("tonapi_limiter_entries", &[("limiter", "test_jauge")], -2);
+        add(
+            "tonapi_limiter_entries",
+            &[("limiter", "test_jauge_neuve")],
+            -1,
+        );
+        let text = render();
+        assert!(text.contains("# TYPE tonapi_limiter_entries gauge"));
+        assert!(
+            text.contains("tonapi_limiter_entries{limiter=\"test_jauge\"} 6"),
+            "{text}"
+        );
+        assert!(
+            text.contains("tonapi_limiter_entries{limiter=\"test_jauge_neuve\"} -1"),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn series_bornees() {
         for i in 0..=MAX_SERIES {
             inc(
@@ -346,6 +570,51 @@ mod tests {
             "tonapi_metrics_dropped_total{metric=\"tonapi_upstream_saturated_total\"} 1"
         ));
         assert!(!text.contains(&format!("h{MAX_SERIES}.test")));
+    }
+
+    #[test]
+    fn verrou_empoisonne_ne_perd_pas_les_metriques() {
+        inc("tonapi_session_renewed_total", &[]);
+        let result = std::thread::spawn(|| {
+            let _guard = lock();
+            panic!("panique volontaire du test, verrou tenu");
+        })
+        .join();
+        assert!(result.is_err());
+        assert!(STORE.is_poisoned());
+        inc("tonapi_session_renewed_total", &[]);
+        let text = render();
+        let value = text
+            .lines()
+            .find_map(|line| line.strip_prefix("tonapi_session_renewed_total "))
+            .and_then(|v| v.parse::<u64>().ok());
+        assert!(value.is_some_and(|v| v >= 2), "{text}");
+    }
+
+    #[test]
+    fn lecture_de_proc_self() {
+        let status = "Name:\ttonapi\nVmRSS:\t   12345 kB\nThreads:\t4\n";
+        assert_eq!(parse_resident_bytes(status), Some(12_345 * 1024));
+        assert_eq!(parse_resident_bytes("Name:\ttonapi\n"), None);
+        let limits = "Limit    Soft Limit    Hard Limit    Units\n\
+                      Max open files            1024                 524288               files\n";
+        assert_eq!(parse_max_fds(limits), Some(1024));
+        let unlimited =
+            "Max open files            unlimited            unlimited            files\n";
+        assert_eq!(parse_max_fds(unlimited), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn processus_lu_a_chaque_scrape_sous_linux() {
+        let text = render();
+        let value = |name: &str| {
+            text.lines()
+                .find_map(|line| line.strip_prefix(&format!("{name} ")))
+                .and_then(|v| v.parse::<i64>().ok())
+        };
+        assert!(value("process_resident_memory_bytes").is_some_and(|v| v > 0));
+        assert!(value("process_open_fds").is_some_and(|v| v > 0));
     }
 
     #[test]

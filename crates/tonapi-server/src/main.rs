@@ -18,6 +18,9 @@
 //!   dev, `json` sinon)
 //! - `TONAPI_METRICS_ADDR` : adresse interne de `GET /metrics` (`127.0.0.1:9090`) ; absente,
 //!   pas de métriques servies
+//! - `TONAPI_METRICS_TOKEN` : jeton de `GET /metrics` (`Authorization: Bearer …`, 401 sinon).
+//!   Obligatoire, avec au moins 32 caractères, si `TONAPI_METRICS_ADDR` n'est pas une adresse de
+//!   bouclage : le serveur refuse de démarrer sinon. `/metrics` n'existe jamais sur `TONAPI_ADDR`.
 //! - `TONAPI_DRAIN_SECS` (défaut 0 en dev, 5 sinon ; au plus 300) : après SIGTERM, durée pendant
 //!   laquelle `/readyz` répond 503 alors que le serveur accepte encore des requêtes
 //! - `TONAPI_GRACE_SECS` (défaut 130, entre 1 et 3600) : attente maximale des requêtes en cours
@@ -30,8 +33,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use axum::serve::ListenerExt;
 use tonapi_config::Registry;
-use tonapi_server::{AppState, Cidr, DEFAULT_AUTH_PER_IP, Settings, app, metrics_app, watch};
+use tonapi_server::{
+    AppState, Cidr, DEFAULT_AUTH_PER_IP, Settings, app, check_metrics_exposure, metrics_app, watch,
+};
 use tonapi_session::SessionKeys;
 use tracing_subscriber::EnvFilter;
 
@@ -113,6 +119,18 @@ async fn main() -> Result<()> {
     let drain = seconds("TONAPI_DRAIN_SECS", if dev { 0 } else { 5 }, 0..=300)?;
     let grace = seconds("TONAPI_GRACE_SECS", 130, 1..=3600)?;
     let metrics_addr = std::env::var("TONAPI_METRICS_ADDR").ok();
+    // Une valeur vide équivaut à l'absence : `TONAPI_METRICS_TOKEN=` dans un fichier .env.
+    let metrics_token = std::env::var("TONAPI_METRICS_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty());
+    match &metrics_addr {
+        Some(addr) => check_metrics_exposure(addr, metrics_token.as_deref())
+            .map_err(|message| anyhow::anyhow!(message))?,
+        None if metrics_token.is_some() => {
+            tracing::warn!("TONAPI_METRICS_TOKEN ignoré : TONAPI_METRICS_ADDR n'est pas défini");
+        }
+        None => {}
+    }
 
     let (registry, report) = Registry::load(&dir);
     for issue in &report.rejected {
@@ -132,6 +150,7 @@ async fn main() -> Result<()> {
             trusted_proxies,
             docs: flag("TONAPI_DOCS", dev),
             auth_per_ip,
+            cache_catalog: !dev,
         },
     );
     let _watcher = if flag("TONAPI_RELOAD", dev) {
@@ -141,7 +160,7 @@ async fn main() -> Result<()> {
     };
 
     if let Some(metrics_addr) = metrics_addr {
-        serve_metrics(&metrics_addr).await?;
+        serve_metrics(&metrics_addr, metrics_token.as_deref()).await?;
     }
 
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -196,13 +215,17 @@ async fn signal() {
 }
 
 /// `GET /metrics` sur une adresse interne, en tâche de fond.
-async fn serve_metrics(addr: &str) -> Result<()> {
+async fn serve_metrics(addr: &str, token: Option<&str>) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .with_context(|| format!("écoute des métriques sur {addr}"))?;
-    tracing::info!("métriques : http://{addr}/metrics");
+    tracing::info!(
+        authenticated = token.is_some(),
+        "métriques : http://{addr}/metrics"
+    );
+    let app = metrics_app(token);
     tokio::spawn(async move {
-        if let Err(error) = axum::serve(listener, metrics_app()).await {
+        if let Err(error) = axum::serve(listener, app).await {
             tracing::error!("serveur de métriques arrêté : {error}");
         }
     });
@@ -231,6 +254,12 @@ async fn serve(
         let _ = stop.send(true);
     });
     let mut until_stop = stopped.clone();
+    // Réponses courtes : pas d'attente de l'algorithme de Nagle avant l'envoi.
+    let listener = listener.tap_io(|tcp| {
+        if let Err(error) = tcp.set_nodelay(true) {
+            tracing::debug!("TCP_NODELAY refusé : {error}");
+        }
+    });
     let server = axum::serve(
         listener,
         app(state).into_make_service_with_connect_info::<SocketAddr>(),
