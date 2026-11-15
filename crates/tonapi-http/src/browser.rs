@@ -305,7 +305,7 @@ impl Browser {
     ) -> Result<(StatusCode, HeaderMap, String), HttpError> {
         let trace_url = url.clone();
         let (status, headers, bytes) = self.send_bytes(method, url, headers, body, timeout).await?;
-        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let text = into_text(bytes);
         trace_exchange(&trace_url, status, &headers, &text);
         Ok((status, headers, text))
     }
@@ -323,7 +323,7 @@ impl Browser {
         let (status, headers, bytes) = self
             .send_in(Lane::LongPoll, method, url, headers, None, Some(timeout))
             .await?;
-        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let text = into_text(bytes);
         trace_exchange(&trace_url, status, &headers, &text);
         Ok((status, headers, text))
     }
@@ -487,6 +487,12 @@ impl Browser {
         }
         Err(HttpError::TooManyRedirects)
     }
+}
+
+/// Corps en texte. Un corps UTF-8 valide (le cas courant) est réutilisé sans copie ; sinon les
+/// octets invalides sont remplacés par U+FFFD, comme `String::from_utf8_lossy`.
+fn into_text(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
 /// Trace de diagnostic (`RUST_LOG=tonapi_http=debug`) : hôte, chemin, statut, cible d'une
@@ -708,7 +714,7 @@ mod tests {
         assert_eq!(map.len(), 3);
     }
 
-    /// Audit 2026-11-04 : les longues interrogations du push prenaient les places ordinaires de
+    /// Les longues interrogations du push prenaient les places ordinaires de
     /// l'hôte OTP. Elles ont leur propre file.
     #[tokio::test]
     async fn les_longues_interrogations_ont_leur_file() {
@@ -730,6 +736,59 @@ mod tests {
             extra.is_err(),
             "la file des longues interrogations est bornée"
         );
+    }
+
+    /// Banc (ignoré) : ancien `from_utf8_lossy().into_owned()` contre `into_text`, sur des corps
+    /// UTF-8 valides de 200 Ko (page ordinaire) et de 8 Mo (plafond).
+    #[test]
+    #[ignore = "banc : mesure, pas de vérification"]
+    fn banc_decodage_du_corps() {
+        for taille in [200 * 1024, MAX_BODY] {
+            let corps = "<p>é accentué, texte ordinaire</p>\n"
+                .repeat(taille / 38)
+                .into_bytes();
+            let (mut ancien, mut nouveau) = (Vec::new(), Vec::new());
+            for _ in 0..101 {
+                let copie = corps.clone();
+                let t = std::time::Instant::now();
+                let a = String::from_utf8_lossy(&copie).into_owned();
+                ancien.push(t.elapsed().as_secs_f64() * 1e6);
+                let t = std::time::Instant::now();
+                let n = super::into_text(copie);
+                nouveau.push(t.elapsed().as_secs_f64() * 1e6);
+                assert_eq!(a, n);
+            }
+            let stat = |v: &mut Vec<f64>| {
+                v.sort_by(f64::total_cmp);
+                (v[50], v[95])
+            };
+            println!(
+                "{} octets : ancien (médiane, p95 µs) = {:?} ; into_text = {:?}",
+                corps.len(),
+                stat(&mut ancien),
+                stat(&mut nouveau)
+            );
+        }
+    }
+
+    #[test]
+    fn into_text_donne_exactement_le_resultat_de_from_utf8_lossy() {
+        let cas: [&[u8]; 7] = [
+            b"",
+            b"ascii",
+            "é accentué — 日本語 🎓".as_bytes(),
+            b"\xff\xfe invalide",
+            b"coupe au milieu \xc3",
+            b"\xed\xa0\x80 surrogate",
+            b"ok \xf0\x9f\x8e fin",
+        ];
+        for octets in cas {
+            assert_eq!(
+                super::into_text(octets.to_vec()),
+                String::from_utf8_lossy(octets).into_owned(),
+                "{octets:?}"
+            );
+        }
     }
 
     #[test]

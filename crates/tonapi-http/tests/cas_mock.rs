@@ -396,7 +396,7 @@ async fn second_facteur_par_notification() {
     assert_eq!(state.lock().unwrap().remembered.as_deref(), Some("skip"));
 }
 
-/// Audit 2026-10-27 : avec les cookies d'une session précédente encore vivante, le CAS ne montre
+/// Avec les cookies d'une session précédente encore vivante, le CAS ne montre
 /// pas de formulaire, et la marche « réussit » sans que le mot de passe fourni ait été vérifié.
 #[tokio::test]
 async fn reprise_de_cookies_ne_verifie_pas_le_mot_de_passe() {
@@ -430,7 +430,7 @@ async fn reprise_de_cookies_ne_verifie_pas_le_mot_de_passe() {
     );
 }
 
-/// Audit 2026-11-04 : une page de refus que le code ne connaît pas, après le POST du mot de passe,
+/// Une page de refus que le code ne connaît pas, après le POST du mot de passe,
 /// passait pour une connexion réussie. Elle doit donner une erreur, quel que soit le statut.
 #[tokio::test]
 async fn page_de_refus_inconnue_apres_le_mot_de_passe() {

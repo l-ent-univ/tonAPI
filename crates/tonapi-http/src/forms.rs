@@ -107,8 +107,7 @@ fn too_deep(html: &str) -> bool {
                     b"</style"
                 };
                 let after = rest.get(tag_end..).unwrap_or_default();
-                let lower = after.to_ascii_lowercase();
-                i += tag_end + find(&lower, close).unwrap_or(after.len());
+                i += tag_end + find_ignore_case(after, close).unwrap_or(after.len());
                 continue;
             }
         }
@@ -119,6 +118,14 @@ fn too_deep(html: &str) -> bool {
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Comme [`find`], sans tenir compte de la casse ASCII et sans copier `haystack` : une copie par
+/// `<script>` rendait l'analyse quadratique sur une page de plusieurs Mo. `needle` n'est pas vide.
+fn find_ignore_case(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|w| w.eq_ignore_ascii_case(needle))
 }
 
 /// Tous les formulaires de la page.
@@ -232,6 +239,8 @@ pub fn title(html: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use super::*;
 
     const CAS: &str = r#"<html><head><title>CAS</title></head><body>
@@ -248,7 +257,7 @@ mod tests {
         <button name="submitBtn" type="submit">Se connecter</button>
       </form></body></html>"#;
 
-    /// Audit 2026-11-04 : des milliers de balises imbriquées rendaient l'analyse quadratique.
+    /// Des milliers de balises imbriquées rendaient l'analyse quadratique.
     #[test]
     fn page_trop_imbriquee_non_analysee() {
         let deep = format!(
@@ -271,6 +280,77 @@ mod tests {
         );
         assert!(!too_deep(&normal));
         assert_eq!(forms(&normal).len(), 1);
+    }
+
+    /// Banc (ignoré) : `cargo test -p tonapi-http --release -- --ignored --nocapture banc_forms`.
+    fn page_synthetique(scripts: usize, total: usize) -> String {
+        let corps = "var a = (b < c) ? 1 : 2; /* x */ ".repeat(total / scripts / 34 + 1);
+        let mut page = String::with_capacity(total + 4096);
+        page.push_str("<html><head><title>Synthese</title>");
+        for i in 0..scripts {
+            let _ = write!(
+                page,
+                "<script>/*{i}*/{corps}</SCRIPT><style>p{{color:red}}</style>"
+            );
+        }
+        page.push_str("</head><body>");
+        page.push_str(CAS);
+        page.push_str("</body></html>");
+        page
+    }
+
+    #[test]
+    #[ignore = "banc : mesure, pas de vérification"]
+    fn banc_forms() {
+        let page = page_synthetique(3000, 4 * 1024 * 1024);
+        let mut too_deep_ms = Vec::new();
+        let mut forms_ms = Vec::new();
+        for _ in 0..7 {
+            let t = std::time::Instant::now();
+            assert!(!too_deep(&page));
+            too_deep_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+            let t = std::time::Instant::now();
+            assert_eq!(forms(&page).len(), 1);
+            assert_eq!(title(&page).as_deref(), Some("Synthese"));
+            assert!(error_message(&page).is_some());
+            forms_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        }
+        let stat = |v: &mut Vec<f64>| {
+            v.sort_by(f64::total_cmp);
+            (v[v.len() / 2], v[v.len() - 1])
+        };
+        println!("taille={} octets", page.len());
+        println!("too_deep   médiane/max (ms) = {:?}", stat(&mut too_deep_ms));
+        println!("forms+title+error_message   = {:?}", stat(&mut forms_ms));
+    }
+
+    /// La recherche sans copie donne exactement la position de l'ancienne version (copie en
+    /// minuscules puis recherche), y compris sur des octets non UTF-8 et quand rien n'est trouvé.
+    #[test]
+    fn recherche_insensible_a_la_casse_identique_a_la_copie_en_minuscules() {
+        let cas: [&[u8]; 8] = [
+            b"a</script>b",
+            b"a</SCRIPT>b",
+            b"a</ScRiPt >b</script>",
+            b"<div><div></Script",
+            b"pas de balise fermante",
+            b"</scrip",
+            b"\xff\xfe</STYLE\xc3",
+            b"",
+        ];
+        for entree in cas {
+            for needle in [b"</script".as_slice(), b"</style"] {
+                assert_eq!(
+                    find_ignore_case(entree, needle),
+                    find(&entree.to_ascii_lowercase(), needle),
+                    "{entree:?} / {needle:?}"
+                );
+            }
+        }
+        let melange =
+            "<SCRIPT>if(a<b){}</Script><div><DIV></div></div><form><input name=\"x\"></form>";
+        assert!(!too_deep(melange));
+        assert_eq!(forms(melange).len(), 1);
     }
 
     #[test]

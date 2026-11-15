@@ -102,14 +102,20 @@ impl CookieJar {
         if let Some(seconds) = max_age {
             cookie.expires = Some(now.saturating_add(seconds));
         }
-        self.cookies.retain(|c| {
-            !(c.name == cookie.name && c.domain == cookie.domain && c.path == cookie.path)
-        });
-        if cookie.expires.is_none_or(|e| e > now) {
-            let same_domain = self.cookies.iter().filter(|c| c.domain == cookie.domain);
-            if same_domain.count() < MAX_PER_DOMAIN {
-                self.cookies.push(cookie);
+        let alive = cookie.expires.is_none_or(|e| e > now);
+        let existing = self.cookies.iter().position(|c| same_cookie(c, &cookie));
+        match (existing, alive) {
+            // Remplacé en place : un cookie reposé à l'identique ne déplace rien, la session reste
+            // égale à l'originale et son jeton n'est pas renvoyé au client.
+            (Some(index), true) => self.cookies[index] = cookie,
+            (Some(_), false) => self.cookies.retain(|c| !same_cookie(c, &cookie)),
+            (None, true) => {
+                let same_domain = self.cookies.iter().filter(|c| c.domain == cookie.domain);
+                if same_domain.count() < MAX_PER_DOMAIN {
+                    self.cookies.push(cookie);
+                }
             }
+            (None, false) => {}
         }
     }
 
@@ -136,6 +142,11 @@ impl CookieJar {
                 .join("; "),
         )
     }
+}
+
+/// Même cookie au sens de la RFC 6265 : nom, domaine et chemin identiques.
+fn same_cookie(a: &StoredCookie, b: &StoredCookie) -> bool {
+    a.name == b.name && a.domain == b.domain && a.path == b.path
 }
 
 fn domain_matches(cookie: &StoredCookie, host: &str) -> bool {
@@ -251,6 +262,40 @@ mod tests {
         assert!(!jar.has_cookies_for("192.0.2.7"));
         jar.store(&ip, "F=1", 0);
         assert!(jar.contains("192.0.2.7", "F"));
+    }
+
+    /// Un `Set-Cookie` identique à ce que la session contient déjà ne la modifie pas : sinon le
+    /// jeton chiffré repartirait chez le client à presque chaque réponse.
+    #[test]
+    fn un_set_cookie_identique_laisse_la_session_egale() {
+        let page = url("https://cas.univ.fr/cas/login");
+        let mut jar = CookieJar::default();
+        jar.store(&page, "TGC=tgt; Path=/cas; Secure; HttpOnly", 0);
+        jar.store(&page, "JSESSIONID=s1; Path=/cas", 0);
+        jar.store(
+            &page,
+            "lang=fr; Domain=univ.fr; Path=/; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
+            0,
+        );
+        let original = jar.to_stored(0);
+
+        // Chaque cookie, premier, du milieu et dernier, est reposé à l'identique.
+        for header in [
+            "TGC=tgt; Path=/cas; Secure; HttpOnly",
+            "JSESSIONID=s1; Path=/cas",
+            "lang=fr; Domain=univ.fr; Path=/; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
+        ] {
+            jar.store(&page, header, 0);
+            assert!(jar.to_stored(0) == original, "{header}");
+        }
+
+        // Une valeur nouvelle remplace en place : même position, une seule entrée.
+        jar.store(&page, "TGC=autre; Path=/cas", 0);
+        let apres = jar.to_stored(0);
+        assert_eq!(apres.len(), original.len());
+        assert_eq!(apres[0].name, "TGC");
+        assert_eq!(apres[0].value, "autre");
+        assert_eq!(apres[1..], original[1..]);
     }
 
     #[test]
