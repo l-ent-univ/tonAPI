@@ -64,8 +64,10 @@ le portail ADE [vu]. Trois écarts avec la recherche ont été corrigés ce jour
 personnelle du compte est vide et l'agenda vient de la ressource qu'ADE attribue à l'étudiant
 (réponse de `ssologin`, que la recherche disait sans ressource à Rennes) ; l'arbre contient des nœuds au nom
 vide ; il compte 6 928 groupes, au-dessus de l'ancien plafond de 5 000. Le rattachement de Lannion repose
-sur une règle `ade-group-path`, signal qu'aucun portail ne fournit aujourd'hui [code] : un
-étudiant de Lannion reste dans la composante `autres` tant qu'il ne choisit pas `iut-lannion`.
+sur une règle `ade-group-path` : à la connexion, `ade-portal-rest` donne le chemin du groupe de
+l'étudiant dans l'arbre ADE. Avec ce compte, la composante `iut-lannion` est détectée sans choix
+de l'étudiant [vu, 15/11/2026]. La connexion passe alors d'environ 0,6 s à 1,3 s, le temps
+d'ouvrir la session ADE et de lire l'arbre (une mesure de chaque).
 
 ## Mettre à jour
 

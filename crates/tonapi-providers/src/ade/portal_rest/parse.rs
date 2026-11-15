@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 use serde_json::Value;
+use tonapi_config::{Signal, SignalSource};
 use tonapi_core::{Course, Problem, TimetableGroup};
 
 use super::{PROVIDER, Tokens};
@@ -229,6 +230,19 @@ pub(super) fn parse_groups(tree: &Value, selected: &[i64]) -> Result<Vec<Timetab
         }
     }
     Ok(groups)
+}
+
+/// Un signal `ade-group-path` par groupe de l'étudiant : son chemin dans l'arbre, niveaux séparés
+/// par ` › ` (ex. `IUT Démo › BUT Informatique 2 › TP 1`).
+pub(super) fn group_signals(groups: &[TimetableGroup]) -> Vec<Signal> {
+    groups
+        .iter()
+        .filter(|group| group.selected)
+        .map(|group| Signal {
+            source: SignalSource::AdeGroupPath,
+            value: group.path.join(" › "),
+        })
+        .collect()
 }
 
 /// `±HHMM`, `±HH:MM`, `±HH` ou `Z`.

@@ -47,11 +47,12 @@ Montpellier) et Paul-Valéry (`univ-montp3`). Service par service, avec la date 
 
 Branché de bout en bout [code] : après la connexion, sans choix explicite de l'étudiant,
 `with_detected_establishment` (`crates/tonapi-providers/src/lib.rs`) lit les signaux du portail
-et applique les règles `[[affiliation.rules]]`. Seul `tiles-portal` fournit des signaux
-(composante d'inscription, adresse) ; avec un autre portail, ou sans correspondance unique, la
-composante par défaut reste. `pick_establishment` ne sert qu'au choix de départ (choix de
+et applique les règles `[[affiliation.rules]]`. Deux fournisseurs donnent des signaux :
+`tiles-portal` (composante d'inscription, adresse) et `ade-portal-rest` (chemin du groupe de
+l'étudiant dans l'arbre ADE, lu seulement si une composante a une règle `ade-group-path`). Sans
+signal, ou sans correspondance unique, la composante par défaut reste. `pick_establishment` ne sert qu'au choix de départ (choix de
 l'étudiant ou composante par défaut) et à `PUT /v1/me/establishment`. Les règles sur
-`ade-group-path` et `room-address` sont acceptées mais aucun fournisseur ne produit ces signaux.
+`room-address` sont acceptées mais aucun fournisseur ne produit ce signal.
 
 ## Session et exécution
 

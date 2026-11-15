@@ -23,6 +23,7 @@ use reqwest::Method;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tonapi_config::Signal;
 use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
 use url::Url;
 
@@ -33,8 +34,8 @@ use crate::net::{Net, upstream};
 mod parse;
 
 use parse::{
-    events_filter, normalize, parse_events, parse_groups, parse_refresh, parse_selection,
-    parse_sso_token, parse_ssologin,
+    events_filter, group_signals, normalize, parse_events, parse_groups, parse_refresh,
+    parse_selection, parse_sso_token, parse_ssologin,
 };
 
 /// Nom du fournisseur dans les messages d'erreur.
@@ -342,6 +343,17 @@ async fn timetable_with(
         courses.extend(parse_events(&response, tz, from, to)?);
     }
     Ok(normalize(courses))
+}
+
+/// Signaux de rattachement : chemin, dans l'arbre ADE, de chaque groupe de l'étudiant.
+pub(crate) async fn fetch_signals(
+    ctx: &mut Context<'_>,
+    base_url: &Url,
+) -> Result<Vec<Signal>, Problem> {
+    let (mut client, _) = Client::open(ctx, base_url)?;
+    let result = groups_with(&mut client).await;
+    client.finish(ctx);
+    Ok(group_signals(&result?))
 }
 
 async fn groups_with(client: &mut Client) -> Result<Vec<TimetableGroup>, Problem> {

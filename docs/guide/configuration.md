@@ -186,7 +186,7 @@ composante `default = true` reste.
 |---|---|---|
 | `enrollment-component` | composante d'inscription | oui, par `tiles-portal` |
 | `postal-address` | adresse du profil | oui, par `tiles-portal` |
-| `ade-group-path` | chemin du groupe dans l'arbre ADE | non [code] |
+| `ade-group-path` | chemin du groupe dans l'arbre ADE, niveaux séparés par ` › ` | oui, par `ade-portal-rest` |
 | `room-address` | salle de cours | non [code] |
 
 Une règle sur un signal non fourni est acceptée mais ne compte jamais. L'étudiant peut toujours

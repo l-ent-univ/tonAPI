@@ -5,7 +5,8 @@ id = "iut-lannion"
 name = "IUT de Lannion"
 status = "beta"
 
-# Arbre ADE : `IUT Lannion › BUT MMI › MMI A2 › …`.
+# Arbre du portail ADE : le chemin du groupe commence par `IUT Lannion`. [vu] 15/11/2026, un
+# compte étudiant de l'IUT : composante détectée à la connexion.
 [[affiliation.rules]]
 signal = "ade-group-path"
 contains = "IUT Lannion"

@@ -23,7 +23,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use tonapi_config::{
     AbsencesService, AppsService, DocumentsService, ExamsService, GradesService, HomeworkService,
     MailService, PortalConfig, ProfileService, ResolvedUniversity, ServiceAvailability,
-    ServiceKind, Services, Signal, StudentRecord, TimetableService,
+    ServiceKind, Services, Signal, SignalSource, StudentRecord, TimetableService,
 };
 use tonapi_core::{
     AbsenceReport, App, Course, Document, ErrorCode, EstablishmentSource, Exam, GradeReport,
@@ -104,13 +104,33 @@ fn tiles(ctx: &Context<'_>) -> bool {
     )
 }
 
-/// Signaux de rattachement que le portail fournit (aucun pour les autres portails).
-async fn signals(ctx: &mut Context<'_>) -> Result<Vec<Signal>, Problem> {
-    if tiles(ctx) {
-        tiles_portal::fetch_signals(ctx).await
-    } else {
-        Ok(Vec::new())
+/// Une composante au moins a une règle sur ce signal : sinon, inutile d'aller le chercher.
+fn wanted(university: &ResolvedUniversity, source: SignalSource) -> bool {
+    university.establishments.values().any(|file| {
+        file.affiliation
+            .rules
+            .iter()
+            .any(|rule| rule.signal == source)
+    })
+}
+
+/// Signaux de rattachement : attributs du portail à tuiles, et chemin des groupes de l'étudiant
+/// dans le portail ADE quand une règle `ade-group-path` existe. Une source en échec n'empêche pas
+/// l'autre.
+async fn signals(ctx: &mut Context<'_>) -> Vec<Signal> {
+    let mut out = Vec::new();
+    if tiles(ctx)
+        && let Ok(found) = tiles_portal::fetch_signals(ctx).await
+    {
+        out.extend(found);
     }
+    if wanted(ctx.university, SignalSource::AdeGroupPath)
+        && let Some(TimetableService::AdePortalRest { base_url, .. }) = ctx.services().timetable
+        && let Ok(found) = ade::portal_rest::fetch_signals(ctx, &base_url).await
+    {
+        out.extend(found);
+    }
+    out
 }
 
 /// Composante dont les règles obtiennent le meilleur score, s'il est unique et non nul. La
@@ -170,9 +190,8 @@ pub(crate) async fn with_detected_establishment(
         now,
         net,
     };
-    if let Ok(signals) = signals(&mut ctx).await
-        && let Some(pick) = detect_establishment(university, &signals)
-    {
+    let signals = signals(&mut ctx).await;
+    if let Some(pick) = detect_establishment(university, &signals) {
         ctx.session.establishment = Some(pick);
     }
     session

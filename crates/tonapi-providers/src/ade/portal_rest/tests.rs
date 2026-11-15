@@ -307,6 +307,20 @@ fn groupes_de_l_arbre() {
 }
 
 #[test]
+fn signaux_de_rattachement_des_groupes_de_l_etudiant() {
+    let groups = parse_groups(&json_of(TREE), &[14962]).unwrap();
+    let signals = group_signals(&groups);
+    // Seul le groupe de l'étudiant donne un signal, avec son chemin complet.
+    assert_eq!(signals.len(), 1);
+    assert_eq!(signals[0].source, tonapi_config::SignalSource::AdeGroupPath);
+    assert_eq!(
+        signals[0].value,
+        "Département Démo › BUT Informatique 2 › Groupe TD 1 › TP 2"
+    );
+    assert!(group_signals(&parse_groups(&json_of(TREE), &[]).unwrap()).is_empty());
+}
+
+#[test]
 fn noeud_au_nom_vide_ignore() {
     let tree = json!({"data": {"category": [{"category": "trainee", "branch": [
         {"id": 10, "name": "BUT Démo", "leaf": [

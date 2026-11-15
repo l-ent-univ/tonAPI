@@ -41,3 +41,34 @@ fn un_etudiant_de_l_iut_de_beziers_est_reconnu() {
         .is_none()
     );
 }
+
+#[test]
+fn un_etudiant_de_l_iut_de_lannion_est_reconnu_par_son_groupe_ade() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../universities");
+    let (registry, _) = Registry::load(&dir);
+    let rennes = registry.get("univ-rennes").unwrap();
+
+    // Chemin du groupe dans l'arbre du portail ADE, tel que `ade-portal-rest` le fournit.
+    let pick = detect_establishment(
+        rennes,
+        &[signal(
+            SignalSource::AdeGroupPath,
+            "IUT Lannion › BUT Démo › Démo 2 › TD 1",
+        )],
+    )
+    .unwrap();
+    assert_eq!(pick.id, "iut-lannion");
+    assert_eq!(pick.source, EstablishmentSource::Detected);
+
+    // Un groupe d'une autre composante laisse la composante par défaut.
+    assert!(
+        detect_establishment(
+            rennes,
+            &[signal(
+                SignalSource::AdeGroupPath,
+                "Droit › Licence 1 › TD 3"
+            )]
+        )
+        .is_none()
+    );
+}
