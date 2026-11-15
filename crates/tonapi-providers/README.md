@@ -1,4 +1,4 @@
-# tonapi-providers — contrat d'un fournisseur
+# tonapi-providers : contrat d'un fournisseur
 
 Un fournisseur = un logiciel (ADE, ScoDoc, Moodle…), jamais une université. Tout ce qui varie d'un site à l'autre vient de la configuration (`tonapi-config`).
 
@@ -6,7 +6,15 @@ Catalogue des fournisseurs, limites et essais réels : [Docs/fournisseurs.md](..
 
 ## Forme d'un module
 
-`src/<logiciel>.rs` (ex. `scodoc.rs`, `zimbra.rs`) contient deux couches. Quand le fichier grossit, l'analyse part dans des sous-modules d'un dossier du même nom, sans `mod.rs` : `moodle/{parse,saml}.rs`, `uportal/parse.rs`, `ade_ical/{ics,fields,vaadin}.rs`, `ade_myplanning/{gwt,tree}.rs`. Ce qui sert à plusieurs fournisseurs (`root`, `token_key`, `university_tz`, `resolve_local`…) est dans `src/common.rs` ; le kit des faux serveurs de test est dans `tests/common/mod.rs`.
+`src/<logiciel>.rs` (ex. `scodoc.rs`, `zimbra.rs`) contient deux couches. Quand le fichier grossit, l'analyse part dans des sous-modules d'un dossier du même nom, sans `mod.rs` : `moodle/{parse,saml}.rs`, `uportal/parse.rs`, `scodoc/parse.rs`, `ade_rest/parse.rs`, `ade_ical/{ics,fields,vaadin}.rs`, `ade_myplanning/{gwt,tree}.rs`.
+
+Trois modules servent à plusieurs fournisseurs :
+
+- `src/net.rs` : accès réseau (`Net`, `upstream`, `http_problem`) et enregistrement des cookies par `net.save(ctx)`.
+- `src/common.rs` : fonctions pures (`root`, `token_key`, `university_tz`, `resolve_local`, `str_field`, `id_string`…). Les clés rendues par `token_key` sont écrites dans les sessions déjà émises : les changer déconnecte les étudiants.
+- `src/cache.rs` : cache en mémoire des données communes à tous les étudiants, avec durée de vie, sans donnée personnelle.
+
+Le kit des faux serveurs de test est dans `tests/common/mod.rs`.
 
 1. **Analyse pure**, sans réseau : `pub(crate) fn parse_…(&str | &serde_json::Value, …) -> Result<Modèle, Problem>`. Elle reçoit le corps tel que le service le renvoie et produit les modèles de `tonapi-core`. C'est elle qui porte presque tous les tests.
 2. **Récupération** : `pub(crate) async fn fetch_…(ctx: &mut Context<'_>, config…) -> Result<Modèle, Problem>`. Elle ouvre un `Net` (`src/net.rs`), fait les requêtes, appelle `net.save(ctx)` avant de rendre la main, puis passe le corps à l'analyse.

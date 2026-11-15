@@ -5,9 +5,9 @@ de tonAPI. Douze fournisseurs distants sont branchés dans le dispatch, plus `de
 `mon-dossier-web` est accepté par la configuration mais répond `not_implemented`. Un essai réel ne
 vaut que pour l'établissement où il a eu lieu, même si le logiciel est le même ailleurs.
 
-État relevé le 01/11/2026 dans `crates/tonapi-providers/src/lib.rs` et `sso.rs` [code]. Essais réels
-repris de [agents/contexte.md](agents/contexte.md) et de
-[../reports/univ-montp3.md](../reports/univ-montp3.md) [vu, dates indiquées].
+État lu dans `crates/tonapi-providers/src/lib.rs` et `sso.rs` [code]. Les essais réels cités ci-dessous
+sont des rappels [vu, dates indiquées] ; la matrice par établissement est dans
+[couverture.md](couverture.md), qui fait foi.
 
 ## Contrat
 

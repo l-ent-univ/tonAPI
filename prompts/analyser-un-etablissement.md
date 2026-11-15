@@ -1,6 +1,6 @@
 # Prompt réutilisable : documenter les services d'un établissement
 
-Pour un ajout court, utilise [prompts/ajouter-un-etablissement.md](../prompts/ajouter-un-etablissement.md).
+Pour un ajout court, utilise [prompts/ajouter-un-etablissement.md](ajouter-un-etablissement.md).
 Ce prompt produit une référence technique détaillée pour développer ou maintenir des fournisseurs.
 Copie le bloc dans une session ouverte sur le dépôt et remplace les champs d'entrée disponibles.
 

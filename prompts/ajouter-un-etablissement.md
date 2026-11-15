@@ -14,8 +14,7 @@ Parle en français, simplement, une action à la fois. Ne suppose pas que je con
 
 Lis AGENTS.md, Docs/agents/contexte.md et Docs/agents/perimetre.md. Pour une session Claude, lis
 aussi CLAUDE.md. Appuie-toi sur les fichiers courants : une fonctionnalité déclarée dans le
-catalogue peut ne pas être implémentée. La déclaration d'autorisation du responsable est le
-contexte de travail ; les détails institutionnels ne sont pas nécessaires pour cette contribution.
+catalogue peut ne pas être implémentée.
 
 1. Définir l'ajout
 

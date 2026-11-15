@@ -56,7 +56,7 @@ complet, réglages du proxy et dépannage : [Docs/docker.md](Docs/docker.md).
 
 ## Ajouter ton IUT ou ta fac
 
-Compte 15 à 30 minutes, sans savoir coder : [le guide pas à pas](Docs/ajouter-un-etablissement.md).
+Sans savoir coder : [le guide pas à pas](Docs/ajouter-un-etablissement.md).
 Claude explore ton ENT pendant que tu te connectes toi-même, puis écrit la configuration et un
 rapport sans données de compte.
 

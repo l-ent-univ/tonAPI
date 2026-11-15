@@ -17,7 +17,7 @@ leur sens d'origine.
 
 ## Implémenté depuis
 
-| Sujet de recherche | Dans le code au 01/11/2026 |
+| Sujet de recherche | Dans le code |
 |---|---|
 | CAS de Montpellier avec passerelle esup-otp et second facteur | `[sso] flavor = "esup-otp-gateway"`, `[sso.mfa]` ; essayé le 27/10/2026 |
 | Lien iCal ADE lu sur prose (Montpellier) | `ade-ical-link` ; essayé le 27/10/2026 |
@@ -39,16 +39,7 @@ derrière SAML (Rennes), détection du groupe ScoDoc vers ADE de
 Fournisseurs écrits sans dossier de recherche ici : `ade-myplanning`, `bluemind` et
 `etudiants-api` (Paul-Valéry), documentés dans [../../reports/univ-montp3.md](../../reports/univ-montp3.md).
 
-## Corrections apportées lors du déplacement (01/11/2026)
-
-- Les dossiers étaient sous `Docs/Montpellier/` et `Docs/Rennes/`. Des commentaires du code, des
-  fichiers `universities/*.toml` et `console/donnees.js` citent encore ces anciens chemins.
-- Les chemins vers la machine locale des auteurs ont été retirés ; les noms des projets sources
-  restent.
-- [Montpellier/reimplementation.md](Montpellier/reimplementation.md) : les lignes qui prévoyaient
-  de garder le mot de passe ont été alignées sur le code.
-
 ## Ajouter une recherche
 
-Suivre [../PROMPT-analyse-etablissement.md](../PROMPT-analyse-etablissement.md) et écrire dans
+Suivre [../../prompts/analyser-un-etablissement.md](../../prompts/analyser-un-etablissement.md) et écrire dans
 `Docs/recherche/<Etablissement>/`. Dater chaque observation et ne recopier aucune valeur de compte.

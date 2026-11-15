@@ -6,7 +6,7 @@ par les revues d'octobre 2026 sont corrigées dans le code ; il reste des limite
 plus bas, et aucun audit externe n'a été mené [inconnu]. Cette page ne constitue pas une
 certification.
 
-État du code relevé le 01/11/2026. Les protections sont lues dans le code [code] sauf mention.
+Les protections sont lues dans le code [code] sauf mention.
 
 ## Signaler une vulnérabilité
 
@@ -89,31 +89,6 @@ exact d'écrire que le serveur ne voit aucune donnée.
 - Console : politique de sécurité du contenu, envoi des identifiants refusé hors HTTPS ou
   `127.0.0.1`/`localhost`.
 - CI : `permissions: contents: read`, `persist-credentials: false`, `--locked`.
-
-## Corrections du 31/10/2026
-
-Issues des revues en lecture seule (session et serveur, HTTP et CAS, robustesse, console et
-dépendances, préparation à la charge), reprises de l'ancien plan de production.
-
-| Problème | Gravité | Correction |
-|---|---|---|
-| `previousToken` d'un autre compte recopiait ses cookies de service dans la session d'un autre étudiant | haute | même compte exigé ; seuls les cookies du CAS repris |
-| Une taille de liste annoncée par ADE pouvait arrêter le processus (allocation impossible) | critique | taille bornée par la réponse |
-| Connexions inventées en rafale : places du CAS saturées, adresse de tonAPI bannie | haute | limite par adresse sur la connexion, le second facteur et la connexion aux services |
-| Limiteur d'échecs dépassé par des requêtes parallèles ; second facteur sans limite ; jeton `pending` prolongé à chaque code | moyenne | réservation avant l'appel au CAS ; codes et notifications comptés ; délai fixé |
-| Corps de réponse lu en entier avant la limite de 8 Mo | moyenne | lecture par morceaux |
-| Lien de portlet personnel partagé par le cache | moyenne | seuls les liens sans paramètre sont partagés |
-| Liens `javascript:` ou `data:` acceptés dans la configuration | moyenne | `https` exigé ; la console ne pose que des liens sûrs |
-| Plantages sur données distantes, dates extrêmes, traitements quadratiques, boucle serrée du second facteur | moyenne | lectures sûres, dates bornées, listes bornées, pause entre deux essais |
-| Aucun délai global ; une panne d'un service faisait échouer tout l'appel groupé | moyenne | délais par route et par fournisseur |
-| Démarrage sans clés de session ; arrêt seulement sur Ctrl+C | bloquant | clés obligatoires hors dev ; arrêt propre sur SIGTERM |
-| Cookies trop larges, sans limite de nombre ni de taille ; TLS 1.0 possible | basse | limites de cookies, TLS 1.2 minimum |
-| Console sans politique de sécurité ; jeton envoyé à une adresse non sûre | basse | CSP, envoi refusé hors adresse sûre |
-| CI : jeton GitHub laissé sur disque, droits par défaut, dépendances non verrouillées | basse | droits en lecture, jeton non conservé, `--locked` |
-
-Faites depuis : répartiteurs de confiance par `TONAPI_TRUSTED_PROXIES`, documentation et
-rechargement coupés hors dev, plafond de requêtes par compte, déconnexion CAS, contrôle des
-certificats `tls.extra-ca` à la validation.
 
 ## Limites connues
 

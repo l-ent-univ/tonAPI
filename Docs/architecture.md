@@ -3,7 +3,7 @@
 tonAPI est un serveur HTTP sans base de données de sessions : chaque requête arrive avec un jeton
 chiffré gardé par le client, le serveur l'ouvre, interroge le service de l'université au nom de
 l'étudiant, convertit la réponse dans un modèle commun et renvoie un nouveau jeton si la session a
-changé. État du code relevé le 01/11/2026.
+changé.
 
 ## Couches
 
@@ -109,7 +109,7 @@ Le serveur ne garde pas de sessions étudiantes, mais il a un état de fonctionn
 | Requêtes en cours par compte | `slots.rs` | durée de la requête |
 | Places par hôte universitaire | `tonapi-http/src/browser.rs` | durée de la requête |
 | Clients HTTP et connexions réutilisées | `tonapi-http/src/browser.rs` | durée du processus |
-| Cache commun à tous les étudiants | `tonapi-providers/src/shared.rs` | signatures GWT et arbre ADE : 1 h ; liens de portlets uPortal sans paramètre : 6 h |
+| Cache commun à tous les étudiants | `tonapi-providers/src/cache.rs` | signatures GWT et arbre ADE : 1 h ; liens de portlets uPortal sans paramètre : 6 h |
 
 Le cache partagé ne contient que des valeurs identiques pour tous les comptes (jamais de cookie ni
 de lien personnel). Toutes ces tables sont propres à un processus : avec plusieurs instances, les

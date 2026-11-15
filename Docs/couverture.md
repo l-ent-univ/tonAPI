@@ -5,8 +5,8 @@ Montpellier) les 27 et 28/10/2026, et l'Université Paul-Valéry Montpellier 3 l
 Rennes, Lannion et les autres composantes de Montpellier n'ont jamais été essayés.
 Chaque case indique le fournisseur configuré et la preuve disponible.
 
-État de la configuration relevé le 01/11/2026 dans `universities/` [code]. Essais repris de
-[agents/contexte.md](agents/contexte.md) et de [../reports/univ-montp3.md](../reports/univ-montp3.md).
+Configuration lue dans `universities/` [code]. Essais détaillés pour Paul-Valéry dans
+[../reports/univ-montp3.md](../reports/univ-montp3.md).
 
 ## Légende
 
@@ -63,5 +63,5 @@ sur une règle `ade-group-path`, signal qu'aucun portail ne fournit aujourd'hui 
 ## Mettre à jour
 
 Après un essai réel : date, établissement, services et résultat (données, vide, erreur) dans
-[agents/contexte.md](agents/contexte.md) ou dans un rapport `reports/<id>.md`, puis dans ce
-tableau et dans `console/donnees.js`. Ne jamais recopier de valeur de compte.
+un rapport `reports/<id>.md`, puis dans ce tableau et dans `console/donnees.js`. Ne jamais recopier
+de valeur de compte.

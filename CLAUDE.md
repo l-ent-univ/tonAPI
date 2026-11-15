@@ -124,7 +124,7 @@ Montpellier ne prouve pas le comportement du déploiement de Rennes, même avec 
 ## Ajouter un établissement
 
 Utilise [prompts/ajouter-un-etablissement.md](prompts/ajouter-un-etablissement.md) pour une
-contribution courte et [Docs/PROMPT-analyse-etablissement.md](Docs/PROMPT-analyse-etablissement.md)
+contribution courte et [prompts/analyser-un-etablissement.md](prompts/analyser-un-etablissement.md)
 pour une documentation technique détaillée. Dans les deux cas :
 
 1. Cherche d'abord si l'université ou la composante existe.

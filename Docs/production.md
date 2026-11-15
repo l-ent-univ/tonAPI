@@ -15,7 +15,7 @@ Exploitation courante (variables, clés, répartiteur) : [exploitation.md](explo
 
 ## Fait depuis le 31/10/2026
 
-| Point | État au 01/11/2026 [code] |
+| Point | État [code] |
 |---|---|
 | Répartiteurs de confiance (A8) | `TONAPI_TRUSTED_PROXIES` (adresses ou plages) ; `X-Forwarded-For` lu seulement depuis ces adresses ; `TONAPI_TRUST_PROXY` refusé au démarrage |
 | Documentation hors dev (A8) | `/docs` et `/openapi.json` coupés par défaut hors `TONAPI_ENV=dev` (`TONAPI_DOCS`) |
@@ -45,18 +45,15 @@ construite le même jour avec Docker 29 sans buildx (arm64, 193 Mo) : `/readyz` 
 
 | # | Action | Pourquoi | Effort [déduit] |
 |---|---|---|---|
-| ~~A1~~ | Fait le 09/11/2026. Journaux JSON : une ligne par requête (route modèle, statut, durée, code d'erreur, université, fournisseur, `x-request-id`), jamais d'identifiant étudiant ni de jeton ; `upstream_changed` et `service_unavailable` en WARN | aujourd'hui, à `info`, aucune ligne par requête | 4–6 h |
 | A2 | Fait côté code le 09/11/2026 ; reste les alertes. `/metrics` (port interne) : requêtes, appels sortants par hôte, attente des places par hôte, issues de connexion, taille des jetons ; alertes 5xx par université, p95, saturation, hausse de `upstream_changed` | sans cela, une université en panne ou un ENT qui change de format passe inaperçu | 8–12 h |
-| ~~A3~~ | Fait le 09/11/2026 (publication de l'image à prévoir). Dockerfile multi-étapes (bookworm-slim, libssl3, ca-certificates, utilisateur non root, `TONAPI_ADDR=0.0.0.0:8080`), configuration dans l'image, compilateur figé dans `rust-toolchain.toml` (aujourd'hui `stable`), image construite en CI | rien n'existe pour déployer | 4–6 h |
-| ~~A4~~ | Fait le 09/11/2026. `/readyz` distinct de `/healthz`, à 503 pendant l'arrêt ; sondes qui n'interrogent jamais une université | un redéploiement couperait des connexions en cours | 1–2 h |
 | A5 | Lire `tonapi_session_token_bytes` après des connexions réelles (Béziers, Paul-Valéry) ; régler le répartiteur (en-têtes ≥ 32 Ko) | jeton estimé à 4–12 Ko [déduit] : erreurs 400/502 avec les valeurs par défaut de nginx | 2 h |
 | A6 | Délai du répartiteur ≥ 130 s sur `/v1/auth/mfa` et ≥ 70 s sur `/v1/overview` et `/v1/documents/{id}`, ou attente de notification à 50 s avec relance par le client | sinon le répartiteur coupe (504) avant la réponse, puis seconde notification sur le téléphone ; réglage décrit dans [exploitation.md](exploitation.md#derrière-un-répartiteur) | 1 h |
 | A7 | Clés de session dans un gestionnaire de secrets, sauvegardées ; rotation selon [exploitation.md](exploitation.md#clés-de-session-et-rotation) | perdre les clés déconnecte tout le monde et relance le second facteur | 3 h |
-| A8 | Déclarer les répartiteurs dans `TONAPI_TRUSTED_PROXIES` au déploiement ; laisser `TONAPI_DOCS` coupé (la page `/docs` charge Scalar depuis un CDN sans version fixée) | sans répartiteur déclaré, la limite par adresse voit l'IP du répartiteur pour tous | 0,5 h |
+| A8 | Déclarer les répartiteurs dans `TONAPI_TRUSTED_PROXIES` au déploiement ; laisser `TONAPI_DOCS` coupé | sans répartiteur déclaré, la limite par adresse voit l'IP du répartiteur pour tous | 0,5 h |
 | A9 | Accord de chaque DSI : IP de sortie fixe, plafond de requêtes convenu par hôte, contact en cas d'incident, User-Agent identifiable | tout le trafic sort de quelques adresses : un blocage côté université coupe tous ses étudiants | hors code |
 | A10 | RGPD : responsable de traitement, registre, analyse d'impact (probablement requise à cette échelle [déduit]), hébergement UE, durée des journaux, procédure de violation sous 72 h ; mentions dans l'application (le mot de passe transite par tonAPI, pas d'affiliation sans accord) ; code source proposé (AGPL) | données d'étudiants (notes, absences, mails) traitées en mémoire | hors code |
 
-## B. Nécessaire pour l'objectif de 100 000 étudiants
+## B. Nécessaire pour l'objectif de montée en charge
 
 | # | Action | Pourquoi | Effort [déduit] |
 |---|---|---|---|
@@ -65,38 +62,40 @@ construite le même jour avec Docker 29 sans buildx (arm64, 193 Mo) : `/readyz` 
 | B3 | File de places séparée pour les connexions et l'attente des notifications du second facteur | 32 étudiants qui attendent de valider sur leur téléphone saturent l'hôte OTP | 2–3 h |
 | B4 | Disjoncteur par hôte : après plusieurs échecs, réponse immédiate `service_unavailable` pendant 30 s | une université en panne garde chaque place jusqu'au délai | 4–6 h |
 | B5 | Clients conformes à [api.md](api.md) : remplacer le jeton à chaque `TonAPI-Session`, une file par utilisateur, `services=` explicite dans `/v1/overview`, envoi des notifications échelonné | un client mal fait multiplie les passages par le CAS et les sessions côté université | 2 h + revue des clients |
-| B6 | Banc de charge (oha ou k6) contre les faux serveurs des tests, latence injectée 100–800 ms | valider les chiffres ci-dessous | 8–12 h |
+| B6 | Banc de charge (oha ou k6) contre les faux serveurs des tests, latence injectée 100–800 ms | mesurer le débit par instance (voir « Capacité : méthode ») | 8–12 h |
 | B7 | Durée maximale de session (`auth_time` scellé que `refresh` ne change pas) | un jeton volé reste prolongeable tant que le CAS l'accepte ; la déconnexion CAS est faite | 3–4 h (estimé avant la déconnexion CAS) |
 | B8 | Empreinte de la configuration dans `/healthz` | vérifier que N instances servent la même configuration ; le rechargement est déjà coupé hors dev | 2 h (estimé avec le point précédent) |
 
 ## C. Améliorations et sécurité en profondeur
 
-- Résolveur DNS qui refuse les adresses privées, de bouclage et lien-local (une redirection ouverte côté université ne doit pas atteindre le réseau interne de l'hébergeur). 3 h.
+Les limites que ces actions lèvent sont décrites dans [securite.md](securite.md#limites-connues).
+
+- Résolveur DNS qui refuse les adresses privées, de bouclage et lien-local. 3 h.
 - Pages du second facteur et « appareil » reconnues seulement sur l'hôte du CAS ; `apiUrl` d'esup-otp limité à un hôte déclaré. 2 h.
 - Liste des suffixes publics pour l'attribut `Domain` des cookies. 2 h.
-- Traces de débogage : action des formulaires passée par `describe()`, plus de `<title>` ni de valeurs d'attributs CAS. 1 h.
+- Traces de débogage nettoyées (action des formulaires, `<title>`, valeurs d'attributs CAS). 1 h.
 - CI : épingler les actions par SHA, `cargo deny` ou `cargo audit`, Dependabot. 2 h (accès réseau nécessaire).
-- `CODEOWNERS` sur `universities/*/certs/` (un certificat ajouté est de confiance pour tous les hôtes de l'université). 0,5 h.
-- Console servie sur une origine dédiée (port inhabituel, ou par le serveur), jeton actif en `sessionStorage`. 2 h.
-- Empreinte d'appareil envoyée au CAS dérivée du seul identifiant (`tonapi-http/src/cas.rs`) : vérifier que la confiance « appareil » du CAS ne repose pas sur elle seule [inconnu].
+- `CODEOWNERS` sur `universities/*/certs/`. 0,5 h.
+- Console servie sur une origine dédiée, jeton actif en `sessionStorage`. 2 h.
 - Cache partagé : borne en octets et éviction des plus anciens plutôt qu'un vidage complet. 2 h.
 - CORS limité aux origines web connues, par variable d'environnement. 1 h.
-- Procédure de signalement des vulnérabilités ([securite.md](securite.md)). Hors code.
+- Procédure de signalement des vulnérabilités. Hors code.
 
-## Capacité estimée [déduit]
+## Capacité : méthode [déduit]
 
-Par université et par instance, avec le plafond actuel de 32 requêtes simultanées par hôte :
+Aucun débit n'est mesuré à ce jour. Le plafond de 32 requêtes simultanées par hôte et par processus
+borne la capacité par université et par instance. Le débit utile dépend de la latence de l'hôte et
+du nombre de passages par le CAS : plus élevé à chaud (sessions côté université encore valides)
+qu'à froid (sessions expirées).
 
-| Situation | Ouvertures d'application par seconde |
-|---|---|
-| À froid (sessions côté université expirées, ~10 passages par le CAS) | 10–15 |
-| À chaud (sessions encore valides) | 30–60 |
+Pour dimensionner une ouverture :
 
-Le processeur ne serait pas la limite (estimation : 100 à 400 appels groupés par seconde sur
-2 vCPU). Scénario « 8 h ou rentrée », calculé sur l'objectif de 100 000 étudiants : 25 % d'entre
-eux en 30 min avec un pic à 2×, soit environ 28 ouvertures par seconde, dont environ 14 pour une
-université de 50 000 étudiants ; côté CAS, environ 140 requêtes par seconde venant de tonAPI. Il
-faudrait 2 à 3 instances (haute disponibilité et marge), plafonds divisés par leur nombre (B1, B2).
+1. Estimer la part des étudiants qui ouvrent l'application dans la fenêtre de pointe (rentrée, 8 h)
+   et un facteur de pic.
+2. Répartir par université, puis convertir en ouvertures par seconde et en requêtes vers le CAS.
+3. Diviser par le débit par instance mesuré au banc (B6) ; prévoir au moins deux instances pour la
+   haute disponibilité, avec les plafonds divisés par leur nombre (B1, B2).
+
 La vraie limite est la capacité des CAS, d'ADE et de ScoDoc, à obtenir des DSI (A9) et à vérifier
 au banc (B6).
 

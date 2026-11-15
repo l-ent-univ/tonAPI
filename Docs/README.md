@@ -1,7 +1,7 @@
 # Documentation de tonAPI
 
-Commence par la ligne qui correspond à ce que tu veux faire. Les pages décrivent le code au
-01/11/2026 ; la recherche de [recherche/](recherche/README.md) est plus ancienne et datée.
+Commence par la ligne qui correspond à ce que tu veux faire. La recherche de
+[recherche/](recherche/README.md) est plus ancienne et datée.
 
 | Tu veux | Lis |
 |---|---|
@@ -17,12 +17,9 @@ Commence par la ligne qui correspond à ce que tu veux faire. Les pages décrive
 | Savoir ce qui manque avant une ouverture au public | [production.md](production.md) |
 | Évaluer la sécurité, signaler une faille | [securite.md](securite.md) |
 | Contribuer au code, écrire un fournisseur | [developpement.md](developpement.md), [../crates/tonapi-providers/README.md](../crates/tonapi-providers/README.md) |
-| Documenter en détail les services d'un établissement | [PROMPT-analyse-etablissement.md](PROMPT-analyse-etablissement.md) |
+| Documenter en détail les services d'un établissement | [../prompts/analyser-un-etablissement.md](../prompts/analyser-un-etablissement.md) |
 | Travailler sur le dépôt en tant qu'agent | [../AGENTS.md](../AGENTS.md), [agents/contexte.md](agents/contexte.md), [agents/perimetre.md](agents/perimetre.md) |
 | Lire la recherche sur Montpellier et Rennes | [recherche/README.md](recherche/README.md) |
-
-Le rapport [rapports/tonapi-etat-2026-10-28.pdf](rapports/tonapi-etat-2026-10-28.pdf) décrit l'état
-au 28/10/2026 ; il n'est pas mis à jour.
 
 ## Conventions de rédaction
 

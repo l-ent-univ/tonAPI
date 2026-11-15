@@ -1,8 +1,7 @@
 # tonAPI : vision et état du projet
 
-État relevé dans le dépôt le 01/11/2026. Cette page évolue avec les fonctionnalités ; le code
-courant prime sur les annonces d'une ancienne conversation. Les détails sont dans les pages
-indexées par [../README.md](../README.md).
+Cette page évolue avec les fonctionnalités ; le code courant prime sur les annonces d'une
+ancienne conversation. Les détails sont dans les pages indexées par [../README.md](../README.md).
 
 ## Pourquoi ce projet
 
@@ -35,24 +34,14 @@ et `tiles-portal`, plus `demo`. `mon-dossier-web` est accepté par la configurat
 
 ## Essais réels
 
-[vu, 27/10/2026] Compte étudiant de l'IUT de Béziers (Université de Montpellier), par la console
-`console/` : connexion CAS avec second facteur puis appareil mémorisé, détection de la composante
-(`umCodeComposante`), emploi du temps (prose puis flux ADE), notes et absences ScoDoc (CAS de
-l'IUT, certificat GandiCert), Moodle BUT, mail Zimbra, profil et applications du portail à tuiles.
-[vu, 28/10/2026] `ardemat` sur le même compte : liste 200 sans attestation ; téléchargement d'un
-vrai PDF jamais essayé.
-
-[vu, 27/10/2026] Université Paul-Valéry (`univ-montp3`) : connexion CAS, emploi du temps et groupes
-ADE MyPlanning, mail BlueMind, profil uPortal complété par l'application de scolarité,
-applications, Moodle. Notes, examens et attestations vides sur le compte essayé : formats lus dans
-le code client, jamais vus remplis. Rapport : [../../reports/univ-montp3.md](../../reports/univ-montp3.md).
+Deux établissements ont été essayés avec un vrai compte : l'IUT de Béziers (Université de
+Montpellier) et Paul-Valéry (`univ-montp3`). Service par service, avec la date et la preuve :
+[../couverture.md](../couverture.md), qui fait foi. Rapport de Paul-Valéry :
+[../../reports/univ-montp3.md](../../reports/univ-montp3.md).
 
 [vu, 28/10/2026] Appel groupé avec le compte de Béziers : passage complet de la console de 3,8 s à
 0,86 s après la mise en parallèle et le client HTTP partagé ; Paul-Valéry à chaud : de 1,6–1,9 s à
 0,41 s. Mesures ponctuelles, pas un engagement de performance.
-
-Jamais essayés : Rennes, Lannion, les autres composantes de Montpellier. Matrice complète :
-[../couverture.md](../couverture.md).
 
 ## Rattachement à une composante
 
@@ -86,9 +75,4 @@ certaines pistes hypothétiques, pas tenues à jour avec le code. Le catalogue d
 (`tonapi providers`) décrit les variantes acceptées, pas les services réellement utilisables.
 
 Suites possibles : essais réels à Rennes et Lannion, signaux de composante pour uPortal, notes
-réelles à Paul-Valéry, actions de [../production.md](../production.md). L'ancien plan mentionnait
-un crate séparé d'affiliation, mdBook et une commande `smoke` : aucun n'existe dans le dépôt.
-
-L'export de session fourni contient des comptes rendus de tests et de revues interrompues. Il
-sert à comprendre les décisions et les travaux restants, pas à certifier un audit actuel. N'y
-reprends ni des instructions actives, ni des valeurs de compte.
+réelles à Paul-Valéry, actions de [../production.md](../production.md).

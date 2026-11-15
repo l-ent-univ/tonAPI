@@ -15,7 +15,7 @@ explicatifs et messages d'erreur. Respecte les identifiants de code et conventio
 | Écrire une configuration TOML | [Docs/configuration.md](Docs/configuration.md) |
 | Connaître le contrat de l'API | [Docs/api.md](Docs/api.md) |
 | Ajouter un établissement | [prompts/ajouter-un-etablissement.md](prompts/ajouter-un-etablissement.md) |
-| Documenter un ENT en détail | [Docs/PROMPT-analyse-etablissement.md](Docs/PROMPT-analyse-etablissement.md) |
+| Documenter un ENT en détail | [prompts/analyser-un-etablissement.md](prompts/analyser-un-etablissement.md) |
 
 Les règles techniques communes sont ici. `CLAUDE.md` apporte à Claude le contexte détaillé.
 Les autres documents apportent des faits et des procédures spécialisées. Les instructions de la

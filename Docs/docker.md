@@ -5,9 +5,8 @@ Proxy Manager dans Docker (cas prévu par `compose.proxy.yaml`), ou nginx et Cad
 la machine. Tout tient dans quatre fichiers à la racine du dépôt : `Dockerfile`, `compose.yaml`,
 `compose.proxy.yaml` et `.env.example`.
 
-Page écrite le 09/11/2026 d'après le code et un essai complet sur Docker 29.5 avec Compose 5.5
-(macOS, arm64). Variables et comportement du serveur : [exploitation.md](exploitation.md). Ce
-qui manque avant d'ouvrir à de vrais étudiants : [production.md](production.md).
+Variables et comportement du serveur : [exploitation.md](exploitation.md). Ce qui manque avant
+d'ouvrir à de vrais étudiants : [production.md](production.md).
 
 ## En bref
 
@@ -385,9 +384,7 @@ docker compose logs -f tonapi
 docker compose logs --no-log-prefix tonapi | jq 'select(.target == "tonapi::access" and .status >= 500)'
 ```
 
-- Une ligne JSON par requête : route modèle, statut, durée, code d'erreur, université,
-  fournisseur et `request_id`. Jamais de jeton, d'identifiant d'étudiant ni de chemin réel.
-  Format détaillé : [exploitation.md](exploitation.md#journaux).
+- Contenu d'une ligne, niveaux et `x-request-id` : [exploitation.md](exploitation.md#journaux).
 - Docker garde 5 fichiers de 20 Mo au plus (`logging` dans `compose.yaml`).
 - Fixer une durée de conservation est une décision RGPD ([production.md](production.md), A10).
 
@@ -409,8 +406,7 @@ scrape_configs:
 Pour un Prometheus dans un autre conteneur, le placer sur le réseau `tonapi_tonapi` et viser
 `tonapi:9090` : le port publié sur l'hôte n'est alors plus utile. Ne pas le mettre sur
 `tonapi-proxy`, qui donne la confiance pour `X-Forwarded-For`. Liste des métriques et alertes
-de départ : [exploitation.md](exploitation.md#métriques). Les compteurs repartent de zéro à chaque
-redémarrage.
+de départ : [exploitation.md](exploitation.md#métriques).
 
 ## Sécurité du conteneur
 
@@ -454,26 +450,3 @@ Pour plusieurs instances, il faut :
 | 504 pendant le second facteur | délai du répartiteur trop court | 130 s sur `/v1/auth/mfa` |
 | 400 ou 502 après une connexion réussie | en-têtes trop gros pour le répartiteur | 32 Ko (section HTTPS) |
 | Tous les étudiants déconnectés après une mise à jour | clé de session changée ou perdue | restaurer la clé ; rotation : [exploitation.md](exploitation.md#clés-de-session-et-rotation) |
-
-## Essai du 09/11/2026
-
-Sur Docker 29.5.2 et Compose 5.5.1, macOS arm64, avec un `.env` d'essai supprimé ensuite [vu] :
-
-- sans clé : `build` et `run … keygen` passent, le serveur refuse de démarrer
-  (`aucune clé`) ; avec la clé, `up -d` donne un conteneur `healthy` en quelques secondes ;
-- `/readyz` répond 200 et la connexion `demo` 200 ;
-- avec `TONAPI_AUTH_PER_IP=2` : `200 200 429` sans `X-Forwarded-For`, `200 200 200` avec trois
-  adresses différentes, `200 200 429` avec trois fois la même ;
-- écriture refusée dans `/app` et `/tmp` ; arrêt propre en 5 s.
-
-Avec `compose.proxy.yaml` et un réseau `tonapi-proxy` créé pour l'essai, puis supprimé :
-
-- le port 8080 n'est plus publié sur l'hôte ; les métriques restent sur `127.0.0.1` ;
-- depuis un conteneur de `tonapi-proxy` (rôle de NPM), avec `TONAPI_AUTH_PER_IP=2` :
-  `200 200 429` sans `X-Forwarded-For`, `200 200 200` avec trois adresses différentes, comme
-  avec `10.6.6.6, 203.0.113.x` (seule la dernière adresse, ajoutée par le proxy, compte) ;
-- depuis un conteneur hors de `tonapi-proxy`, trois adresses différentes dans
-  `X-Forwarded-For` : `200 200 429`, l'en-tête est ignoré.
-
-Non essayé : un vrai Nginx Proxy Manager, nginx ou Caddy devant le conteneur, construction en
-amd64 (le job `image` de la CI le fera), Docker sous Linux.

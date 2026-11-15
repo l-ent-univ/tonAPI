@@ -1,6 +1,6 @@
 # Ajouter ton IUT ou ta fac à tonAPI
 
-Prévois 15 à 30 minutes pour observer tes services et préparer les fichiers si le navigateur est disponible. Pas besoin de savoir coder : tu réponds aux questions et tu te connectes à ton ENT. Si un fournisseur manque dans tonAPI, son développement sera une tâche séparée.
+Le navigateur permet d'observer tes services et de préparer les fichiers. Pas besoin de savoir coder : tu réponds aux questions et tu te connectes à ton ENT. Si un fournisseur manque dans tonAPI, son développement sera une tâche séparée.
 
 ## Ce qu'il te faut
 
