@@ -544,7 +544,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Audit 2026-11-04 : `Vec::contains` rendait le dédoublonnage quadratique.
+    /// `Vec::contains` rendait le dédoublonnage quadratique.
     #[test]
     fn etapes_bornees() {
         let etapes: Vec<Value> = (0..50_000)

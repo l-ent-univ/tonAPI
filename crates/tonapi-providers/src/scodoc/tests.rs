@@ -1,15 +1,18 @@
 //! Tests du fournisseur `scodoc-gateway` : analyses pures sur les fixtures synthétiques, puis
 //! connexion au CAS de la composante contre un faux serveur local.
 
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use chrono_tz::Europe::Paris;
 use serde_json::json;
 use tonapi_config::{GradesService, ResolvedUniversity, ServiceOptions, UniversityFile};
+use tonapi_core::Grade;
 use tonapi_session::SessionData;
 
+use super::parse::{Cell, at, cell, evaluation_date, natural_cmp, rank};
 use super::*;
 use crate::NetSettings;
 

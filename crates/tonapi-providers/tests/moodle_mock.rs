@@ -179,7 +179,7 @@ async fn handle(
     let origin = format!("http://{host}");
 
     match (method, uri.path()) {
-        // --- Moodle, entrée CAS -------------------------------------------------------------
+        // Moodle, entrée CAS
         (Method::GET, "/login/index.php") => {
             if s.guest_landing {
                 page(GUEST_PAGE)
@@ -211,7 +211,7 @@ async fn handle(
                 page(CAS_FORM)
             }
         }
-        // --- Moodle, entrée Shibboleth ---------------------------------------------------------
+        // Moodle, entrée Shibboleth
         (Method::GET, "/auth/shibboleth/index.php") => redirect("/Shibboleth.sso/Login", None),
         (Method::GET, "/Shibboleth.sso/Login") => redirect("/wayf", None),
         (Method::GET, "/wayf") => {
@@ -250,7 +250,7 @@ async fn handle(
                 json_body(StatusCode::BAD_REQUEST, "{}")
             }
         }
-        // --- Données -----------------------------------------------------------------------------
+        // Données
         (Method::POST, "/lib/ajax/service.php") => {
             let sesskey = query(&uri, "sesskey").unwrap_or_default();
             let args = serde_json::from_str::<Value>(&body)

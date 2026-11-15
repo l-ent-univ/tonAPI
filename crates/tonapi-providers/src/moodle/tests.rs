@@ -570,7 +570,7 @@ fn les_futurs_sont_send(ctx: &mut Context<'_>, base: &Url, config: &HomeworkServ
     assert_send(&sign_in(ctx, config, "u", "p"));
 }
 
-/// Audit 2026-11-04 : un `&` sans `;` proche relisait toute la fin du texte, et chaque `<meta`
+/// Un `&` sans `;` proche relisait toute la fin du texte, et chaque `<meta`
 /// d'une même balise rescannait la fin de la page.
 #[test]
 fn entites_et_meta_refresh_en_temps_lineaire() {

@@ -328,7 +328,7 @@ mod tests {
         assert!(find_feed_link("<html>rien</html>", HOTE, true).is_none());
     }
 
-    /// Audit 2026-11-04 : chaque `http` relisait toute la fin de la page.
+    /// Chaque `http` relisait toute la fin de la page.
     #[test]
     fn recherche_du_lien_lineaire() {
         let page = format!("{}{}", "http".repeat(200_000), PAGE);

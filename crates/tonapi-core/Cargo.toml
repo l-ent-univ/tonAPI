@@ -10,7 +10,6 @@ rust-version.workspace = true
 [dependencies]
 chrono = { version = "0.4.45", features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
 utoipa = { version = "6.0.0", features = ["chrono"] }
 
 [lints]

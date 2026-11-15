@@ -67,6 +67,15 @@ pub(crate) fn text_or_number(value: Option<&Value>) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+/// Identifiant envoyé comme nombre ou comme chaîne.
+pub(crate) fn id_string(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_owned()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
 /// Chaîne non vide (après retrait des blancs) du champ `key`.
 pub(crate) fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value

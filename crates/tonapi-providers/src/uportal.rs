@@ -25,9 +25,9 @@ use url::Url;
 use std::time::Duration;
 
 use crate::Context;
+use crate::cache::Shared;
 use crate::common::root;
 use crate::net::{Net, upstream};
-use crate::shared::Shared;
 
 mod parse;
 

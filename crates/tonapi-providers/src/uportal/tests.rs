@@ -24,7 +24,7 @@ fn lien_partageable_entre_etudiants() {
     assert!(!shareable("https://app.exemple.test/?jsessionid=abc", ""));
 }
 
-/// Audit 2026-11-04 : un jeton ou un numéro dans le chemin passait le filtre, et le lien d'un
+/// Un jeton ou un numéro dans le chemin passait le filtre, et le lien d'un
 /// étudiant pouvait être servi aux autres par le cache partagé.
 #[test]
 fn jeton_ou_numero_dans_le_chemin_jamais_partage() {

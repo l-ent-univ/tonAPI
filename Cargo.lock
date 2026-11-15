@@ -2436,7 +2436,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
- "serde_json",
  "utoipa",
 ]
 
@@ -2474,7 +2473,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "thiserror",
  "tokio",
  "tonapi-config",
  "tonapi-core",

@@ -30,9 +30,9 @@ use std::time::Duration;
 
 use crate::Context;
 use crate::ade_ical::{is_calendar, parse_timetable};
+use crate::cache::Shared;
 use crate::common::{root, token_key, university_tz};
 use crate::net::{Net, upstream};
-use crate::shared::Shared;
 
 mod gwt;
 mod tree;
