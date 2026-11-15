@@ -52,7 +52,33 @@ pub(super) fn parse_ssologin(value: &Value) -> Result<Tokens, Problem> {
         access: access.to_owned(),
         refresh: str_field(auth, "refreshToken").map(str::to_owned),
         project,
+        resources: Some(assigned_resources(data, auth, project)),
     })
+}
+
+/// Ressources attribuées à l'étudiant : `authData.resources`, sinon l'entrée du projet dans
+/// `projectsResources`. Vide quand ADE n'attribue rien.
+fn assigned_resources(data: &Value, auth: &Value, project: i64) -> Vec<i64> {
+    let mut ids = Vec::new();
+    if let Some(resources) = auth.get("resources") {
+        collect_ids(resources, &mut ids, 0);
+    }
+    if ids.is_empty() {
+        let per_project = auth
+            .get("projectsResources")
+            .or_else(|| data.get("projectsResources"))
+            .and_then(Value::as_array);
+        for entry in per_project.into_iter().flatten() {
+            if entry.get("projectId").and_then(Value::as_i64) == Some(project)
+                && let Some(resources) = entry.get("resources")
+            {
+                collect_ids(resources, &mut ids, 0);
+            }
+        }
+    }
+    let mut seen = HashSet::new();
+    ids.retain(|id| *id > 0 && seen.insert(*id));
+    ids
 }
 
 /// Réponse de `refreshtoken` : nouveau jeton d'API et, si présent, nouveau jeton de
@@ -121,8 +147,9 @@ fn child_nodes(node: &Value) -> Vec<&Value> {
         .collect()
 }
 
-/// Groupes listés au plus.
-const MAX_GROUPS: usize = 5_000;
+/// Groupes listés au plus. L'arbre couvre toute l'université : celui de Rennes dépasse 5 000
+/// groupes ([vu] 15/11/2026).
+const MAX_GROUPS: usize = 50_000;
 
 fn walk_tree(
     node: &Value,

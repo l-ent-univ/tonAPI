@@ -10,9 +10,9 @@
 //!    redirection), le jeton est renouvelé (`refreshtoken`, sinon nouvelle ouverture de session) et
 //!    la requête n'est rejouée **qu'une fois**.
 //!
-//! À Rennes, ADE n'attribue aucun groupe à l'étudiant : les ressources à interroger viennent de sa
-//! sélection personnelle (`PortalResourcesAllSelection`). Les jetons ADE restent dans
-//! `session.tokens["ade-rest.<hôte>"]`, jamais le mot de passe.
+//! Les ressources à interroger sont la sélection personnelle de l'étudiant
+//! (`PortalResourcesAllSelection`), sinon celles qu'ADE lui attribue dans la réponse de `ssologin`.
+//! Les jetons ADE restent dans `session.tokens["ade-rest.<hôte>"]`, jamais le mot de passe.
 //!
 //! Faits non confirmés par la documentation, marqués `[inconnu]` ci-dessous : format exact de la
 //! sélection, champs de l'arbre au-delà de `id`/`name`/`branch`/`leaf`, type de séance.
@@ -52,6 +52,10 @@ struct Tokens {
     refresh: Option<String>,
     /// Projet ADE de l'année (`authData.projectId`).
     project: i64,
+    /// Ressources qu'ADE attribue à l'étudiant (`authData.resources`). Absent des sessions émises
+    /// avant que ce champ existe : la session ADE est alors rouverte pour le lire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    resources: Option<Vec<i64>>,
 }
 
 /// Réponse d'ADE : des données, ou une session perdue (401 ou redirection, p. ex. vers le CAS).
@@ -237,6 +241,7 @@ impl Client {
                     access,
                     refresh: new_refresh.or(tokens.refresh),
                     project: tokens.project,
+                    resources: tokens.resources,
                 });
                 self.fresh = true;
                 return Ok(());
@@ -288,11 +293,25 @@ impl Client {
         }
     }
 
+    /// Ressources à afficher : la sélection personnelle de l'étudiant, sinon celles qu'ADE lui
+    /// attribue. Le portail fait de même [vu] Rennes, 15/11/2026 : sélection vide, agenda rempli
+    /// avec la ressource attribuée.
     async fn selection(&mut self) -> Result<Vec<i64>, Problem> {
         let value = self
             .get_project("user/properties/name/PortalResourcesAllSelection")
             .await?;
-        parse_selection(&value)
+        let chosen = parse_selection(&value)?;
+        if !chosen.is_empty() {
+            return Ok(chosen);
+        }
+        if self.tokens.as_ref().is_some_and(|t| t.resources.is_none()) {
+            self.login().await?;
+        }
+        Ok(self
+            .tokens
+            .as_ref()
+            .and_then(|t| t.resources.clone())
+            .unwrap_or_default())
     }
 }
 

@@ -31,7 +31,7 @@ Configuration lue dans `universities/` [code]. Essais détaillés pour Paul-Val�
 | `umontpellier/iut-nimes` | planned | tiles-portal, non essayé | ade-ical-link, non essayé | lien | absent | absent | moodle-ajax, non essayé | zimbra-rest, non essayé | tiles-portal, non essayé | ardemat, non essayé |
 | `univ-montp3` | beta | uportal5 + etudiants-api, vu 27/10 | ade-myplanning, vu 27/10 | etudiants-api, vide 27/10 | absent | etudiants-api, vide 27/10 | moodle-ajax, vu 27/10 | bluemind, vu 27/10 | uportal5, vu 27/10 | etudiants-api, vide 27/10 |
 | `univ-rennes` (`autres`, défaut) | beta | uportal5, non essayé | ade-portal-rest, non essayé | absent | absent | absent | moodle-ajax (Shibboleth), non essayé | zimbra-rest, 501 attendu | uportal5, non essayé | mon-dossier-web, 501 |
-| `univ-rennes/iut-lannion` | beta | uportal5, [vu] 15/11/2026 | ade-portal-rest, [vu] 15/11/2026 : répond, 0 séance sans groupe choisi ; liste des groupes en erreur | scodoc-gateway (CAS de l'université), [vu] 15/11/2026 : 1 semestre | scodoc-gateway, [vu] 15/11/2026 : réponse vide | absent | moodle-ajax (Shibboleth), [vu] 15/11/2026 | zimbra-rest, [vu] 15/11/2026 : 501 | uportal5, [vu] 15/11/2026 | mon-dossier-web, 501 |
+| `univ-rennes/iut-lannion` | beta | uportal5, [vu] 15/11/2026 | ade-portal-rest, [vu] 15/11/2026 : 15 séances, comme sur le portail ; 6 928 groupes listés | scodoc-gateway (CAS de l'université), [vu] 15/11/2026 : 1 semestre | scodoc-gateway, [vu] 15/11/2026 : réponse vide | absent | moodle-ajax (Shibboleth), [vu] 15/11/2026 | zimbra-rest, [vu] 15/11/2026 : 501 | uportal5, [vu] 15/11/2026 | mon-dossier-web, 501 |
 
 ## Précisions
 
@@ -59,10 +59,11 @@ client et jamais vus remplis. Pas de composante déclarée.
 étudiant de l'IUT de Lannion, composante choisie à la main, sans second facteur demandé [vu] :
 connexion CAS, profil, applications, notes ScoDoc, absences (aucune sur ce compte) et devoirs
 Moodle par Shibboleth répondent. Le webmail Partage passe par une fédération SAML : `zimbra-rest`
-répond `not_implemented` [vu]. L'emploi du temps répond sans séance, parce que l'ADE de Rennes
-n'attribue aucun groupe à l'étudiant et que ce compte n'en a pas choisi. La liste des groupes
-échoue : l'arbre de l'université dépasse le plafond de 5 000 groupes de `ade-portal-rest` [vu],
-après correction des nœuds au nom vide que l'analyse refusait. Le rattachement de Lannion repose
+répond `not_implemented` [vu]. L'emploi du temps rend les 15 séances de la semaine affichées par
+le portail ADE [vu]. Trois écarts avec la recherche ont été corrigés ce jour-là : la sélection
+personnelle du compte est vide et l'agenda vient de la ressource qu'ADE attribue à l'étudiant
+(réponse de `ssologin`, que la recherche disait sans ressource à Rennes) ; l'arbre contient des nœuds au nom
+vide ; il compte 6 928 groupes, au-dessus de l'ancien plafond de 5 000. Le rattachement de Lannion repose
 sur une règle `ade-group-path`, signal qu'aucun portail ne fournit aujourd'hui [code] : un
 étudiant de Lannion reste dans la composante `autres` tant qu'il ne choisit pas `iut-lannion`.
 

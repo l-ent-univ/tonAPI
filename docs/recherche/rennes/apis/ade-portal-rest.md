@@ -63,6 +63,11 @@ Chaîne complète, telle que `tafac` l'implémente côté serveur (`planningPort
 
 ### 1.4 Point critique : `authData.resources` est **vide** à Rennes
 
+> Contredit le 15/11/2026 par un compte étudiant de l'IUT de Lannion : sa sélection personnelle
+> est vide et le portail affiche pourtant son agenda, avec une ressource attribuée par ADE. tonAPI
+> lit donc la sélection, puis les ressources de la réponse de `ssologin`. Voir
+> [../../../reference/couverture.md](../../../reference/couverture.md).
+
 - Sur un compte étudiant réel, `ssologin` renvoie `authData.resources: []` et `projectsResources:[{projectId:1,resources:[]}]` : **l'ADE de Rennes n'attribue aucun groupe à l'étudiant**. [confirmé] §11.3
 - Ce que l'étudiant voit vient de sa **sélection personnelle**, stockée comme propriété utilisateur `PortalResourcesAllSelection` : `GET <planning>/portal/RestApi/portal/projects/1/user/properties/name/PortalResourcesAllSelection` → `{"data":""}` si rien n'est choisi. [confirmé] §11.3
 - Conséquence : `tafac` calcule une sélection par défaut depuis `authData.resources` (`buildDefaultSelection`, `planningPortalApi.js:311-345`) [code], ce qui **ne donne rien à Rennes** où `resources` est vide. Les ids de ressources à interroger doivent donc venir soit de `PortalResourcesAllSelection`, soit d'un choix de l'étudiant dans l'arbre `resourcestree` (§4). [confirmé] §11.3

@@ -193,6 +193,35 @@ fn ssologin_cas_normal_et_projet() {
 }
 
 #[test]
+fn ssologin_ressources_attribuees() {
+    let attribuees = |value: Value| parse_ssologin(&value).unwrap().resources;
+    let base = |extra: Value| {
+        let mut auth = json!({"projectId": 1, "accessToken": "a"});
+        if let (Some(auth), Some(extra)) = (auth.as_object_mut(), extra.as_object()) {
+            auth.extend(extra.clone());
+        }
+        json!({"data": {"authData": auth}})
+    };
+    // Objets avec `id`, doublons et ids synthétiques négatifs écartés.
+    assert_eq!(
+        attribuees(base(
+            json!({"resources": [{"id": 101, "name": "TD"}, {"id": 101}, {"id": -3}]})
+        )),
+        Some(vec![101])
+    );
+    // `resources` vide : l'entrée du projet courant dans `projectsResources`.
+    assert_eq!(
+        attribuees(base(json!({"resources": [], "projectsResources": [
+            {"projectId": 2, "resources": [{"id": 7}]},
+            {"projectId": 1, "resources": [{"id": 102}]},
+        ]}))),
+        Some(vec![102])
+    );
+    // Rien d'attribué : liste vide, pas une erreur.
+    assert_eq!(attribuees(base(json!({}))), Some(vec![]));
+}
+
+#[test]
 fn ssologin_incomplet() {
     for value in [
         json!({"data": {}}),
