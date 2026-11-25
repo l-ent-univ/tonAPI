@@ -229,7 +229,10 @@ async fn week(
         university,
         session,
         now: Utc.with_ymd_and_hms(2026, 10, 5, 8, 0, 0).unwrap(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     let from = NaiveDate::from_ymd_opt(2026, 10, 5).unwrap();
     let to = NaiveDate::from_ymd_opt(2026, 10, 11).unwrap();
@@ -303,7 +306,10 @@ async fn groupes_nommes_par_l_arbre_ade() {
         university: &uni,
         session: &mut session,
         now: Utc.with_ymd_and_hms(2026, 10, 5, 8, 0, 0).unwrap(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     let groups = timetable_groups(&mut ctx).await.unwrap();
     assert_eq!(groups.provider, "ade-myplanning");
@@ -350,7 +356,10 @@ async fn deuxieme_etudiant_sans_relire_signatures_ni_arbre() {
             university: &uni,
             session: &mut session,
             now: Utc.with_ymd_and_hms(2026, 10, 5, 8, 0, 0).unwrap(),
-            net: NetSettings { https_only: false },
+            net: NetSettings {
+                https_only: false,
+                user_agent: None,
+            },
         };
         let groups = timetable_groups(&mut ctx).await.unwrap().data;
         assert_eq!(groups.len(), 2);

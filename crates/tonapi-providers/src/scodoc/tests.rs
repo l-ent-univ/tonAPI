@@ -896,7 +896,10 @@ macro_rules! context {
             university: $university,
             session: $session,
             now: Utc::now(),
-            net: NetSettings { https_only: false },
+            net: NetSettings {
+                https_only: false,
+                user_agent: None,
+            },
         };
     };
 }

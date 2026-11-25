@@ -545,7 +545,10 @@ async fn sign_in_ne_garde_que_le_jeton() {
         university: &university,
         session: &mut session,
         now: Utc::now(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     sign_in(
         &mut ctx,
@@ -583,7 +586,10 @@ async fn sign_in_n_insiste_pas_apres_invalidlogin() {
         university: &university,
         session: &mut session,
         now: Utc::now(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     let problem = sign_in(&mut ctx, &webservice(&base, LOCAL), "e00000000000", "faux")
         .await
@@ -604,7 +610,10 @@ async fn sign_in_refuse_les_connexions_par_cas_sans_rien_envoyer() {
         university: &university,
         session: &mut session,
         now: Utc::now(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     let methods = [
         SignIn::UniversityCas { service: None },

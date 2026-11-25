@@ -129,6 +129,7 @@ fn browser(
     let options = BrowserOptions {
         extra_ca: university.extra_ca(None),
         https_only: net.https_only,
+        user_agent: net.user_agent,
         ..BrowserOptions::default()
     };
     Browser::new(&options, CookieJar::from_stored(cookies)).map_err(|e| crate::client_problem(&e))

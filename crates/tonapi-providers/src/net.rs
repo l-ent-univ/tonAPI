@@ -24,11 +24,18 @@ use crate::Context;
 #[derive(Debug, Clone, Copy)]
 pub struct NetSettings {
     pub https_only: bool,
+    /// `User-Agent` présenté à l'université, à la place de celui de tonAPI. Un client qui pose ses
+    /// questions avec les cookies d'une session ouverte par un autre programme donne ici le
+    /// `User-Agent` de ce programme : un CAS qui lie son ticket au `User-Agent` l'effacerait sinon.
+    pub user_agent: Option<&'static str>,
 }
 
 impl Default for NetSettings {
     fn default() -> Self {
-        NetSettings { https_only: true }
+        NetSettings {
+            https_only: true,
+            user_agent: None,
+        }
     }
 }
 
@@ -55,6 +62,7 @@ impl Net {
         let options = BrowserOptions {
             extra_ca: ctx.university.extra_ca(establishment),
             https_only: ctx.net.https_only,
+            user_agent: ctx.net.user_agent,
             ..BrowserOptions::default()
         };
         let browser = Browser::new(

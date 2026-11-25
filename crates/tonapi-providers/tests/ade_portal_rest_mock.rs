@@ -238,7 +238,10 @@ macro_rules! ctx {
             university: &$university,
             session: &mut $session,
             now: Utc::now(),
-            net: NetSettings { https_only: false },
+            net: NetSettings {
+                https_only: false,
+                user_agent: None,
+            },
         }
     };
 }
@@ -552,7 +555,10 @@ async fn composante_detectee_pour_une_session_batie_par_le_client() {
     // Une session faite de cookies obtenus ailleurs : seul le TGC, aucune composante.
     let (mock, base) = start("14962").await;
     let university = university_with_establishment(&base);
-    let net = NetSettings { https_only: false };
+    let net = NetSettings {
+        https_only: false,
+        user_agent: None,
+    };
 
     let session = with_detected_establishment(&university, session(), Utc::now(), net).await;
 
@@ -575,7 +581,10 @@ async fn composante_choisie_par_l_etudiant_jamais_redetectee() {
         confidence: 1.0,
     });
 
-    let net = NetSettings { https_only: false };
+    let net = NetSettings {
+        https_only: false,
+        user_agent: None,
+    };
     let session = with_detected_establishment(&university, chosen.clone(), Utc::now(), net).await;
 
     assert_eq!(session.establishment, chosen.establishment);

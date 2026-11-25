@@ -430,7 +430,10 @@ async fn get_homework(
         university,
         session,
         now: Utc.with_ymd_and_hms(2026, 10, 20, 12, 0, 0).unwrap(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     homework(&mut ctx).await
 }
@@ -739,7 +742,10 @@ async fn connexion_au_service_puis_devoirs_avec_le_seul_jeton() {
             university: &university,
             session: &mut session,
             now: Utc::now(),
-            net: NetSettings { https_only: false },
+            net: NetSettings {
+                https_only: false,
+                user_agent: None,
+            },
         };
         service_login(
             &mut ctx,
@@ -773,7 +779,10 @@ async fn connexion_au_service_refusee_sans_jeton() {
         university: &university,
         session: &mut session,
         now: Utc::now(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     let problem = service_login(&mut ctx, ServiceKind::Homework, "camille.demo", "faux")
         .await

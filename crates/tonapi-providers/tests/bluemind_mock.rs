@@ -155,7 +155,10 @@ async fn inbox(
         university,
         session,
         now: Utc.with_ymd_and_hms(2026, 10, 28, 8, 0, 0).unwrap(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     mail_inbox(&mut ctx).await.map(|f| f.data)
 }

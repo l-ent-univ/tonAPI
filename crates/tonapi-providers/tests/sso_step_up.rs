@@ -133,7 +133,10 @@ fn input(password: &str) -> LoginInput<'_> {
         previous_cookies: Vec::new(),
         now: Utc::now(),
         ttl_secs: 3600,
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     }
 }
 

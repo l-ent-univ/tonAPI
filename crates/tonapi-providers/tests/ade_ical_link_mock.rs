@@ -228,7 +228,10 @@ async fn week(
         university,
         session,
         now: Utc.with_ymd_and_hms(2026, 10, 6, 9, 0, 0).unwrap(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     let fetched = timetable(&mut ctx, day(10, 5), day(10, 11)).await?;
     assert_eq!(fetched.provider, "ade-ical-link");
@@ -249,7 +252,10 @@ async fn une_ressource_choisie_n_est_pas_prise_en_charge() {
         university: &university,
         session: &mut session,
         now: Utc.with_ymd_and_hms(2026, 10, 6, 9, 0, 0).unwrap(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     let asked = ["14961".to_owned()];
     let problem = tonapi_providers::timetable_of(&mut ctx, day(10, 5), day(10, 11), &asked)
@@ -403,7 +409,10 @@ async fn groupes_non_listables_avec_ce_fournisseur() {
         university: &uni,
         session: &mut session,
         now: Utc::now(),
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     };
     let err = timetable_groups(&mut ctx).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::NotImplemented);

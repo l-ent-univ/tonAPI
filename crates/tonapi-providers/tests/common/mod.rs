@@ -101,6 +101,9 @@ pub fn context<'a>(
         university,
         session,
         now,
-        net: NetSettings { https_only: false },
+        net: NetSettings {
+            https_only: false,
+            user_agent: None,
+        },
     }
 }

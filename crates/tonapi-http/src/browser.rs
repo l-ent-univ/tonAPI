@@ -50,6 +50,10 @@ pub struct BrowserOptions {
     /// Refuse tout ce qui n'est pas `https://`. Désactivé seulement dans les tests.
     pub https_only: bool,
     pub timeout: Duration,
+    /// `User-Agent` envoyé à la place de [`USER_AGENT`]. Pour un client qui reprend une session
+    /// ouverte par un autre programme : certains CAS lient leur ticket au `User-Agent` qui s'est
+    /// connecté, et l'effacent quand un autre le présente.
+    pub user_agent: Option<&'static str>,
 }
 
 impl Default for BrowserOptions {
@@ -58,6 +62,7 @@ impl Default for BrowserOptions {
             extra_ca: Vec::new(),
             https_only: true,
             timeout: Duration::from_secs(20),
+            user_agent: None,
         }
     }
 }
@@ -229,6 +234,8 @@ pub struct Browser {
     client: reqwest::Client,
     pub jar: CookieJar,
     https_only: bool,
+    /// `User-Agent` de chaque requête, s'il n'est pas celui du client partagé.
+    user_agent: Option<HeaderValue>,
 }
 
 impl Browser {
@@ -240,6 +247,9 @@ impl Browser {
             client: shared_client(options)?,
             jar,
             https_only: options.https_only,
+            user_agent: options
+                .user_agent
+                .and_then(|agent| HeaderValue::from_str(agent).ok()),
         })
     }
 
@@ -354,6 +364,9 @@ impl Browser {
         // Tenu jusqu'à la fin de la lecture du corps.
         let _permit = host_permit(&url, lane).await?;
         let mut request = self.client.request(method, url.clone()).headers(headers);
+        if let Some(agent) = &self.user_agent {
+            request = request.header(header::USER_AGENT, agent.clone());
+        }
         if let Some(cookie) = self.jar.header_for(&url, Self::now()) {
             request = request.header(header::COOKIE, cookie);
         }
@@ -605,6 +618,59 @@ mod tests {
         MAX_HOSTS, PER_HOST, describe, forget_idle_hosts, host_permit,
     };
     use crate::cookies::CookieJar;
+
+    /// Faux serveur qui répond par le `User-Agent` reçu.
+    async fn agent_echo() -> Url {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut request = Vec::new();
+                let mut buffer = [0_u8; 1024];
+                while !request.ends_with(b"\r\n\r\n") {
+                    let read = stream.read(&mut buffer).await.unwrap();
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&buffer[..read]);
+                }
+                let head = String::from_utf8_lossy(&request).to_string();
+                let agent = head
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("user-agent")
+                            .then(|| value.trim().to_owned())
+                    })
+                    .unwrap_or_default();
+                let answer = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{agent}",
+                    agent.len()
+                );
+                stream.write_all(answer.as_bytes()).await.unwrap();
+            }
+        });
+        url
+    }
+
+    #[tokio::test]
+    async fn le_user_agent_est_celui_de_tonapi_ou_celui_que_le_client_donne() {
+        let url = agent_echo().await;
+        let ask = async |user_agent: Option<&'static str>| {
+            let options = BrowserOptions {
+                https_only: false,
+                user_agent,
+                ..BrowserOptions::default()
+            };
+            let mut browser = Browser::new(&options, CookieJar::default()).unwrap();
+            browser.get(url.clone()).await.unwrap().body
+        };
+        assert_eq!(ask(None).await, super::USER_AGENT);
+        // Un client qui reprend la session d'un autre programme se présente comme lui.
+        assert_eq!(ask(Some("node")).await, "node");
+        // Le réglage ne déborde pas sur le navigateur suivant, qui partage le même client HTTP.
+        assert_eq!(ask(None).await, super::USER_AGENT);
+    }
 
     /// Faux serveur HTTP/1.1 brut : une seule réponse, écrite par `respond` après lecture de la requête.
     async fn raw_server<F, Fut>(respond: F) -> Url
