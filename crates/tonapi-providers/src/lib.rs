@@ -171,7 +171,13 @@ pub fn detect_establishment(
 
 /// Après la connexion : sans choix de l'étudiant, détecte sa composante d'après son profil. Un
 /// échec garde la composante par défaut.
-pub(crate) async fn with_detected_establishment(
+///
+/// La connexion par tonAPI l'appelle elle-même. Un client qui bâtit sa `SessionData` à partir de
+/// cookies obtenus ailleurs doit l'appeler une fois, puis garder la composante rendue : sans elle,
+/// les services d'une composante (notes d'un IUT) ne sont jamais atteints. La détection interroge
+/// l'université (portail, arbre ADE) : elle peut prendre plusieurs secondes et n'est pas à refaire
+/// à chaque requête. Les cookies et jetons reçus pendant la détection sont dans la session rendue.
+pub async fn with_detected_establishment(
     university: &ResolvedUniversity,
     mut session: SessionData,
     now: DateTime<Utc>,

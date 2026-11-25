@@ -1,6 +1,7 @@
 //! Fournisseur `ade-portal-rest` contre un faux CAS et un faux portail ADE locaux : ouverture de la
 //! session par le TGC, jeton SSO, `ssologin`, renouvellement du jeton sur 401 (un seul nouvel essai),
-//! sélection, événements et arbre des groupes. Aucune donnée réelle, aucun accès à un vrai service.
+//! sélection, événements, arbre des groupes et composante détectée par le chemin d'un groupe. Aucune
+//! donnée réelle, aucun accès à un vrai service.
 
 mod common;
 
@@ -13,9 +14,11 @@ use axum::http::{HeaderMap, Method, Response, StatusCode, Uri, header};
 use chrono::{NaiveDate, Utc};
 use serde_json::json;
 use tonapi_config::ResolvedUniversity;
-use tonapi_core::ErrorCode;
-use tonapi_providers::{Context, NetSettings, timetable, timetable_groups, timetable_of};
-use tonapi_session::SessionData;
+use tonapi_core::{ErrorCode, EstablishmentSource};
+use tonapi_providers::{
+    Context, NetSettings, timetable, timetable_groups, timetable_of, with_detected_establishment,
+};
+use tonapi_session::{EstablishmentPick, SessionData};
 use url::Url;
 
 use common::{has_cookie, query};
@@ -525,4 +528,56 @@ async fn groupes_avec_selection() {
             "TP 2"
         ]
     );
+}
+
+/// L'université de test avec une composante reconnue au chemin d'un groupe ADE.
+fn university_with_establishment(base: &str) -> ResolvedUniversity {
+    let mut university = university(base);
+    let establishment = serde_json::from_value(json!({
+        "id": "iut-demo",
+        "name": "IUT de démonstration",
+        "affiliation": { "rules": [
+            { "signal": "ade-group-path", "contains": "Département Démo", "weight": 3 }
+        ] },
+    }))
+    .unwrap();
+    university
+        .establishments
+        .insert("iut-demo".to_owned(), establishment);
+    university
+}
+
+#[tokio::test]
+async fn composante_detectee_pour_une_session_batie_par_le_client() {
+    // Une session faite de cookies obtenus ailleurs : seul le TGC, aucune composante.
+    let (mock, base) = start("14962").await;
+    let university = university_with_establishment(&base);
+    let net = NetSettings { https_only: false };
+
+    let session = with_detected_establishment(&university, session(), Utc::now(), net).await;
+
+    let pick = session.establishment.as_ref().expect("composante détectée");
+    assert_eq!(pick.id, "iut-demo");
+    assert_eq!(pick.source, EstablishmentSource::Detected);
+    // Ce que la détection a reçu d'ADE reste dans la session rendue.
+    assert!(session.tokens.contains_key(&token_key(&base)));
+    assert_eq!(mock.lock().unwrap().ssologin_calls, 1);
+}
+
+#[tokio::test]
+async fn composante_choisie_par_l_etudiant_jamais_redetectee() {
+    let (mock, base) = start("14962").await;
+    let university = university_with_establishment(&base);
+    let mut chosen = session();
+    chosen.establishment = Some(EstablishmentPick {
+        id: "iut-demo".to_owned(),
+        source: EstablishmentSource::Student,
+        confidence: 1.0,
+    });
+
+    let net = NetSettings { https_only: false };
+    let session = with_detected_establishment(&university, chosen.clone(), Utc::now(), net).await;
+
+    assert_eq!(session.establishment, chosen.establishment);
+    assert_eq!(mock.lock().unwrap().sso_calls, 0);
 }
