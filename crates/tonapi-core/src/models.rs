@@ -32,6 +32,10 @@ pub struct Course {
     pub teachers: Vec<String>,
     pub groups: Vec<String>,
     pub description: Option<String>,
+    /// Couleur de la séance telle que la donne le logiciel (ADE : `R,V,B`, ex. `120,140,160`).
+    pub color: Option<String>,
+    /// Activité à laquelle la séance appartient, si le logiciel la nomme (ADE : `activityId`).
+    pub activity_id: Option<String>,
 }
 
 /// Groupe d'emploi du temps sélectionnable.

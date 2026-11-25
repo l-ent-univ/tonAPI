@@ -56,9 +56,9 @@ une analyse tolérante et un test, pas par un nouveau fournisseur.
 
 | Fournisseur | Parcours | Essai réel | Limites |
 |---|---|---|---|
-| `ade-ical-link` | page authentifiée qui contient le lien `direct_cal.jsp` (prose à Montpellier), puis flux iCal | Université de Montpellier (compte de l'IUT de Béziers), 27/10/2026 [vu] | `/v1/timetable/groups` répond `not_implemented` : le flux ne contient que les séances |
-| `ade-myplanning` | appels GWT-RPC de MyPlanning pour les ressources de l'étudiant, puis `anonymous_cal.jsp` | Paul-Valéry, 27/10/2026, groupes compris [vu] | types GWT d'ADE 6.x ; groupes limités à ceux de l'étudiant |
-| `ade-portal-rest` | API REST du portail ADE (`sso/accessToken`, `ssologin`, projets) ; ressources de la sélection personnelle, sinon celles qu'ADE attribue | IUT de Lannion, 15/11/2026, groupes compris [vu] | format d'une sélection personnelle non vide [inconnu] ; la liste des groupes rend tout l'arbre de l'université |
+| `ade-ical-link` | page authentifiée qui contient le lien `direct_cal.jsp` (prose à Montpellier), puis flux iCal | Université de Montpellier (compte de l'IUT de Béziers), 27/10/2026 [vu] | `/v1/timetable/groups` et `resources` répondent `not_implemented` : le flux ne contient que les séances de l'étudiant |
+| `ade-myplanning` | appels GWT-RPC de MyPlanning pour les ressources de l'étudiant, puis `anonymous_cal.jsp` | Paul-Valéry, 27/10/2026, groupes compris [vu] | types GWT d'ADE 6.x ; groupes limités à ceux de l'étudiant ; `resources` répond `not_implemented` |
+| `ade-portal-rest` | API REST du portail ADE (`sso/accessToken`, `ssologin`, projets) ; ressources demandées (`resources`), sinon la sélection personnelle, sinon celles qu'ADE attribue ; `color` et `activityId` de chaque séance | IUT de Lannion, 15/11/2026, groupes compris [vu] ; Université de Rennes, 25/11/2026 : ressources demandées (les siennes et celles d'autres formations), `color` en `R,V,B` et `activityId` sur chaque séance [vu] | format d'une sélection personnelle non vide [inconnu] ; la liste des groupes rend tout l'arbre de l'université ; salle ou enseignant demandés en `resources` jamais essayés |
 
 ### Notes et absences
 

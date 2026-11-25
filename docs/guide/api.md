@@ -128,6 +128,19 @@ arrive dans `TonAPI-Session`.
 lundi au dimanche de la semaine en cours, dans le fuseau de l'université. Écart maximal :
 92 jours. Les dates renvoyées portent toujours un fuseau.
 
+## Emploi du temps d'une ressource
+
+`GET /v1/timetable?resources=<id>,<id>` renvoie les cours des ressources demandées au lieu de ceux
+de l'étudiant : des identifiants de `/v1/timetable/groups`, ou d'une autre ressource du logiciel
+(pour ADE : un groupe, une salle ou un enseignant de l'arbre). 30 identifiants au plus. Sans le
+paramètre, ou vide, la route répond comme avant.
+
+Seuls `ade-portal-rest` et la démo le font. Les autres fournisseurs répondent `not_implemented`
+(501) plutôt que l'emploi du temps de l'étudiant. L'appel groupé ne prend pas ce paramètre.
+
+Chaque cours porte `color` et `activityId` quand le logiciel les donne (ADE par son API REST :
+couleur `R,V,B`, numéro de l'activité) ; `null` sinon.
+
 ## Erreurs
 
 Format `application/problem+json` (RFC 9457) :

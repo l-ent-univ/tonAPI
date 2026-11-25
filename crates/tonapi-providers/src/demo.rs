@@ -177,8 +177,24 @@ pub(crate) fn timetable(from: NaiveDate, to: NaiveDate) -> Vec<Course> {
                     teachers: vec![s.teacher.to_owned()],
                     groups: vec![s.group.to_owned()],
                     description: None,
+                    color: None,
+                    activity_id: None,
                 })
         })
+        .collect()
+}
+
+/// Cours des groupes demandés par leur identifiant ([`groups`]) ; un identifiant inconnu ne
+/// donne aucun cours.
+pub(crate) fn timetable_of(from: NaiveDate, to: NaiveDate, resources: &[String]) -> Vec<Course> {
+    let names: Vec<String> = groups()
+        .into_iter()
+        .filter(|group| resources.contains(&group.id))
+        .map(|group| group.name)
+        .collect();
+    timetable(from, to)
+        .into_iter()
+        .filter(|course| course.groups.iter().any(|group| names.contains(group)))
         .collect()
 }
 

@@ -10,8 +10,9 @@
 //!    redirection), le jeton est renouvelé (`refreshtoken`, sinon nouvelle ouverture de session) et
 //!    la requête n'est rejouée **qu'une fois**.
 //!
-//! Les ressources à interroger sont la sélection personnelle de l'étudiant
-//! (`PortalResourcesAllSelection`), sinon celles qu'ADE lui attribue dans la réponse de `ssologin`.
+//! Les ressources à interroger sont celles que le client demande ; sans demande, la sélection
+//! personnelle de l'étudiant (`PortalResourcesAllSelection`), sinon celles qu'ADE lui attribue dans
+//! la réponse de `ssologin`.
 //! Les jetons ADE restent dans `session.tokens["ade-rest.<hôte>"]`, jamais le mot de passe.
 //!
 //! Faits non confirmés par la documentation, marqués `[inconnu]` ci-dessous : format exact de la
@@ -35,12 +36,12 @@ mod parse;
 
 use parse::{
     events_filter, group_signals, normalize, parse_events, parse_groups, parse_refresh,
-    parse_selection, parse_sso_token, parse_ssologin,
+    parse_requested, parse_selection, parse_sso_token, parse_ssologin,
 };
 
 /// Nom du fournisseur dans les messages d'erreur.
 const PROVIDER: &str = "ade-portal-rest";
-/// Nombre maximal de ressources sélectionnées interrogées pour une même plage (une requête chacune).
+/// Nombre maximal de ressources interrogées pour une même plage (une requête chacune).
 const MAX_RESOURCES: usize = 30;
 
 /// Jetons ADE gardés dans la session de l'étudiant (`ade-rest.<hôte>`).
@@ -321,12 +322,24 @@ async fn timetable_with(
     tz: Tz,
     from: NaiveDate,
     to: NaiveDate,
+    requested: &[String],
 ) -> Result<Vec<Course>, Problem> {
     if from > to {
         return Err(Problem::new(ErrorCode::InvalidRequest)
             .detail("la date de début est après la date de fin"));
     }
-    let resources = client.selection().await?;
+    // Refusées avant toute requête : une demande mal formée ne coûte rien à ADE.
+    let requested = parse_requested(requested)?;
+    if requested.len() > MAX_RESOURCES {
+        return Err(Problem::new(ErrorCode::InvalidRequest).detail(format!(
+            "plus de {MAX_RESOURCES} ressources demandées : en retirer"
+        )));
+    }
+    let resources = if requested.is_empty() {
+        client.selection().await?
+    } else {
+        requested
+    };
     if resources.len() > MAX_RESOURCES {
         return Err(Problem::new(ErrorCode::InvalidRequest).detail(format!(
             "plus de {MAX_RESOURCES} groupes sélectionnés dans ADE : en retirer"
@@ -362,15 +375,17 @@ async fn groups_with(client: &mut Client) -> Result<Vec<TimetableGroup>, Problem
     parse_groups(&tree, &selected)
 }
 
-/// Cours de la plage `from..=to` pour les groupes sélectionnés par l'étudiant dans ADE.
+/// Cours de la plage `from..=to` pour les ressources ADE demandées (`resources`, des ids de
+/// l'arbre) ; sans demande, pour les groupes sélectionnés par l'étudiant dans ADE.
 pub(crate) async fn fetch_timetable(
     ctx: &mut Context<'_>,
     base_url: &Url,
     from: NaiveDate,
     to: NaiveDate,
+    resources: &[String],
 ) -> Result<Vec<Course>, Problem> {
     let (mut client, tz) = Client::open(ctx, base_url)?;
-    let result = timetable_with(&mut client, tz, from, to).await;
+    let result = timetable_with(&mut client, tz, from, to, resources).await;
     client.finish(ctx);
     result
 }

@@ -249,13 +249,42 @@ pub async fn profile(ctx: &mut Context<'_>) -> Result<Fetched<Profile>, Problem>
     }
 }
 
+/// Emploi du temps de l'étudiant : ses propres groupes.
 pub async fn timetable(
     ctx: &mut Context<'_>,
     from: NaiveDate,
     to: NaiveDate,
 ) -> Result<Fetched<Vec<Course>>, Problem> {
+    timetable_of(ctx, from, to, &[]).await
+}
+
+/// Emploi du temps des ressources demandées (identifiants de `timetable_groups`, ou toute autre
+/// ressource du logiciel : groupe, salle, enseignant). Sans ressource : comme [`timetable`].
+///
+/// Seul `ade-portal-rest` (et la démo) sait interroger une ressource choisie ; les autres
+/// fournisseurs répondent `not_implemented` plutôt que l'emploi du temps de l'étudiant.
+pub async fn timetable_of(
+    ctx: &mut Context<'_>,
+    from: NaiveDate,
+    to: NaiveDate,
+    resources: &[String],
+) -> Result<Fetched<Vec<Course>>, Problem> {
     let services = ctx.services();
+    let by_resource = |provider: &str| {
+        Problem::new(ErrorCode::NotImplemented).detail(format!(
+            "{provider} : l'emploi du temps d'une ressource choisie n'est pas disponible"
+        ))
+    };
     match &services.timetable {
+        Some(TimetableService::Demo) if !resources.is_empty() => {
+            Ok(fetched(demo::timetable_of(from, to, resources), "demo"))
+        }
+        Some(TimetableService::AdeIcalLink { .. }) if !resources.is_empty() => {
+            Err(by_resource("ade-ical-link"))
+        }
+        Some(TimetableService::AdeMyplanning { .. }) if !resources.is_empty() => {
+            Err(by_resource("ade-myplanning"))
+        }
         Some(TimetableService::Demo) => Ok(fetched(demo::timetable(from, to), "demo")),
         Some(TimetableService::AdeIcalLink {
             link_page,
@@ -267,7 +296,8 @@ pub async fn timetable(
             Ok(fetched(courses, "ade-ical-link"))
         }
         Some(TimetableService::AdePortalRest { base_url, .. }) => {
-            let courses = ade::portal_rest::fetch_timetable(ctx, base_url, from, to).await?;
+            let courses =
+                ade::portal_rest::fetch_timetable(ctx, base_url, from, to, resources).await?;
             Ok(fetched(courses, "ade-portal-rest"))
         }
         Some(TimetableService::AdeMyplanning {

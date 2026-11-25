@@ -1,4 +1,4 @@
-use super::parse::{MAX_DEPTH, parse_clock, parse_offset};
+use super::parse::{MAX_DEPTH, parse_clock, parse_offset, parse_requested};
 use super::*;
 use chrono_tz::Europe::Paris;
 use serde_json::json;
@@ -34,6 +34,8 @@ fn evenements_cas_normal() {
     assert_eq!(first.rooms, ["Salle 12"]);
     assert_eq!(first.groups, ["TP 1"]);
     assert_eq!(first.kind, None);
+    assert_eq!(first.color.as_deref(), Some("120,140,160"));
+    assert_eq!(first.activity_id.as_deref(), Some("42"));
     // Sans décalage : heure de l'université ; sans titre : « Cours » ; sans fin : durée nulle.
     let second = &courses[1];
     assert_eq!(second.id, "502");
@@ -41,6 +43,62 @@ fn evenements_cas_normal() {
     assert_eq!(second.start.to_rfc3339(), "2026-09-03T14:00:00+02:00");
     assert_eq!(second.end, second.start);
     assert!(second.rooms.is_empty() && second.teachers.is_empty());
+    assert_eq!(second.color, None);
+    assert_eq!(second.activity_id.as_deref(), Some("43"));
+}
+
+#[test]
+fn couleur_et_activite_facultatives() {
+    let event = |extra: Value| {
+        let mut event = json!({"id": 9, "date": "02/09/2026", "startHour": "08:00"});
+        event
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        parse_events(&json!([event]), Paris, day(2026, 9, 2), day(2026, 9, 2)).unwrap()
+    };
+    // Absentes, vides ou d'un autre type : aucune valeur, sans erreur.
+    for extra in [
+        json!({}),
+        json!({"color": "", "activityId": ""}),
+        json!({"color": 7, "activityId": null}),
+    ] {
+        let courses = event(extra);
+        assert_eq!(
+            (
+                courses[0].color.as_deref(),
+                courses[0].activity_id.as_deref()
+            ),
+            (None, None)
+        );
+    }
+    // L'activité en chaîne ; une « couleur » démesurée n'en est pas une.
+    let courses = event(json!({"color": " 1,2,3 ", "activityId": "A-7"}));
+    assert_eq!(courses[0].color.as_deref(), Some("1,2,3"));
+    assert_eq!(courses[0].activity_id.as_deref(), Some("A-7"));
+    assert_eq!(event(json!({"color": "x".repeat(33)}))[0].color, None);
+}
+
+#[test]
+fn ressources_demandees() {
+    let ids =
+        |raw: &[&str]| parse_requested(&raw.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>());
+    assert_eq!(ids(&[]).unwrap(), Vec::<i64>::new());
+    assert_eq!(ids(&["14961", " 7 ", "14961"]).unwrap(), [14961, 7]);
+    // Ni catégorie de l'arbre (id négatif), ni texte, ni chemin : refus sans recopier la valeur.
+    for bad in [
+        "-3",
+        "0",
+        "abc",
+        "",
+        "1;2",
+        "1/../2",
+        "99999999999999999999",
+    ] {
+        let problem = ids(&["14961", bad]).unwrap_err();
+        assert_eq!(problem.code, ErrorCode::InvalidRequest, "{bad}");
+        assert!(!problem.detail.unwrap_or_default().contains("abc"));
+    }
 }
 
 #[test]

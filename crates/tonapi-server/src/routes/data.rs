@@ -18,6 +18,10 @@ use crate::respond::{DataResponse, respond, respond_file};
 
 /// Écart maximal entre `from` et `to`, en jours.
 const MAX_RANGE_DAYS: i64 = 92;
+/// Ressources d'emploi du temps demandées au plus dans une requête.
+const MAX_RESOURCES: usize = 30;
+/// Longueur maximale d'un identifiant de ressource.
+const MAX_RESOURCE_LENGTH: usize = 64;
 
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -55,26 +59,68 @@ pub(crate) fn resolve_range(
     Ok((from, to))
 }
 
-/// Cours entre deux dates incluses.
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct TimetableQuery {
+    /// Premier jour inclus (`AAAA-MM-JJ`). Défaut : lundi de la semaine en cours.
+    from: Option<NaiveDate>,
+    /// Dernier jour inclus. Défaut : dimanche qui suit `from`.
+    to: Option<NaiveDate>,
+    /// Ressources dont on veut les cours, séparées par des virgules : identifiants de
+    /// `/v1/timetable/groups` ou d'une autre ressource du logiciel (30 au plus). Défaut : les
+    /// groupes de l'étudiant. `not_implemented` si le fournisseur ne sait pas le faire.
+    resources: Option<String>,
+}
+
+/// Identifiants de la liste `resources`, sans vide ni doublon.
+fn requested_resources(raw: Option<&str>) -> Result<Vec<String>, ApiError> {
+    let mut resources: Vec<String> = Vec::new();
+    for id in raw.unwrap_or_default().split(',').map(str::trim) {
+        if id.is_empty() || resources.iter().any(|known| known == id) {
+            continue;
+        }
+        let plain = id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+        if !plain || id.len() > MAX_RESOURCE_LENGTH {
+            return Err(invalid("`resources` : identifiant de ressource invalide"));
+        }
+        if resources.len() == MAX_RESOURCES {
+            return Err(invalid(format!(
+                "`resources` : {MAX_RESOURCES} ressources au plus"
+            )));
+        }
+        resources.push(id.to_owned());
+    }
+    Ok(resources)
+}
+
+/// Cours entre deux dates incluses : ceux de l'étudiant, ou ceux des ressources demandées.
 #[utoipa::path(
     get,
     path = "/v1/timetable",
     tag = "données",
     security(("session" = [])),
-    params(Range),
+    params(TimetableQuery),
     responses(
         (status = 200, description = "Succès", body = DataResponse<Vec<Course>>),
         (status = 400, description = "`invalid_request` : paramètres invalides", body = Problem, content_type = "application/problem+json"),
         (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
         (status = 404, description = "`service_absent`", body = Problem, content_type = "application/problem+json"),
+        (status = 501, description = "`not_implemented` : ce fournisseur ne lit pas une ressource choisie", body = Problem, content_type = "application/problem+json"),
     )
 )]
 pub async fn timetable(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
-    query: Result<Query<Range>, QueryRejection>,
+    query: Result<Query<TimetableQuery>, QueryRejection>,
 ) -> Result<Response, ApiError> {
-    let Query(range) = query.map_err(|e| invalid(e.body_text()))?;
+    let Query(query) = query.map_err(|e| invalid(e.body_text()))?;
+    let resources = requested_resources(query.resources.as_deref())?;
+    let range = Range {
+        from: query.from,
+        to: query.to,
+    };
     let timezone = state
         .registry
         .load()
@@ -83,7 +129,7 @@ pub async fn timetable(
         .unwrap_or_default();
     let (from, to) = resolve_range(&range, &timezone)?;
     respond(&state, session, async |ctx| {
-        tonapi_providers::timetable(ctx, from, to).await
+        tonapi_providers::timetable_of(ctx, from, to, &resources).await
     })
     .await
 }

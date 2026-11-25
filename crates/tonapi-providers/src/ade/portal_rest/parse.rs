@@ -7,7 +7,7 @@ use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZon
 use chrono_tz::Tz;
 use serde_json::Value;
 use tonapi_config::{Signal, SignalSource};
-use tonapi_core::{Course, Problem, TimetableGroup};
+use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
 
 use super::{PROVIDER, Tokens};
 use crate::common::{id_string, resolve_local, str_field};
@@ -15,6 +15,8 @@ use crate::net::upstream;
 
 /// Profondeur maximale d'un arbre de ressources lu depuis le service.
 pub(super) const MAX_DEPTH: usize = 32;
+/// Au-delà, ce n'est pas une couleur (`R,V,B` tient en 11 caractères).
+const MAX_COLOR_LENGTH: usize = 32;
 
 /// Les réponses sont enveloppées dans `{"data": …}` ; retire un niveau s'il y en a un.
 fn unwrap_data(value: &Value) -> &Value {
@@ -377,6 +379,10 @@ fn parse_event(event: &Value, tz: Tz) -> Result<Course, Problem> {
         teachers: participants(event, &["instructor", "category2"]),
         groups: participants(event, &["trainee", "category1", "category8"]),
         description: None,
+        color: str_field(event, "color")
+            .filter(|color| color.len() <= MAX_COLOR_LENGTH)
+            .map(str::to_owned),
+        activity_id: id_string(event.get("activityId")),
     })
 }
 
@@ -432,6 +438,28 @@ pub(super) fn parse_events(
         }
     }
     Ok(normalize(courses))
+}
+
+/// Ressources demandées par le client → ids ADE, sans doublon. Un id d'ADE est un entier positif
+/// (les négatifs sont ceux, synthétiques, des catégories de l'arbre) : toute autre valeur est
+/// refusée, sans être recopiée dans l'erreur.
+pub(super) fn parse_requested(resources: &[String]) -> Result<Vec<i64>, Problem> {
+    let mut ids = Vec::with_capacity(resources.len());
+    for resource in resources {
+        let id = resource
+            .trim()
+            .parse::<i64>()
+            .ok()
+            .filter(|id| *id > 0)
+            .ok_or_else(|| {
+                Problem::new(ErrorCode::InvalidRequest)
+                    .detail("ressource ADE : un identifiant numérique positif est attendu")
+            })?;
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    Ok(ids)
 }
 
 /// Filtre d'événements d'une ressource. Les dates sont en `MMJJAAAA` (mois d'abord), la fin est

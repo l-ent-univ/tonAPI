@@ -228,6 +228,8 @@ impl RawEvent {
             teachers: described.teachers,
             groups: described.groups,
             description: (!notes.is_empty()).then(|| notes.join("\n")),
+            color: None,
+            activity_id: None,
         })
     }
 }

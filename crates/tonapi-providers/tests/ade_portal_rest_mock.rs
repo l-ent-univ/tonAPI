@@ -14,7 +14,7 @@ use chrono::{NaiveDate, Utc};
 use serde_json::json;
 use tonapi_config::ResolvedUniversity;
 use tonapi_core::ErrorCode;
-use tonapi_providers::{Context, NetSettings, timetable, timetable_groups};
+use tonapi_providers::{Context, NetSettings, timetable, timetable_groups, timetable_of};
 use tonapi_session::SessionData;
 use url::Url;
 
@@ -43,6 +43,7 @@ struct Mock {
     refresh_had_authorization: bool,
     events_calls: u32,
     events_paths: Vec<String>,
+    selection_calls: u32,
 }
 
 type Shared = Arc<Mutex<Mock>>;
@@ -168,6 +169,7 @@ async fn handle(
                 return status(StatusCode::UNAUTHORIZED);
             }
             if rest == "user/properties/name/PortalResourcesAllSelection" {
+                mock.selection_calls += 1;
                 json_ok(&json!({"data": mock.selection}))
             } else if rest == "resourcestree" {
                 response(StatusCode::OK, "application/json", TREE.to_owned())
@@ -422,6 +424,57 @@ async fn plusieurs_ressources_une_requete_chacune_sans_doublon() {
     // Le même événement revient sous chaque ressource : une seule séance.
     assert_eq!(courses.len(), 2);
     assert_eq!(mock.lock().unwrap().events_calls, 2);
+}
+
+#[tokio::test]
+async fn ressources_demandees_a_la_place_de_la_selection() {
+    // La sélection de l'étudiant (14961) n'est ni lue ni interrogée.
+    let (mock, base) = start("14961").await;
+    let university = university(&base);
+    let mut session = session();
+    let (from, to) = september();
+    let asked = ["777".to_owned(), "888".to_owned(), "777".to_owned()];
+
+    let fetched = timetable_of(&mut ctx!(university, session), from, to, &asked)
+        .await
+        .unwrap();
+
+    assert_eq!(fetched.provider, "ade-portal-rest");
+    assert_eq!(fetched.data.len(), 2);
+    assert_eq!(fetched.data[0].color.as_deref(), Some("120,140,160"));
+    assert_eq!(fetched.data[0].activity_id.as_deref(), Some("42"));
+    let mock = mock.lock().unwrap();
+    assert_eq!(mock.selection_calls, 0);
+    let asked_of_ade: Vec<&str> = mock
+        .events_paths
+        .iter()
+        .map(|path| path.split('/').next().unwrap())
+        .collect();
+    assert_eq!(asked_of_ade, ["resources;777", "resources;888"]);
+}
+
+#[tokio::test]
+async fn ressource_demandee_invalide_refusee_sans_requete() {
+    let (mock, base) = start("14961").await;
+    let university = university(&base);
+    let mut session = session();
+    let (from, to) = september();
+
+    for asked in [
+        vec!["-5".to_owned()],
+        vec!["12".to_owned(), "tp1".to_owned()],
+    ] {
+        let error = timetable_of(&mut ctx!(university, session), from, to, &asked)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidRequest);
+    }
+    let too_many: Vec<String> = (1..=31).map(|id| id.to_string()).collect();
+    let error = timetable_of(&mut ctx!(university, session), from, to, &too_many)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidRequest);
+    assert_eq!(mock.lock().unwrap().sso_calls, 0);
 }
 
 #[tokio::test]

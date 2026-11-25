@@ -241,6 +241,26 @@ fn hits(state: &Shared) -> (u32, u32) {
 }
 
 #[tokio::test]
+async fn une_ressource_choisie_n_est_pas_prise_en_charge() {
+    let (state, base) = start(Feed::Normal).await;
+    let university = university(&base, None);
+    let mut session = session(true);
+    let mut ctx = Context {
+        university: &university,
+        session: &mut session,
+        now: Utc.with_ymd_and_hms(2026, 10, 6, 9, 0, 0).unwrap(),
+        net: NetSettings { https_only: false },
+    };
+    let asked = ["14961".to_owned()];
+    let problem = tonapi_providers::timetable_of(&mut ctx, day(10, 5), day(10, 11), &asked)
+        .await
+        .unwrap_err();
+    // Jamais l'emploi du temps de l'étudiant à la place de celui demandé, et aucune requête.
+    assert_eq!(problem.code, ErrorCode::NotImplemented);
+    assert_eq!(hits(&state), (0, 0));
+}
+
+#[tokio::test]
 async fn lit_le_lien_sur_la_page_puis_le_garde() {
     let (state, base) = start(Feed::Normal).await;
     let uni = university(&base, None);

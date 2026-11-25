@@ -311,6 +311,63 @@ async fn plage_de_dates_controlee() {
 }
 
 #[tokio::test]
+async fn emploi_du_temps_des_ressources_demandees() {
+    let app = server();
+    let token = login(&app, "demo", json!({})).await.body["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let week = "from=2026-10-12&to=2026-10-18";
+    let get = async |query: &str| {
+        call(
+            &app,
+            "GET",
+            &format!("/v1/timetable?{week}{query}"),
+            Some(&token),
+            None,
+        )
+        .await
+    };
+
+    let all = get("").await.body["data"].as_array().unwrap().len();
+    // Un groupe de `/v1/timetable/groups` : ses seuls cours. Liste vide : comme sans paramètre.
+    let r = get("&resources=demo-td1").await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let courses = r.body["data"].as_array().unwrap();
+    assert!(!courses.is_empty() && courses.len() < all);
+    assert!(
+        courses
+            .iter()
+            .all(|course| course["groups"] == json!(["TD1"]))
+    );
+    assert!(courses[0]["color"].is_null() && courses[0]["activityId"].is_null());
+    let both = get("&resources=demo-td1,%20demo-tp1a,demo-td1").await.body["data"]
+        .as_array()
+        .unwrap()
+        .len();
+    assert!(both > courses.len());
+    assert_eq!(
+        get("&resources=").await.body["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        all
+    );
+    assert_eq!(get("&resources=inconnu").await.body["data"], json!([]));
+
+    let too_many = (0..31).map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    for query in [
+        "&resources=a/b",
+        "&resources=1;2",
+        &format!("&resources={too_many}"),
+    ] {
+        let r = get(query).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{query}");
+        assert_eq!(r.body["code"], "invalid_request");
+    }
+}
+
+#[tokio::test]
 async fn specification_et_documentation() {
     let app = server();
     let r = call(&app, "GET", "/openapi.json", None, None).await;
