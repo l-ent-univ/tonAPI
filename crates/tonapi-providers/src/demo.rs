@@ -338,6 +338,7 @@ pub(crate) fn homework(now: DateTime<Utc>) -> Vec<Homework> {
             description: Some("Déposer l'archive du projet et le lien de la maquette.".into()),
             url: Some("https://www.example.org/moodle/mod/assign/view.php?id=1".into()),
             submitted: Some(false),
+            kind: Some("assign".into()),
         },
         Homework {
             id: "demo-h2".into(),
@@ -347,6 +348,7 @@ pub(crate) fn homework(now: DateTime<Utc>) -> Vec<Homework> {
             description: None,
             url: Some("https://www.example.org/moodle/mod/assign/view.php?id=2".into()),
             submitted: Some(false),
+            kind: Some("assign".into()),
         },
         Homework {
             id: "demo-h3".into(),
@@ -356,6 +358,7 @@ pub(crate) fn homework(now: DateTime<Utc>) -> Vec<Homework> {
             description: None,
             url: None,
             submitted: Some(true),
+            kind: Some("assign".into()),
         },
     ]
 }

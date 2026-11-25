@@ -23,6 +23,7 @@ use crate::NetSettings;
 const EVENTS: &str = include_str!("../../tests/fixtures/moodle/events.json");
 const AJAX_EVENTS: &str = include_str!("../../tests/fixtures/moodle/ajax_events.json");
 const WS_EVENTS: &str = include_str!("../../tests/fixtures/moodle/ws_events.json");
+const AJAX_UPCOMING: &str = include_str!("../../tests/fixtures/moodle/ajax_upcoming.json");
 const MISSING_FIELDS: &str = include_str!("../../tests/fixtures/moodle/events_missing_fields.json");
 const MISSING_ID: &str = include_str!("../../tests/fixtures/moodle/events_missing_id.json");
 const MISSING_TITLE: &str = include_str!("../../tests/fixtures/moodle/events_missing_title.json");
@@ -75,6 +76,7 @@ fn les_evenements_deviennent_des_devoirs_tries_par_echeance() {
         Some("https://moodle.exemple.test/mod/assign/view.php?id=501")
     );
     assert_eq!(tp.submitted, Some(false));
+    assert_eq!(tp.kind.as_deref(), Some("assign"));
 
     // Identifiant et date en chaîne, titre nettoyé, cours désigné par son nom court, adresse de
     // l'action faute d'adresse de l'événement.
@@ -88,6 +90,7 @@ fn les_evenements_deviennent_des_devoirs_tries_par_echeance() {
         Some("https://moodle.exemple.test/mod/quiz/view.php?id=601")
     );
     assert_eq!(quiz.submitted, Some(false));
+    assert_eq!(quiz.kind.as_deref(), Some("quiz"));
 
     // Un forum n'a pas de notion de rendu ; une adresse qui n'est pas http(s) est écartée.
     let forum = &homework[2];
@@ -95,6 +98,7 @@ fn les_evenements_deviennent_des_devoirs_tries_par_echeance() {
     assert_eq!(forum.course, None);
     assert_eq!(forum.url, None);
     assert_eq!(forum.submitted, None);
+    assert_eq!(forum.kind.as_deref(), Some("forum"));
 }
 
 #[test]
@@ -148,6 +152,7 @@ fn liste_vide_et_champs_facultatifs_absents() {
     assert_eq!(homework[0].description, None);
     assert_eq!(homework[0].url, None);
     assert_eq!(homework[0].submitted, None);
+    assert_eq!(homework[0].kind, None);
 }
 
 #[test]
@@ -155,6 +160,78 @@ fn un_devoir_sans_action_n_est_pas_declare_non_rendu() {
     let event = json!({ "id": 6, "name": "TP", "modulename": "assign", "timesort": 1_792_533_540 });
     let homework = parse_homework(&[event], Paris, AJAX).unwrap();
     assert_eq!(homework[0].submitted, None);
+}
+
+// devoirs rendus, lus dans les événements à venir
+
+#[test]
+fn les_evenements_a_venir_sans_action_sont_des_devoirs_rendus() {
+    let upcoming = events_of(&json(AJAX_UPCOMING)["data"].to_string());
+    let homework =
+        parse_homework_with_upcoming(&events_of(EVENTS), &upcoming, Paris, AJAX).unwrap();
+    let seen: Vec<(&str, Option<bool>, Option<&str>)> = homework
+        .iter()
+        .map(|h| (h.id.as_str(), h.submitted, h.kind.as_deref()))
+        .collect();
+    // Gardés : le devoir 2001 et la fermeture du quiz 2003, sans `action` (absente ou `null`).
+    // Écartés : 1003 déjà « à faire » (il reste non rendu), 2002 ouverture d'un quiz, 2004 forum,
+    // 2005 sans module, 2006 sans titre (ignoré sans erreur), 2007 qui a encore son action.
+    assert_eq!(
+        seen,
+        [
+            ("1001", Some(false), Some("assign")),
+            ("2001", Some(true), Some("assign")),
+            ("2003", Some(true), Some("quiz")),
+            ("1003", Some(false), Some("quiz")),
+            ("1004", None, Some("forum")),
+        ]
+    );
+    let done = &homework[1];
+    assert_eq!(done.title, "Compte rendu réseaux");
+    assert_eq!(done.course.as_deref(), Some("Réseaux"));
+    assert_eq!(done.due.to_rfc3339(), "2026-10-27T22:59:00+01:00");
+    assert_eq!(
+        done.url.as_deref(),
+        Some("https://moodle.exemple.test/mod/assign/view.php?id=801")
+    );
+
+    // Sans événements à venir : exactement la liste des « à faire ».
+    assert_eq!(
+        parse_homework_with_upcoming(&events_of(EVENTS), &[], Paris, AJAX).unwrap(),
+        parse_homework(&events_of(EVENTS), Paris, AJAX).unwrap()
+    );
+}
+
+#[test]
+fn lot_de_deux_appels_le_second_est_facultatif() {
+    let first = || json(AJAX_EVENTS)[0].clone();
+    let second = || json(AJAX_UPCOMING);
+    let refused = || json(SERVICE_NOT_AVAILABLE)[0].clone();
+
+    let (data, upcoming) = ajax_pair(json!([first(), second()])).unwrap();
+    assert_eq!(data["events"].as_array().unwrap().len(), 2);
+    assert_eq!(upcoming.unwrap()["events"].as_array().unwrap().len(), 8);
+
+    // Second appel refusé, sans `data`, ou non traité : le premier est rendu seul.
+    for response in [
+        json!([first(), refused()]),
+        json!([first(), { "error": false }]),
+        json!([first()]),
+    ] {
+        let (data, upcoming) = ajax_pair(response).unwrap();
+        assert_eq!(data["events"].as_array().unwrap().len(), 2);
+        assert_eq!(upcoming, None);
+    }
+
+    // Premier appel refusé : c'est son erreur qui compte, quel que soit le second.
+    assert!(matches!(
+        ajax_pair(json!([json(INVALID_SESSKEY)[0].clone(), second()])),
+        Err(CallError::SessionLost)
+    ));
+    assert!(matches!(
+        ajax_pair(json(WHOLE_REFUSED)),
+        Err(CallError::SessionLost)
+    ));
 }
 
 // réponses d'erreur de Moodle, en HTTP 200

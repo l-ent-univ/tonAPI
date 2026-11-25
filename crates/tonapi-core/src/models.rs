@@ -145,6 +145,9 @@ pub struct Homework {
     pub url: Option<String>,
     /// Rendu déposé, si l'information est disponible.
     pub submitted: Option<bool>,
+    /// Type d'activité tel que le nomme le logiciel (Moodle : `assign`, `quiz`, `forum`…), s'il
+    /// est connu.
+    pub kind: Option<String>,
 }
 
 /// Boîte de réception.

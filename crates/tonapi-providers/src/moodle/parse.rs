@@ -72,10 +72,29 @@ fn moodle_error(provider: &str, value: &Value, session_codes: &[&str]) -> CallEr
 /// Formes vues : `[{"error":false,"data":…}]`, `[{"error":true,"exception":{…}}]` et, quand toute
 /// la requête est refusée, un objet `{"error":"…","errorcode":"…"}`.
 pub(super) fn ajax_data(response: Value) -> Result<Value, CallError> {
-    let mut item = match response {
-        Value::Array(mut items) if !items.is_empty() => items.swap_remove(0),
-        other => other,
+    ajax_pair(response).map(|(data, _)| data)
+}
+
+/// Réponse à un lot de deux appels : le contenu du premier, obligatoire, et celui du second s'il a
+/// abouti.
+///
+/// Moodle répond dans l'ordre des appels et s'arrête au premier qui échoue : un second élément
+/// absent ou en erreur ne retire rien au premier.
+pub(super) fn ajax_pair(response: Value) -> Result<(Value, Option<Value>), CallError> {
+    let (first, second) = match response {
+        Value::Array(items) if !items.is_empty() => {
+            let mut items = items.into_iter();
+            (items.next().unwrap_or_default(), items.next())
+        }
+        other => (other, None),
     };
+    Ok((
+        ajax_item(first)?,
+        second.and_then(|item| ajax_item(item).ok()),
+    ))
+}
+
+fn ajax_item(mut item: Value) -> Result<Value, CallError> {
     let refused = item.get("error") == Some(&Value::Bool(true)) || error_code(&item).is_some();
     if refused {
         return Err(moodle_error(AJAX, &item, &SESSION_CODES));
@@ -175,6 +194,7 @@ pub(super) fn parse_token(response: &Value) -> Result<String, Problem> {
 
 /// Événements de `core_calendar_get_action_events_by_timesort` → devoirs, triés par échéance.
 ///
+/// - `kind` reprend le `modulename` de Moodle (`assign`, `quiz`, `forum`…).
 /// - `id`, un titre et une date (`timesort`, sinon `timestart`) sont obligatoires : sinon
 ///   `upstream_changed`. Un événement dont la date vaut 0 n'a pas d'échéance : ignoré.
 /// - Moodle ne renvoie que les événements encore « à faire » : un devoir (`assign`) ou un quiz y
@@ -186,13 +206,28 @@ pub(crate) fn parse_homework(
     tz: Tz,
     provider: &str,
 ) -> Result<Vec<Homework>, Problem> {
+    parse_homework_with_upcoming(events, &[], tz, provider)
+}
+
+/// Comme [`parse_homework`], complété par les devoirs rendus que montre
+/// `core_calendar_get_calendar_upcoming_view` (`upcoming`).
+///
+/// Un événement à venir compte comme rendu (`submitted = true`) s'il vient d'un devoir ou d'un
+/// quiz, n'a plus d'`action` et ne figure pas parmi les « à faire » : Moodle retire l'action une
+/// fois le travail déposé. C'est une déduction, pas un statut lu : une action retirée pour une
+/// autre raison (activité verrouillée) donne aussi « rendu ».
+///
+/// `upcoming` est une liste d'appoint : un événement illisible y est ignoré, sans erreur.
+pub(crate) fn parse_homework_with_upcoming(
+    events: &[Value],
+    upcoming: &[Value],
+    tz: Tz,
+    provider: &str,
+) -> Result<Vec<Homework>, Problem> {
     let mut seen_ids = HashSet::new();
     let mut seen_content = HashSet::new();
     let mut homework = Vec::new();
-    for event in events {
-        let Some(item) = parse_event(event, tz, provider)? else {
-            continue;
-        };
+    let mut keep = |item: Homework| {
         let content = (
             item.title.to_lowercase(),
             item.course.clone().unwrap_or_default().to_lowercase(),
@@ -201,9 +236,31 @@ pub(crate) fn parse_homework(
         if seen_ids.insert(item.id.clone()) && seen_content.insert(content) {
             homework.push(item);
         }
+    };
+    for event in events {
+        if let Some(item) = parse_event(event, tz, provider)? {
+            keep(item);
+        }
+    }
+    for event in upcoming.iter().filter(|event| looks_submitted(event)) {
+        if let Ok(Some(item)) = parse_event(event, tz, provider) {
+            keep(Homework {
+                submitted: Some(true),
+                ..item
+            });
+        }
     }
     homework.sort_by(|a, b| a.due.cmp(&b.due).then_with(|| a.title.cmp(&b.title)));
     Ok(homework)
+}
+
+/// Devoir ou quiz à venir sans `action`. La date d'ouverture d'un quiz (`eventtype = open`) n'est
+/// pas une échéance : elle ne donne pas de ligne « rendu ».
+fn looks_submitted(event: &Value) -> bool {
+    let module = event.get("modulename").and_then(Value::as_str);
+    matches!(module, Some("assign" | "quiz"))
+        && !event.get("action").is_some_and(Value::is_object)
+        && event.get("eventtype").and_then(Value::as_str) != Some("open")
 }
 
 fn parse_event(event: &Value, tz: Tz, provider: &str) -> Result<Option<Homework>, Problem> {
@@ -250,7 +307,12 @@ fn parse_event(event: &Value, tz: Tz, provider: &str) -> Result<Option<Homework>
     .filter_map(Value::as_str)
     .find(|u| Url::parse(u).is_ok_and(|u| matches!(u.scheme(), "http" | "https")))
     .map(str::to_owned);
-    let submitted = match event.get("modulename").and_then(Value::as_str) {
+    let module = event
+        .get("modulename")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|module| !module.is_empty());
+    let submitted = match module {
         Some("assign" | "quiz") if event.get("action").is_some_and(Value::is_object) => Some(false),
         _ => None,
     };
@@ -262,6 +324,7 @@ fn parse_event(event: &Value, tz: Tz, provider: &str) -> Result<Option<Homework>
         description,
         url,
         submitted,
+        kind: module.map(str::to_owned),
     }))
 }
 

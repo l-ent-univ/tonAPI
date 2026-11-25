@@ -31,7 +31,7 @@ Points principaux :
 |---|---|---|
 | CAS de l'université (`[sso] kind = "cas"`) | `apereo`, `esup-otp-gateway`, `phpcas` | `esup-otp-gateway` avec second facteur puis appareil mémorisé : Université de Montpellier (compte de l'IUT de Béziers), 27/10/2026 [vu]. `apereo` sans second facteur : Paul-Valéry, 27/10/2026 [vu]. `phpcas` : CAS de l'IUT de Béziers pour ScoDoc, 27/10/2026 [vu] |
 | Second facteur esup-otp (`[sso.mfa]`) | notification, code | Montpellier, 27/10/2026 [vu] ; Rennes jamais essayé |
-| Fédération SAML (`[sso.saml]`) | Moodle `entry = "shibboleth"` | jamais essayée en réel |
+| Fédération SAML (`[sso.saml]`) | Moodle `entry = "shibboleth"` | Université de Rennes : IUT de Lannion, 15/11/2026, puis 25/11/2026 [vu] |
 | `demo` | identifiants `demo` / `demo` | sans service distant |
 
 ## Catalogue par logiciel
@@ -77,7 +77,7 @@ une analyse tolérante et un test, pas par un nouveau fournisseur.
 
 | Fournisseur | Parcours | Essai réel | Limites |
 |---|---|---|---|
-| `moodle-ajax` | entrée CAS (`authCAS=CAS`) ou Shibboleth, `sesskey` de la page, `lib/ajax/service.php` | Paul-Valéry, 27/10/2026 [vu] | entrée Shibboleth jamais essayée ; seuls les devoirs à faire |
+| `moodle-ajax` | entrée CAS (`authCAS=CAS`) ou Shibboleth, `sesskey` de la page, `lib/ajax/service.php` | Paul-Valéry, 27/10/2026 [vu] ; Université de Rennes par Shibboleth, 15/11/2026 et 25/11/2026, devoirs rendus compris le 25/11 [vu] | devoirs rendus déduits des événements à venir sans `action` (`core_calendar_get_calendar_upcoming_view`, dans le même lot que les « à faire ») : une déduction, vue à Rennes seulement |
 | `moodle-webservice` | `login/token.php` avec le mot de passe local, puis web service REST | IUT de Béziers (Moodle BUT), 27/10/2026 [vu] | seulement `sign-in = local-password` : pas de jeton par le CAS (`not_implemented`) |
 
 ### Mail

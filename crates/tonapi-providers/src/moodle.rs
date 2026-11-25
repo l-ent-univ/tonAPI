@@ -7,6 +7,11 @@
 //! - `moodle-webservice` : `webservice/rest/server.php` avec un jeton obtenu par `login/token.php`
 //!   ([`sign_in`]). Le mot de passe ne sert qu'à cet appel : seul le jeton reste dans la session.
 //!
+//! `moodle-ajax` ajoute les devoirs déjà rendus, absents des « à faire » : dans la même requête que
+//! la première page, `core_calendar_get_calendar_upcoming_view` donne les événements à venir, et
+//! ceux d'un devoir ou d'un quiz sans `action` sont rendus (`submitted = true`). Si ce second appel
+//! échoue, les « à faire » sont renvoyés seuls. `moodle-webservice` ne le fait pas.
+//!
 //! Moodle renvoie ses erreurs en HTTP 200. Aucun message d'erreur de Moodle n'est recopié dans un
 //! problème : seul son `errorcode` (nettoyé) peut y figurer.
 //!
@@ -29,7 +34,10 @@ use crate::net::{Net, http_problem, upstream};
 mod parse;
 mod saml;
 
-use parse::{PageState, ajax_data, page_state, parse_homework, parse_token, webservice_data};
+use parse::{
+    PageState, ajax_data, ajax_pair, page_state, parse_homework, parse_homework_with_upcoming,
+    parse_token, webservice_data,
+};
 use saml::follow_saml;
 
 const AJAX: &str = "moodle-ajax";
@@ -37,6 +45,7 @@ const WEBSERVICE: &str = "moodle-webservice";
 /// Service mobile officiel de Moodle, le seul qui donne un jeton sans configuration particulière.
 const MOBILE_SERVICE: &str = "moodle_mobile_app";
 const EVENTS_FUNCTION: &str = "core_calendar_get_action_events_by_timesort";
+const UPCOMING_FUNCTION: &str = "core_calendar_get_calendar_upcoming_view";
 
 /// Maximum accepté par Moodle pour `limitnum`.
 const PAGE_SIZE: i64 = 50;
@@ -140,13 +149,34 @@ async fn call_ajax(
     function: &str,
     args: &Value,
 ) -> Result<Value, CallError> {
+    ajax_data(post_ajax(net, base, sesskey, &[(function, args)]).await?)
+}
+
+/// Une requête à `lib/ajax/service.php` portant un ou plusieurs appels, comme le fait le tableau
+/// de bord de Moodle. Rend la réponse entière : un élément par appel traité.
+async fn post_ajax(
+    net: &mut Net,
+    base: &Url,
+    sesskey: &str,
+    calls: &[(&str, &Value)],
+) -> Result<Value, CallError> {
     let mut url = base
         .join("lib/ajax/service.php")
         .map_err(|_| bad_url(AJAX))?;
+    let functions: Vec<&str> = calls.iter().map(|(function, _)| *function).collect();
     url.query_pairs_mut()
         .append_pair("sesskey", sesskey)
-        .append_pair("info", function);
-    let body = json!([{ "index": 0, "methodname": function, "args": args }]).to_string();
+        .append_pair("info", &functions.join(","));
+    let body = Value::Array(
+        calls
+            .iter()
+            .enumerate()
+            .map(|(index, (function, args))| {
+                json!({ "index": index, "methodname": function, "args": args })
+            })
+            .collect(),
+    )
+    .to_string();
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -180,9 +210,8 @@ async fn call_ajax(
     if !status.is_success() {
         return Err(status_problem(AJAX, status).into());
     }
-    let response = serde_json::from_str(&text)
-        .map_err(|_| upstream(AJAX, format!("réponse non JSON (HTTP {status})")))?;
-    ajax_data(response)
+    serde_json::from_str(&text)
+        .map_err(|_| upstream(AJAX, format!("réponse non JSON (HTTP {status})")).into())
 }
 
 async fn call_webservice(
@@ -222,17 +251,56 @@ async fn call_webservice(
     webservice_data(response)
 }
 
-/// Événements « à faire », page après page (4 pages de 50 au plus).
+/// Événements lus sur Moodle.
+struct Events {
+    /// « À faire » (`core_calendar_get_action_events_by_timesort`).
+    todo: Vec<Value>,
+    /// « À venir » (`core_calendar_get_calendar_upcoming_view`) : vide pour `moodle-webservice`, ou
+    /// si cet appel n'a pas abouti.
+    upcoming: Vec<Value>,
+}
+
+/// Liste `events` d'une réponse, retirée de celle-ci.
+fn take_events(data: &mut Value) -> Option<Vec<Value>> {
+    match data.get_mut("events").map(Value::take) {
+        Some(Value::Array(events)) => Some(events),
+        _ => None,
+    }
+}
+
+/// Première page des « à faire ». Pour `moodle-ajax`, la même requête porte aussi l'appel des
+/// événements à venir : aucun aller-retour de plus, et son échec ne change rien au premier appel.
+async fn first_page(
+    net: &mut Net,
+    endpoint: &Endpoint<'_>,
+    args: &Value,
+) -> Result<(Value, Vec<Value>), CallError> {
+    let Endpoint::Ajax { base, sesskey } = endpoint else {
+        let data = call(net, endpoint, EVENTS_FUNCTION, args).await?;
+        return Ok((data, Vec::new()));
+    };
+    // Cours 1 : le site entier, donc tous les cours de l'étudiant.
+    let upcoming_args = json!({ "courseid": 1, "categoryid": 0 });
+    let calls = [(EVENTS_FUNCTION, args), (UPCOMING_FUNCTION, &upcoming_args)];
+    let (data, upcoming) = ajax_pair(post_ajax(net, base, sesskey, &calls).await?)?;
+    let upcoming = upcoming
+        .and_then(|mut data| take_events(&mut data))
+        .unwrap_or_default();
+    Ok((data, upcoming))
+}
+
+/// Événements « à faire », page après page (4 pages de 50 au plus), et événements à venir.
 async fn fetch_events(
     net: &mut Net,
     endpoint: &Endpoint<'_>,
     now: DateTime<Utc>,
-) -> Result<Vec<Value>, CallError> {
+) -> Result<Events, CallError> {
     let from = (now - Duration::days(WINDOW_BEFORE_DAYS)).timestamp();
     let to = (now + Duration::days(WINDOW_AFTER_DAYS)).timestamp();
     let mut events = Vec::new();
+    let mut upcoming = Vec::new();
     let mut after = None;
-    for _ in 0..MAX_PAGES {
+    for page_number in 0..MAX_PAGES {
         let mut args = json!({
             "timesortfrom": from,
             "timesortto": to,
@@ -242,9 +310,15 @@ async fn fetch_events(
         if let Some(id) = after {
             args["aftereventid"] = json!(id);
         }
-        let mut data = call(net, endpoint, EVENTS_FUNCTION, &args).await?;
+        let mut data = if page_number == 0 {
+            let (data, extra) = first_page(net, endpoint, &args).await?;
+            upcoming = extra;
+            data
+        } else {
+            call(net, endpoint, EVENTS_FUNCTION, &args).await?
+        };
         let last = data.get("lastid").and_then(Value::as_i64);
-        let Some(Value::Array(page)) = data.get_mut("events").map(Value::take) else {
+        let Some(page) = take_events(&mut data) else {
             return Err(upstream(endpoint.provider(), "réponse sans liste `events`").into());
         };
         let full = i64::try_from(page.len()).is_ok_and(|n| n >= PAGE_SIZE);
@@ -254,7 +328,10 @@ async fn fetch_events(
             _ => break,
         }
     }
-    Ok(events)
+    Ok(Events {
+        todo: events,
+        upcoming,
+    })
 }
 
 // moodle-ajax
@@ -274,7 +351,8 @@ pub(crate) async fn fetch_ajax(
     let mut net = Net::open(ctx, AJAX)?;
     let events = ajax_events(ctx, &mut net, base, entry, saml.as_ref()).await;
     net.save(ctx);
-    parse_homework(&events?, tz, AJAX)
+    let events = events?;
+    parse_homework_with_upcoming(&events.todo, &events.upcoming, tz, AJAX)
 }
 
 async fn ajax_events(
@@ -283,7 +361,7 @@ async fn ajax_events(
     base: &Url,
     entry: MoodleEntry,
     saml: Option<&SamlConfig>,
-) -> Result<Vec<Value>, Problem> {
+) -> Result<Events, Problem> {
     let slot = sesskey_slot(base);
     let mut stored = ctx.session.tokens.get(&slot).cloned();
     let mut reopened = false;
@@ -393,7 +471,7 @@ pub(crate) async fn fetch_webservice(
     let result = fetch_events(&mut net, &endpoint, ctx.now).await;
     net.save(ctx);
     match result {
-        Ok(events) => parse_homework(&events, tz, WEBSERVICE),
+        Ok(events) => parse_homework(&events.todo, tz, WEBSERVICE),
         Err(CallError::Failed(problem)) => Err(problem),
         Err(CallError::SessionLost) => {
             ctx.session.tokens.remove(&slot);

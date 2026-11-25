@@ -1,0 +1,89 @@
+{
+  "error": false,
+  "data": {
+    "events": [
+      {
+        "id": "1003",
+        "name": "Quiz de synthèse ferme",
+        "modulename": "quiz",
+        "instance": 21,
+        "eventtype": "close",
+        "timestart": 1793401140,
+        "timesort": 1793401140,
+        "course": { "id": 8, "shortname": "RESEAU" }
+      },
+      {
+        "id": 2001,
+        "name": "Compte rendu réseaux doit être rendu",
+        "activityname": "Compte rendu réseaux",
+        "modulename": "assign",
+        "instance": 51,
+        "eventtype": "due",
+        "timestart": 1793138340,
+        "timesort": 1793138340,
+        "course": { "id": 8, "fullname": "Réseaux", "shortname": "RESEAU" },
+        "url": "https://moodle.exemple.test/mod/assign/view.php?id=801"
+      },
+      {
+        "id": 2002,
+        "name": "QCM chapitre 2 ouvre",
+        "activityname": "QCM chapitre 2",
+        "modulename": "quiz",
+        "instance": 52,
+        "eventtype": "open",
+        "timestart": 1793224740,
+        "timesort": 1793224740,
+        "course": { "id": 7, "fullname": "Algorithmique &amp; Données", "shortname": "ALGO" },
+        "url": "https://moodle.exemple.test/mod/quiz/view.php?id=802"
+      },
+      {
+        "id": 2003,
+        "name": "QCM chapitre 2 ferme",
+        "activityname": "QCM chapitre 2",
+        "modulename": "quiz",
+        "instance": 52,
+        "eventtype": "close",
+        "timestart": 1793311140,
+        "timesort": 1793311140,
+        "course": { "id": 7, "fullname": "Algorithmique &amp; Données", "shortname": "ALGO" },
+        "action": null,
+        "url": "https://moodle.exemple.test/mod/quiz/view.php?id=802"
+      },
+      {
+        "id": 2004,
+        "name": "Débat de promo se termine",
+        "modulename": "forum",
+        "instance": 53,
+        "eventtype": "due",
+        "timesort": 1793311200
+      },
+      {
+        "id": 2005,
+        "name": "Réunion de rentrée",
+        "eventtype": "site",
+        "timesort": 1793311260
+      },
+      {
+        "id": 2006,
+        "modulename": "assign",
+        "instance": 54,
+        "eventtype": "due",
+        "timesort": 1793311320
+      },
+      {
+        "id": 2007,
+        "name": "Exposé doit être rendu",
+        "activityname": "Exposé",
+        "modulename": "assign",
+        "instance": 55,
+        "eventtype": "due",
+        "timesort": 1793311380,
+        "action": { "name": "Ajouter un travail", "url": "https://moodle.exemple.test/mod/assign/view.php?id=805", "itemcount": 1, "actionable": true }
+      }
+    ],
+    "defaulteventcontext": 1,
+    "courseid": 1,
+    "categoryid": 0,
+    "isloggedin": true
+  }
+}

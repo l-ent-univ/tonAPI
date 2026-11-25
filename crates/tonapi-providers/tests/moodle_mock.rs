@@ -1,5 +1,6 @@
 //! Fournisseurs Moodle contre un faux Moodle local : entrée par le CAS puis par Shibboleth,
-//! `sesskey`, nouvel essai unique sur `invalidsesskey`, jeton du web service.
+//! `sesskey`, nouvel essai unique sur `invalidsesskey`, devoirs rendus lus dans le même lot que les
+//! « à faire », jeton du web service.
 //!
 //! Le faux serveur joue aussi le CAS, le WAYF et l'IdP (même hôte, chemins différents).
 
@@ -28,6 +29,7 @@ use url::Url;
 use common::{has_cookie, query};
 
 const AJAX_EVENTS: &str = include_str!("fixtures/moodle/ajax_events.json");
+const AJAX_UPCOMING: &str = include_str!("fixtures/moodle/ajax_upcoming.json");
 const WS_EVENTS: &str = include_str!("fixtures/moodle/ws_events.json");
 const INVALID_SESSKEY: &str = include_str!("fixtures/moodle/ajax_invalidsesskey.json");
 const SERVICE_NOT_AVAILABLE: &str = include_str!("fixtures/moodle/ajax_servicenotavailable.json");
@@ -35,6 +37,8 @@ const INVALID_TOKEN: &str = include_str!("fixtures/moodle/ws_invalidtoken.json")
 const ACCESS_EXCEPTION: &str = include_str!("fixtures/moodle/ws_accessexception.json");
 const GUEST_PAGE: &str = include_str!("fixtures/moodle/my_page_guest.html");
 
+const TODO_FUNCTION: &str = "core_calendar_get_action_events_by_timesort";
+const UPCOMING_FUNCTION: &str = "core_calendar_get_calendar_upcoming_view";
 const WS_TOKEN: &str = "0123456789abcdef0123456789abcdef";
 const IDP: &str = "urn:test:idp";
 
@@ -52,14 +56,31 @@ enum Reply {
     AccessException,
 }
 
+/// Ce que le faux Moodle répond au second appel d'un lot (événements à venir).
+#[derive(Default, Clone, Copy, PartialEq)]
+enum Upcoming {
+    /// Aucun événement à venir.
+    #[default]
+    Empty,
+    /// La fixture : deux devoirs rendus parmi d'autres événements.
+    Submitted,
+    /// Fonction refusée : un élément d'erreur.
+    Refused,
+    /// Second appel sans réponse : un seul élément dans le tableau.
+    Missing,
+}
+
 #[derive(Default)]
 struct Mock {
     reply: Reply,
+    upcoming: Upcoming,
     /// Sessions web ouvertes sur Moodle (tickets CAS ou SAML acceptés).
     sessions: u32,
     cas_hits: u32,
-    /// `(sesskey, arguments)` de chaque appel AJAX.
+    /// `(sesskey, arguments du premier appel)` de chaque requête AJAX.
     ajax: Vec<(String, Value)>,
+    /// Fonctions demandées par chaque requête AJAX, dans l'ordre du lot.
+    ajax_functions: Vec<Vec<String>>,
     /// `(URI, corps)` de chaque appel `server.php`.
     ws: Vec<(String, String)>,
     /// Appels à `login/token.php`.
@@ -137,8 +158,9 @@ const IDP_PAGE: &str = r#"<html><body onload="document.forms[0].submit()">
     <input type="hidden" name="RelayState" value="rs"><input type="hidden" name="SAMLResponse" value="FAKE-SAML">
     </form></body></html>"#;
 
-/// Réponse AJAX : `Normal` sert la fixture, `Paged` deux pages (50 puis 1 événement).
-fn ajax_reply(s: &Mock, sesskey: &str, args: &Value) -> Response<Body> {
+/// Réponse AJAX : `Normal` sert la fixture, `Paged` deux pages (50 puis 1 événement). Un lot de
+/// deux appels reçoit en plus l'élément choisi par `Mock::upcoming`.
+fn ajax_reply(s: &Mock, sesskey: &str, args: &Value, calls: usize) -> Response<Body> {
     let valid = s.sessions > 0 && sesskey == s.sesskey();
     match s.reply {
         Reply::Http503 => json_body(StatusCode::SERVICE_UNAVAILABLE, "{}"),
@@ -157,7 +179,23 @@ fn ajax_reply(s: &Mock, sesskey: &str, args: &Value) -> Response<Body> {
             let data = json!([{ "error": false, "data": { "events": events, "lastid": last } }]);
             json_body(StatusCode::OK, data.to_string())
         }
-        _ => json_body(StatusCode::OK, AJAX_EVENTS),
+        _ => {
+            let mut items: Vec<Value> = serde_json::from_str(AJAX_EVENTS).unwrap();
+            if calls > 1 {
+                match s.upcoming {
+                    Upcoming::Empty => {
+                        items.push(json!({ "error": false, "data": { "events": [] } }));
+                    }
+                    Upcoming::Submitted => items.push(serde_json::from_str(AJAX_UPCOMING).unwrap()),
+                    Upcoming::Refused => items.push(json!({
+                        "error": true,
+                        "exception": { "message": "SECRET-MESSAGE", "errorcode": "servicenotavailable" }
+                    })),
+                    Upcoming::Missing => {}
+                }
+            }
+            json_body(StatusCode::OK, Value::Array(items).to_string())
+        }
     }
 }
 
@@ -253,17 +291,24 @@ async fn handle(
         // Données
         (Method::POST, "/lib/ajax/service.php") => {
             let sesskey = query(&uri, "sesskey").unwrap_or_default();
-            let args = serde_json::from_str::<Value>(&body)
-                .ok()
-                .and_then(|v| v[0]["args"].as_object().cloned())
+            let calls = serde_json::from_str::<Vec<Value>>(&body).unwrap_or_default();
+            let args = calls
+                .first()
+                .and_then(|call| call["args"].as_object().cloned())
                 .map_or(Value::Null, Value::Object);
             s.ajax.push((sesskey.clone(), args.clone()));
+            s.ajax_functions.push(
+                calls
+                    .iter()
+                    .map(|call| call["methodname"].as_str().unwrap_or_default().to_owned())
+                    .collect(),
+            );
             // La session web doit accompagner le `sesskey`.
             let session_ok = s.sessions > 0 && has_cookie(&headers, &s.cookie());
             if s.reply == Reply::Normal && !session_ok {
                 return json_body(StatusCode::OK, INVALID_SESSKEY);
             }
-            ajax_reply(&s, &sesskey, &args)
+            ajax_reply(&s, &sesskey, &args, calls.len())
         }
         (Method::POST, "/moodle/login/token.php") => {
             s.token_posts += 1;
@@ -422,6 +467,8 @@ async fn ajax_ouvre_la_session_par_le_cas_puis_la_reutilise() {
             Some(&s.sesskey())
         );
         assert_eq!(s.ajax.len(), 1);
+        // Une seule requête porte les « à faire » et les événements à venir.
+        assert_eq!(s.ajax_functions[0], [TODO_FUNCTION, UPCOMING_FUNCTION]);
         let args = &s.ajax[0].1;
         assert_eq!(args["limitnum"], 50);
         assert_eq!(args["limittononsuspendedevents"], true);
@@ -551,6 +598,50 @@ async fn ajax_lit_les_pages_suivantes() {
     let s = state.lock().unwrap();
     assert_eq!(s.ajax.len(), 2);
     assert_eq!(s.ajax[1].1["aftereventid"], 50);
+    // Les événements à venir ne sont demandés qu'avec la première page.
+    assert_eq!(s.ajax_functions[1], [TODO_FUNCTION]);
+}
+
+#[tokio::test]
+async fn ajax_ajoute_les_devoirs_rendus_sans_requete_de_plus() {
+    let (state, base) = start(|s| s.upcoming = Upcoming::Submitted).await;
+    let university = university_with(&base, ajax(&base, MoodleEntry::Cas), None);
+    let mut session = session(true);
+
+    let fetched = get_homework(&university, &mut session).await.unwrap();
+    let seen: Vec<(&str, Option<bool>, Option<&str>)> = fetched
+        .data
+        .iter()
+        .map(|h| (h.title.as_str(), h.submitted, h.kind.as_deref()))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("Rendu TP1", Some(false), Some("assign")),
+            ("Compte rendu réseaux", Some(true), Some("assign")),
+            ("QCM chapitre 2", Some(true), Some("quiz")),
+            ("Quiz de synthèse", Some(false), Some("quiz")),
+        ]
+    );
+    let s = state.lock().unwrap();
+    assert_eq!(s.ajax.len(), 1);
+    assert_eq!(s.ajax_functions[0], [TODO_FUNCTION, UPCOMING_FUNCTION]);
+}
+
+#[tokio::test]
+async fn ajax_garde_les_devoirs_a_faire_si_les_evenements_a_venir_manquent() {
+    for upcoming in [Upcoming::Refused, Upcoming::Missing] {
+        let (state, base) = start(|s| s.upcoming = upcoming).await;
+        let university = university_with(&base, ajax(&base, MoodleEntry::Cas), None);
+        let mut session = session(true);
+
+        let fetched = get_homework(&university, &mut session).await.unwrap();
+        assert_eq!(titles(&fetched), ["Rendu TP1", "Quiz de synthèse"]);
+        // Ni nouvel essai ni reconnexion pour ce second appel.
+        let s = state.lock().unwrap();
+        assert_eq!(s.ajax.len(), 1);
+        assert_eq!(s.sessions, 1);
+    }
 }
 
 // moodle-ajax, entrée Shibboleth
@@ -633,6 +724,7 @@ async fn webservice_utilise_le_jeton_de_la_session() {
     // Le jeton voyage dans le corps, jamais dans l'URL.
     assert!(!uri.contains(WS_TOKEN), "{uri}");
     assert!(body.contains("wsfunction=core_calendar_get_action_events_by_timesort"));
+    assert!(!body.contains(UPCOMING_FUNCTION));
     assert!(body.contains("moodlewsrestformat=json"));
     assert!(body.contains("limitnum=50"));
 }

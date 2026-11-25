@@ -23,7 +23,7 @@ propriétaire.
 | Configuration | types TOML, héritage université → composante, validation, schémas, modèles | une configuration valide ne prouve pas un accès réel ([../guide/configuration.md](../guide/configuration.md)) |
 | Établissements | `demo`, `umontpellier` (4 composantes), `univ-montp3`, `univ-rennes` (2 composantes) | réels marqués `beta` ou `planned` ([../reference/couverture.md](../reference/couverture.md)) |
 | API | routes `/v1`, appel groupé, OpenAPI ([../guide/api.md](../guide/api.md)) | une route peut répondre `not_implemented` |
-| Session et SSO | jeton chiffré, CAS (`apereo`, `esup-otp-gateway`, `phpcas`), second facteur esup-otp, comptes de service | Rennes et SAML jamais essayés en réel |
+| Session et SSO | jeton chiffré, CAS (`apereo`, `esup-otp-gateway`, `phpcas`), second facteur esup-otp, comptes de service | second facteur de Rennes jamais essayé en réel |
 | Exploitation | clés obligatoires hors dev, répartiteurs de confiance, `/readyz` et arrêt en trois temps, journal JSON par requête, `/metrics` interne, Dockerfile et `compose.yaml` ([../exploitation/serveur.md](../exploitation/serveur.md), [../exploitation/docker.md](../exploitation/docker.md)) | image jamais construite hors CI ; limites non partagées entre instances ; accords des DSI et RGPD ([../exploitation/production.md](../exploitation/production.md)) |
 
 Fournisseurs branchés dans `crates/tonapi-providers/src/lib.rs` et testés contre de faux serveurs :

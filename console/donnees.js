@@ -87,10 +87,10 @@ window.TONAPI_FOURNISSEURS = [
     services: ["homework"],
     ligne: ["CAS ou Shibboleth", "/my/ + sesskey", "lib/ajax/service.php"],
     essai: "reel",
-    essais: ["Université de Montpellier, 27/10/2026", "Université Paul-Valéry, 27/10/2026", "IUT de Lannion (Shibboleth), 15/11/2026"],
+    essais: ["Université de Montpellier, 27/10/2026", "Université Paul-Valéry, 27/10/2026", "IUT de Lannion (Shibboleth), 15/11/2026", "Université de Rennes (Shibboleth, devoirs rendus), 25/11/2026"],
     comment:
-      "Entre dans Moodle par le CAS, lit le sesskey de la page, puis appelle core_calendar_get_action_events_by_timesort. Un seul nouvel essai si Moodle signale une session perdue.",
-    limites: ["Seuls les devoirs à faire apparaissent.", "L'entrée Shibboleth (Rennes) n'a pas été essayée en réel."],
+      "Entre dans Moodle par le CAS ou Shibboleth, lit le sesskey de la page, puis appelle dans une même requête core_calendar_get_action_events_by_timesort (à faire) et core_calendar_get_calendar_upcoming_view (devoirs rendus). Un seul nouvel essai si Moodle signale une session perdue.",
+    limites: ["Un devoir rendu est déduit d'un événement à venir sans action : une approximation, vue à Rennes seulement."],
     config: 'provider = "moodle-ajax"\nbase-url = "https://moodle.exemple.fr/"\nentry = "cas"',
     fichiers: ["crates/tonapi-providers/src/moodle.rs", "docs/recherche/montpellier/moodle.md"],
   },
