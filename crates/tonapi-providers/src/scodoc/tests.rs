@@ -9,16 +9,17 @@ use chrono::{NaiveDate, Utc};
 use chrono_tz::Europe::Paris;
 use serde_json::json;
 use tonapi_config::{GradesService, ResolvedUniversity, ServiceOptions, UniversityFile};
-use tonapi_core::Grade;
+use tonapi_core::{DistributionUnavailable, EvaluationKind, Grade, GradeStats};
 use tonapi_session::SessionData;
 
-use super::parse::{Cell, at, cell, evaluation_date, natural_cmp, rank};
+use super::parse::{Cell, at, cell, evaluation_date, natural_cmp, parse_report, rank};
 use super::*;
 use crate::NetSettings;
 
 const PAYLOAD: &str = include_str!("../../tests/fixtures/scodoc/premiere_connexion.json");
 const NO_SEMESTER: &str = include_str!("../../tests/fixtures/scodoc/sans_semestre.json");
 const UNPUBLISHED: &str = include_str!("../../tests/fixtures/scodoc/non_publie.json");
+const FULL: &str = include_str!("../../tests/fixtures/scodoc/releve_complet.json");
 
 fn fixture(text: &str) -> Value {
     serde_json::from_str(text).unwrap()
@@ -193,6 +194,433 @@ fn aucun_semestre_ou_releve_non_publie() {
     assert_eq!(semester.id, "901");
     assert_eq!(semester.name, "BUT Démo - Semestre 2");
     assert!(semester.modules.is_empty() && semester.average.is_none());
+    assert_eq!(semester.published, Some(false));
+    assert_eq!(semester.notice.as_deref(), Some("Relevé non publié."));
+    assert_eq!(semester.department.as_deref(), Some("DEMO"));
+    assert_eq!(semester.distributions, Some(false));
+    assert_eq!(report.available.len(), 2);
+}
+
+// relevé complet : ce que lit une page de notes
+
+#[allow(clippy::unnecessary_wraps)] // lisible dans les comparaisons avec `Option<GradeStats>`
+fn stats(min: f64, mean: f64, max: f64) -> Option<GradeStats> {
+    Some(GradeStats {
+        min: Some(min),
+        mean: Some(mean),
+        max: Some(max),
+    })
+}
+
+#[test]
+fn semestre_complet_identite_promotion_rangs_et_jury() {
+    let report = parse_grades(&fixture(FULL), Paris).unwrap();
+
+    // Tous les semestres, du plus ancien au plus récent ; celui sans identifiant est écarté.
+    let listed: Vec<_> = report
+        .available
+        .iter()
+        .map(|s| (s.id.as_str(), s.name.as_str(), s.number, s.year.as_deref()))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("880", "BUT Démo", Some(1), Some("2025/2026")),
+            ("890", "BUT Démo", Some(2), Some("2025/2026")),
+            ("901", "Semestre 3", Some(3), Some("2026/2027")),
+        ]
+    );
+
+    let semester = &report.semesters[0];
+    assert_eq!(
+        (semester.id.as_str(), semester.name.as_str()),
+        ("901", "Semestre 3")
+    );
+    assert_eq!(semester.number, Some(3));
+    assert_eq!(semester.year.as_deref(), Some("2026 - 2027"));
+    assert_eq!(semester.start, Some(day("2026-09-01")));
+    assert_eq!(semester.end, Some(day("2027-01-31")));
+    assert_eq!(semester.kind.as_deref(), Some("BUT"));
+    assert_eq!(semester.program.as_deref(), Some("BUT DEMO"));
+    // Sans `dept_acronym` : le département de l'adresse de la photo, et rien d'autre de celle-ci.
+    assert_eq!(semester.department.as_deref(), Some("DEMO"));
+    assert_eq!(semester.published, Some(true));
+    assert_eq!(semester.notice, None);
+    assert_eq!(
+        semester.updated_at.map(|at| at.to_rfc3339()).as_deref(),
+        Some("2026-11-12T10:58:26+01:00")
+    );
+    assert_eq!(semester.average, grade(12.1));
+    assert_eq!(semester.stats, stats(6.0, 11.5, 16.8));
+    assert_eq!(semester.rank.as_deref(), Some("12/84"));
+    assert_eq!(
+        (semester.ects, semester.ects_earned),
+        (Some(30.0), Some(5.0))
+    );
+    assert_eq!(semester.transcript, Some(true));
+    assert_eq!(semester.distributions, Some(true));
+
+    // Groupes : objets ou simples noms, sans doublon ni groupe sans nom.
+    let groups: Vec<_> = semester
+        .groups
+        .iter()
+        .map(|g| (g.id.as_deref(), g.name.as_str(), g.partition.as_deref()))
+        .collect();
+    assert_eq!(
+        groups,
+        [
+            (Some("61"), "TD B", Some("TD")),
+            (Some("62"), "TP B1", Some("TP")),
+            (None, "Parcours A", None),
+        ]
+    );
+    // Rangs de groupe : nommés par le groupe, `[place, effectif]` accepté, rang masqué écarté.
+    let ranks: Vec<_> = semester
+        .group_ranks
+        .iter()
+        .map(|r| (r.group.as_str(), r.rank.as_str()))
+        .collect();
+    assert_eq!(
+        ranks,
+        [("TD B", "3/28"), ("TP B1", "2 ex/14"), ("Apprentis", "5")]
+    );
+
+    let decision = semester.decision.as_ref().unwrap();
+    assert_eq!(
+        (decision.code.as_str(), decision.date),
+        ("ADM", Some(day("2027-02-04")))
+    );
+    let year = semester.year_decision.as_ref().unwrap();
+    assert_eq!((year.code.as_str(), year.date), ("RED", None));
+
+    let debug = format!("{report:?}");
+    for secret in [
+        "Camille",
+        "e00000000000",
+        "exemple.invalid",
+        "4242",
+        "Inscrit",
+    ] {
+        assert!(!debug.contains(secret), "{secret}");
+    }
+}
+
+#[test]
+fn unites_couleur_bonus_capitalisation_jury_et_modules() {
+    let report = parse_grades(&fixture(FULL), Paris).unwrap();
+    let [first, second, third] = report.semesters[0].units.as_slice() else {
+        panic!("trois UE attendues");
+    };
+
+    assert_eq!(first.code, "UE3.1");
+    assert_eq!(first.average, grade(13.5));
+    assert_eq!(first.stats, stats(5.0, 11.0, 17.0));
+    assert_eq!(first.rank.as_deref(), Some("4 ex/84"));
+    assert_eq!(first.color.as_deref(), Some("#B80004"));
+    assert_eq!((first.ects, first.ects_earned), (Some(5.0), Some(5.0)));
+    assert_eq!((first.bonus, first.malus), (Some(0.25), None));
+    assert!(!first.capitalized);
+    assert_eq!(first.decision.as_deref(), Some("ADM"));
+    // Modules de l'UE : coefficient et moyenne du module dans cette UE (nombre ou `{value}`).
+    let links: Vec<_> = first
+        .modules
+        .iter()
+        .map(|m| (m.code.as_str(), m.coefficient, m.average))
+        .collect();
+    assert_eq!(
+        links,
+        [
+            ("R3.01", Some(4.0), grade(13.4)),
+            ("SAÉ 3.01", Some(8.0), grade(14.0)),
+        ]
+    );
+
+    // Couleur illisible écartée ; `~` sans statistique ; décision retrouvée par l'acronyme.
+    assert_eq!(second.color, None);
+    assert_eq!(second.stats, None);
+    assert_eq!(second.rank, None);
+    assert_eq!((second.bonus, second.malus), (None, Some(0.5)));
+    assert_eq!((second.ects, second.ects_earned), (Some(10.0), Some(0.0)));
+    assert_eq!(second.decision.as_deref(), Some("AJ"));
+    assert_eq!(second.modules[0].coefficient, Some(0.0));
+    assert_eq!(second.modules[0].average, None);
+
+    // Capitalisée d'après `ues_capitalisees`, sans moyenne ni module ce semestre.
+    assert!(third.capitalized);
+    assert_eq!((third.average, third.ects), (None, Some(0.0)));
+    assert!(third.modules.is_empty() && third.decision.is_none());
+}
+
+#[test]
+fn evaluations_type_poids_promotion_et_horaires() {
+    let report = parse_grades(&fixture(FULL), Paris).unwrap();
+    let modules = &report.semesters[0].modules;
+    let kinds: Vec<_> = modules
+        .iter()
+        .map(|m| (m.code.as_str(), m.id.as_deref(), m.kind.as_deref()))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("R3.01", Some("5301"), Some("ressource")),
+            ("SAÉ 3.01", Some("5401"), Some("sae")),
+        ]
+    );
+
+    let [test, resit, second_session, bonus] = modules[0].evaluations.as_slice() else {
+        panic!("quatre évaluations attendues");
+    };
+    // `date_debut` prime sur `date` ; l'heure connue donne le début et la fin de l'épreuve.
+    assert_eq!(test.kind, EvaluationKind::Normal);
+    assert_eq!(test.date, Some(day("2026-10-02")));
+    assert_eq!(
+        test.start.map(|at| at.to_rfc3339()).as_deref(),
+        Some("2026-10-02T08:15:00+02:00")
+    );
+    assert_eq!(
+        test.end.map(|at| at.to_rfc3339()).as_deref(),
+        Some("2026-10-02T10:15:00+02:00")
+    );
+    assert_eq!(test.stats, stats(2.5, 11.4, 19.0));
+    // Poids par UE, nombre ou chaîne ; un poids vide est ignoré.
+    let weights: Vec<_> = test.weights.iter().map(|(u, w)| (u.as_str(), *w)).collect();
+    assert_eq!(weights, [("UE3.1", 1.0), ("UE3.2", 0.5)]);
+
+    // Rattrapage sans coefficient ; minuit n'est pas une heure d'épreuve.
+    assert_eq!(resit.kind, EvaluationKind::Resit);
+    assert_eq!((resit.coefficient, resit.stats), (None, None));
+    assert_eq!(resit.date, Some(day("2026-10-20")));
+    assert_eq!((resit.start, resit.end), (None, None));
+
+    assert_eq!(second_session.kind, EvaluationKind::SecondSession);
+    assert_eq!(second_session.status.as_deref(), Some("NP"));
+    assert_eq!(second_session.date, None);
+    assert!(second_session.weights.is_empty());
+
+    assert_eq!(bonus.kind, EvaluationKind::Bonus);
+    assert_eq!(bonus.grade, grade(0.5));
+}
+
+#[test]
+fn ce_que_l_etablissement_masque_n_est_pas_rendu() {
+    let mut data = fixture(FULL);
+    data["relevé"]["options"] =
+        json!({ "show_rangs": false, "show_ue_rangs": 0, "show_ects": false });
+    let report = parse_grades(&data, Paris).unwrap();
+    let semester = &report.semesters[0];
+    assert_eq!(semester.rank, None);
+    assert!(semester.group_ranks.is_empty());
+    assert_eq!((semester.ects, semester.ects_earned), (None, None));
+    let unit = &semester.units[0];
+    assert_eq!(unit.rank, None);
+    // Le poids de l'UE (ses crédits) reste : il sert au calcul de la moyenne générale.
+    assert_eq!((unit.ects, unit.ects_earned), (Some(5.0), None));
+}
+
+#[test]
+fn releve_pdf_et_repartitions_selon_la_passerelle() {
+    let read = |change: &dyn Fn(&mut Value)| {
+        let mut data = fixture(FULL);
+        change(&mut data);
+        let semester = parse_grades(&data, Paris).unwrap().semesters.remove(0);
+        (semester.transcript, semester.distributions)
+    };
+    assert_eq!(read(&|_| {}), (Some(true), Some(true)));
+    // PDF : coupé, réservé à d'autres départements, ou ouvert à tous par une liste vide.
+    assert_eq!(
+        read(&|d| d["config"]["releve_PDF"] = json!(false)).0,
+        Some(false)
+    );
+    assert_eq!(
+        read(&|d| d["config"]["liste_dep_publi_PDF"] = json!("AUTRE")).0,
+        Some(false)
+    );
+    assert_eq!(
+        read(&|d| d["config"]["liste_dep_publi_PDF"] = json!(" , ")).0,
+        Some(true)
+    );
+    // Répartitions : coupées par la passerelle, ou relevé non publié.
+    assert_eq!(
+        read(&|d| d["config"]["histogramme"] = json!(false)).1,
+        Some(false)
+    );
+    assert_eq!(
+        read(&|d| d["relevé"]["publie"] = json!(false)).1,
+        Some(false)
+    );
+    // Sans `config` (relevé d'un autre semestre) : inconnu.
+    assert_eq!(read(&|d| d["config"] = Value::Null), (None, None));
+}
+
+#[test]
+fn releve_d_un_semestre_demande() {
+    // `relevéEtudiant` : ni `config`, ni `semestres`.
+    let mut report = fixture(FULL)["relevé"].clone();
+    let data = json!({ "relevé": report.clone(), "absences": [] });
+    let parsed = parse_report(&data, Paris, Some("890")).unwrap();
+    assert!(parsed.available.is_empty());
+    // Le relevé dit son semestre : il prime sur celui de la demande.
+    assert_eq!(parsed.semesters[0].id, "901");
+    assert_eq!(parsed.semesters[0].name, "Semestre 3");
+    assert_eq!(parsed.semesters[0].year.as_deref(), Some("2026 - 2027"));
+
+    // Relevé qui ne dit pas son semestre (non publié) : celui de la demande.
+    report.as_object_mut().unwrap().remove("formsemestre_id");
+    report["publie"] = json!(false);
+    report["message"] = json!("<p>Relevé <b>non publié</b>.</p>");
+    let parsed = parse_report(&json!({ "relevé": report }), Paris, Some("890")).unwrap();
+    let semester = &parsed.semesters[0];
+    assert_eq!(semester.id, "890");
+    assert_eq!(semester.published, Some(false));
+    assert_eq!(semester.notice.as_deref(), Some("Relevé non publié."));
+}
+
+// autour du relevé : répartition, message, PDF
+
+#[test]
+fn repartition_des_notes_par_point_entier() {
+    // Notes sur 20, dans le désordre : 20 dans la dernière case, 12,999999999 compté comme 13.
+    let grades = json!([
+        0,
+        0.99,
+        7.5,
+        12.999_999_999_9,
+        13.0,
+        19.99,
+        20,
+        20.0,
+        25,
+        -1
+    ]);
+    let distribution = parse_distribution(&grades).unwrap();
+    assert_eq!(distribution.unavailable, None);
+    assert_eq!((distribution.total, distribution.out_of), (10, 20.0));
+    assert_eq!(distribution.counts.len(), 21);
+    let filled: Vec<_> = distribution
+        .counts
+        .iter()
+        .enumerate()
+        .filter(|(_, count)| **count > 0)
+        .map(|(bucket, count)| (bucket, *count))
+        .collect();
+    assert_eq!(filled, [(0, 3), (7, 1), (13, 2), (19, 1), (20, 3)]);
+}
+
+#[test]
+fn repartition_refusee_ou_illisible() {
+    let reason = |value: Value| parse_distribution(&value).unwrap().unavailable;
+    assert_eq!(
+        reason(json!(["too low"])),
+        Some(DistributionUnavailable::TooFew)
+    );
+    assert_eq!(reason(json!([])), Some(DistributionUnavailable::TooFew));
+    assert_eq!(
+        reason(json!([10.0, 11.0, 12.0, 13.0, 14.0])),
+        Some(DistributionUnavailable::TooFew)
+    );
+    assert_eq!(
+        reason(json!({ "erreur": "L'histogramme n'est pas activé" })),
+        Some(DistributionUnavailable::Disabled)
+    );
+    let hidden = hidden_distribution();
+    assert_eq!(hidden.unavailable, Some(DistributionUnavailable::Hidden));
+    assert!(hidden.counts.is_empty() && hidden.total == 0);
+
+    // Autre erreur, valeur non numérique, tableau démesuré : format inattendu, sans son contenu.
+    for value in [
+        json!({ "erreur": "SECRET de l'établissement" }),
+        json!([10.0, "12", 13.0, 14.0, 15.0, 16.0]),
+        json!([10.0, null, 13.0, 14.0, 15.0, 16.0]),
+        Value::Array(vec![json!(10.0); 5001]),
+        json!("texte"),
+    ] {
+        let problem = parse_distribution(&value).unwrap_err();
+        assert_eq!(problem.code, ErrorCode::UpstreamChanged);
+        assert!(!problem.detail.unwrap_or_default().contains("SECRET"));
+    }
+}
+
+#[test]
+fn evaluation_du_releve_et_publication() {
+    let data = fixture(FULL);
+    assert!(owns_evaluation(&data, "7301"));
+    assert!(owns_evaluation(&data, "7304"));
+    // Une évaluation d'ailleurs, l'identifiant d'un module, un relevé sans évaluations.
+    assert!(!owns_evaluation(&data, "9999"));
+    assert!(!owns_evaluation(&data, "5301"));
+    assert!(!owns_evaluation(&fixture(UNPUBLISHED), "7301"));
+    assert!(!owns_evaluation(&json!({}), "7301"));
+
+    assert!(is_published(&data));
+    assert!(!is_published(&fixture(UNPUBLISHED)));
+    // Département masqué : la clé `publie` manque.
+    assert!(!is_published(&fixture(NO_SEMESTER)));
+}
+
+#[test]
+fn message_du_departement_en_texte() {
+    let html = "<p>Jury le <b>12&nbsp;f&eacute;vrier</b>.</p>\n<ul><li>Salle A</li><li> Apportez\n votre carte</li></ul>Bon courage&nbsp;!<br><br>";
+    let notice = parse_notice(&json!({ "message": html }));
+    // Une ligne par paragraphe, les éléments de liste marqués, les entités françaises décodées.
+    assert_eq!(
+        notice.message.as_deref(),
+        Some("Jury le 12 février.\n• Salle A\n• Apportez votre carte\nBon courage !")
+    );
+    for empty in [
+        json!({ "message": "" }),
+        json!({ "message": "<p> </p>" }),
+        json!({}),
+        json!({ "message": 3 }),
+    ] {
+        assert_eq!(parse_notice(&empty).message, None);
+    }
+}
+
+#[test]
+fn identifiant_de_l_etudiant_et_type_du_releve_pdf() {
+    assert_eq!(student_id(&fixture(FULL)).as_deref(), Some("e00000000000"));
+    for bad in [
+        json!({}),
+        json!({ "auth": {} }),
+        json!({ "auth": { "session": "" } }),
+        json!({ "auth": { "session": "a/../b" } }),
+        json!({ "auth": { "session": "x".repeat(65) } }),
+        json!({ "auth": { "session": 12 } }),
+    ] {
+        assert_eq!(student_id(&bad), None, "{bad}");
+    }
+    assert_eq!(transcript_type(&fixture(FULL)), "BUT");
+    assert_eq!(
+        transcript_type(&json!({ "relevé": { "type": "DUT" } })),
+        "DUT"
+    );
+    assert_eq!(
+        transcript_type(&json!({ "relevé": { "type": "LP" } })),
+        "BUT"
+    );
+    assert_eq!(transcript_type(&json!({})), "BUT");
+
+    let base = Url::parse("https://notes.exemple.fr/scodoc/").unwrap();
+    assert_eq!(
+        transcript_url(&base, "BUT", "901", "e0@x").as_str(),
+        "https://notes.exemple.fr/scodoc/services/bulletin_PDF.php?type=BUT&sem_id=901&etudiant=e0%40x"
+    );
+    let query = Query {
+        action: "relevéEtudiant",
+        params: &[("semestre", "890")],
+    };
+    assert_eq!(
+        data_url(&base, &query).as_str(),
+        "https://notes.exemple.fr/scodoc/services/data.php?q=relev%C3%A9Etudiant&semestre=890"
+    );
+    // Un identifiant ScoDoc est un entier : rien d'autre ne part dans une adresse.
+    assert_eq!(scodoc_id(" 901 ", "de semestre").unwrap(), "901");
+    for bad in ["", "9a", "-1", "1/2", "12345678901", "1&x=2"] {
+        assert_eq!(
+            scodoc_id(bad, "de semestre").unwrap_err().code,
+            ErrorCode::InvalidRequest
+        );
+    }
 }
 
 #[test]
@@ -398,7 +826,7 @@ fn adresses_du_service() {
     let base = base_of(&config("https://notes.exemple.fr/scodoc?x=1#y"));
     assert_eq!(base.as_str(), "https://notes.exemple.fr/scodoc/");
     assert_eq!(
-        data_url(&base).as_str(),
+        data_url(&base, &FIRST_CONNECTION).as_str(),
         "https://notes.exemple.fr/scodoc/services/data.php?q=dataPremi%C3%A8reConnexion"
     );
     assert_eq!(
@@ -501,7 +929,7 @@ async fn connexion_puis_notes_sans_mot_de_passe_ni_cookies_de_l_universite() {
     }
 
     // Les notes s'obtiennent avec le seul jeton : pas de nouvelle connexion.
-    let notes = fetch_grades(&mut ctx, &config).await.unwrap();
+    let notes = fetch_grades(&mut ctx, &config, None).await.unwrap();
     assert_eq!(notes.semesters[0].average, grade(13.96));
     {
         let state = server.state();

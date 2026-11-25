@@ -64,7 +64,7 @@ une analyse tolérante et un test, pas par un nouveau fournisseur.
 
 | Fournisseur | Parcours | Essai réel | Limites |
 |---|---|---|---|
-| `scodoc-gateway` | Passerelle ScoDoc (`services/data.php`), par le CAS de l'université ou un CAS de composante (`own-cas`) | IUT de Béziers, CAS propre, 27/10/2026 [vu] | variante par le CAS de l'université jamais essayée ; second facteur d'un CAS de composante `not_implemented` ; `local-password` `not_implemented` |
+| `scodoc-gateway` | Passerelle ScoDoc (`services/data.php`), par le CAS de l'université ou un CAS de composante (`own-cas`) ; relevé d'un autre semestre (`relevéEtudiant`), message du département, répartition d'une évaluation (`listeNotes`), relevé PDF (`bulletin_PDF.php`) | IUT de Béziers, CAS propre, 27/10/2026 [vu] ; IUT de Lannion, CAS de l'université, 15/11/2026, puis 25/11/2026 : relevé étendu (promotion, poids par UE, couleurs, groupes, crédits), autre semestre, message du département (vide), répartition et relevé PDF [vu] | second facteur d'un CAS de composante `not_implemented` ; `local-password` `not_implemented` ; rangs, bonus, malus, capitalisation, décisions de jury, rattrapages et relevé non publié jamais vus en réel (absents du compte essayé) : formes lues dans le code de la passerelle et de tafac ; une répartition relit le relevé du semestre à chaque demande |
 | `etudiants-api` (notes) | application de scolarité, `api/etudiants/notes` | Paul-Valéry, 27/10/2026 : réponse sans semestre [vu] | format d'une note réelle [inconnu], lu dans le code client |
 
 ### Examens

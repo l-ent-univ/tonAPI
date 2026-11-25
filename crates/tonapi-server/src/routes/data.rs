@@ -5,9 +5,10 @@ use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use chrono::{Datelike, Duration, NaiveDate, Utc};
 use serde::Deserialize;
+use tonapi_config::ServiceKind;
 use tonapi_core::{
-    AbsenceReport, App, Course, Document, Exam, GradeReport, Homework, MailInbox, Problem,
-    TimetableGroup,
+    AbsenceReport, App, Course, Document, Exam, GradeDistribution, GradeNotice, GradeReport,
+    Homework, MailInbox, Problem, TimetableGroup,
 };
 use utoipa::{IntoParams, ToSchema};
 
@@ -128,7 +129,7 @@ pub async fn timetable(
         .map(|u| u.university.timezone.clone())
         .unwrap_or_default();
     let (from, to) = resolve_range(&range, &timezone)?;
-    respond(&state, session, async |ctx| {
+    respond(&state, session, Some(ServiceKind::Timetable), async |ctx| {
         tonapi_providers::timetable_of(ctx, from, to, &resources).await
     })
     .await
@@ -150,10 +151,33 @@ pub async fn timetable_groups(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
+    respond(&state, session, Some(ServiceKind::Timetable), async |ctx| {
         tonapi_providers::timetable_groups(ctx).await
     })
     .await
+}
+
+/// Longueur maximale d'un identifiant de semestre, d'évaluation ou de département.
+const MAX_ID_LENGTH: usize = 64;
+
+/// Identifiant passé par le client (semestre, évaluation, département) : court et sans séparateur.
+fn plain_id(id: &str, what: &str) -> Result<String, ApiError> {
+    let id = id.trim();
+    let plain = id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if id.is_empty() || id.len() > MAX_ID_LENGTH || !plain {
+        return Err(invalid(format!("{what} invalide")));
+    }
+    Ok(id.to_owned())
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct GradesQuery {
+    /// Semestre dont on veut le relevé : un `id` de `available` ou d'un semestre déjà rendu.
+    /// Défaut : le semestre courant, ou tous ceux que le logiciel donne d'un coup.
+    semester: Option<String>,
 }
 
 /// Relevé de notes.
@@ -162,18 +186,121 @@ pub async fn timetable_groups(
     path = "/v1/grades",
     tag = "données",
     security(("session" = [])),
+    params(GradesQuery),
     responses(
         (status = 200, description = "Succès", body = DataResponse<GradeReport>),
+        (status = 400, description = "`invalid_request` : identifiant de semestre invalide", body = Problem, content_type = "application/problem+json"),
         (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
-        (status = 404, description = "`service_absent`, avec `link` quand les notes ne sont qu'un lien", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`service_absent`, avec `link` quand les notes ne sont qu'un lien ; `not_found` : semestre inconnu", body = Problem, content_type = "application/problem+json"),
     )
 )]
 pub async fn grades(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
+    query: Result<Query<GradesQuery>, QueryRejection>,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
-        tonapi_providers::grades(ctx).await
+    let Query(query) = query.map_err(|e| invalid(e.body_text()))?;
+    let semester = query
+        .semester
+        .as_deref()
+        .filter(|semester| !semester.trim().is_empty())
+        .map(|semester| plain_id(semester, "`semester`"))
+        .transpose()?;
+    respond(&state, session, Some(ServiceKind::Grades), async |ctx| {
+        tonapi_providers::grades_of(ctx, semester.as_deref()).await
+    })
+    .await
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct NoticeQuery {
+    /// Sigle du département, tel que `department` dans un semestre du relevé.
+    department: String,
+}
+
+/// Message d'un département à afficher avec ses relevés.
+#[utoipa::path(
+    get,
+    path = "/v1/grades/notice",
+    tag = "données",
+    security(("session" = [])),
+    params(NoticeQuery),
+    responses(
+        (status = 200, description = "Succès ; `message` absent si le département n'a rien écrit", body = DataResponse<GradeNotice>),
+        (status = 400, description = "`invalid_request` : département absent ou invalide", body = Problem, content_type = "application/problem+json"),
+        (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`service_absent`", body = Problem, content_type = "application/problem+json"),
+        (status = 501, description = "`not_implemented` : ce fournisseur de notes n'a pas de message", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn grade_notice(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+    query: Result<Query<NoticeQuery>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let Query(query) = query.map_err(|e| invalid(e.body_text()))?;
+    let department = plain_id(&query.department, "`department`")?;
+    respond(&state, session, Some(ServiceKind::Grades), async |ctx| {
+        tonapi_providers::grade_notice(ctx, &department).await
+    })
+    .await
+}
+
+/// Répartition des notes de la promotion à une évaluation du relevé d'un semestre.
+#[utoipa::path(
+    get,
+    path = "/v1/grades/{semester}/evaluations/{evaluation}/distribution",
+    tag = "données",
+    security(("session" = [])),
+    params(
+        ("semester" = String, Path, description = "Identifiant du semestre"),
+        ("evaluation" = String, Path, description = "Identifiant de l'évaluation, lu dans le relevé de ce semestre"),
+    ),
+    responses(
+        (status = 200, description = "Succès ; `unavailable` dit pourquoi il n'y a pas de répartition", body = DataResponse<GradeDistribution>),
+        (status = 400, description = "`invalid_request` : identifiant invalide", body = Problem, content_type = "application/problem+json"),
+        (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`not_found` : évaluation absente du relevé de l'étudiant, ou `service_absent`", body = Problem, content_type = "application/problem+json"),
+        (status = 501, description = "`not_implemented` : ce fournisseur de notes n'a pas de répartition", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn grade_distribution(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+    Path((semester, evaluation)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let semester = plain_id(&semester, "semestre")?;
+    let evaluation = plain_id(&evaluation, "évaluation")?;
+    respond(&state, session, Some(ServiceKind::Grades), async |ctx| {
+        tonapi_providers::grade_distribution(ctx, &semester, &evaluation).await
+    })
+    .await
+}
+
+/// Relevé PDF d'un semestre, en pièce jointe.
+#[utoipa::path(
+    get,
+    path = "/v1/grades/{semester}/transcript",
+    tag = "données",
+    security(("session" = [])),
+    params(("semester" = String, Path, description = "Identifiant du semestre")),
+    responses(
+        (status = 200, description = "Relevé du semestre", body = File, content_type = "application/pdf"),
+        (status = 400, description = "`invalid_request` : identifiant invalide", body = Problem, content_type = "application/problem+json"),
+        (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`not_found` : pas de PDF pour ce semestre, ou `service_absent`", body = Problem, content_type = "application/problem+json"),
+        (status = 501, description = "`not_implemented` : ce fournisseur de notes n'a pas de PDF", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn grade_transcript(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+    Path(semester): Path<String>,
+) -> Result<Response, ApiError> {
+    let semester = plain_id(&semester, "semestre")?;
+    respond_file(&state, session, async |ctx| {
+        tonapi_providers::grade_transcript(ctx, &semester).await
     })
     .await
 }
@@ -194,7 +321,7 @@ pub async fn absences(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
+    respond(&state, session, Some(ServiceKind::Absences), async |ctx| {
         tonapi_providers::absences(ctx).await
     })
     .await
@@ -216,7 +343,7 @@ pub async fn homework(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
+    respond(&state, session, Some(ServiceKind::Homework), async |ctx| {
         tonapi_providers::homework(ctx).await
     })
     .await
@@ -238,7 +365,7 @@ pub async fn mail_inbox(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
+    respond(&state, session, Some(ServiceKind::Mail), async |ctx| {
         tonapi_providers::mail_inbox(ctx).await
     })
     .await
@@ -260,7 +387,7 @@ pub async fn apps(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
+    respond(&state, session, Some(ServiceKind::Apps), async |ctx| {
         tonapi_providers::apps(ctx).await
     })
     .await
@@ -282,7 +409,7 @@ pub async fn exams(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
+    respond(&state, session, Some(ServiceKind::Exams), async |ctx| {
         tonapi_providers::exams(ctx).await
     })
     .await
@@ -305,7 +432,7 @@ pub async fn documents(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
+    respond(&state, session, Some(ServiceKind::Documents), async |ctx| {
         tonapi_providers::documents(ctx).await
     })
     .await

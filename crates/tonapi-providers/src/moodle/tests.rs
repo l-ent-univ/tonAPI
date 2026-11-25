@@ -381,8 +381,10 @@ fn nettoyage_des_titres() {
 #[test]
 fn entites_html() {
     assert_eq!(
-        decode_entities("A &amp; B &lt;C&gt; &quot;d&quot; l&#039;e &#x27;f&#X27; &eacute; & &amp"),
-        "A & B <C> \"d\" l'e 'f' &eacute; & &amp"
+        decode_entities(
+            "A &amp; B &lt;C&gt; &quot;d&quot; l&#039;e &#x27;f&#X27; &eacute; &inconnue; & &amp"
+        ),
+        "A & B <C> \"d\" l'e 'f' é &inconnue; & &amp"
     );
     assert_eq!(decode_entities("sans entité"), "sans entité");
     assert_eq!(decode_entities("&#99999999999;"), "&#99999999999;");

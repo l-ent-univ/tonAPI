@@ -4,6 +4,7 @@ use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use serde::Serialize;
+use tonapi_config::{ServiceKind, Services};
 use tonapi_core::{ErrorCode, Meta, Problem};
 use tonapi_providers::{Context, Download, Fetched};
 use tonapi_session::SessionData;
@@ -21,21 +22,26 @@ pub struct DataResponse<T: ToSchema> {
 
 /// Exécute `fetch` avec la session de l'étudiant. Si le fournisseur a modifié la session (cookies,
 /// jetons), le nouveau jeton part dans l'en-tête `TonAPI-Session`, y compris avec une erreur.
+///
+/// `kind` est le service qui répond : `meta.cacheSecs` dit au client combien de temps il peut
+/// garder la réponse. `None` : une réponse à ne pas garder.
 pub async fn respond<T, F>(
     state: &AppState,
     original: SessionData,
+    kind: Option<ServiceKind>,
     fetch: F,
 ) -> Result<Response, ApiError>
 where
     T: Serialize + ToSchema,
     F: AsyncFnOnce(&mut Context<'_>) -> Result<Fetched<T>, Problem>,
 {
-    run(state, original, fetch, |fetched, session| {
+    run(state, original, fetch, |fetched, session, services| {
         let meta = Meta {
             university: session.university.clone(),
             establishment: session.establishment.as_ref().map(|e| e.id.clone()),
             provider: fetched.provider.to_owned(),
             fetched_at: Utc::now().fixed_offset(),
+            cache_secs: kind.and_then(|kind| tonapi_providers::keep_secs(services, kind)),
         };
         axum::Json(DataResponse {
             data: fetched.data,
@@ -55,7 +61,7 @@ pub async fn respond_file<F>(
 where
     F: AsyncFnOnce(&mut Context<'_>) -> Result<Fetched<Download>, Problem>,
 {
-    run(state, original, fetch, |fetched, _| {
+    run(state, original, fetch, |fetched, _, _| {
         let file = fetched.data;
         // Nom réduit à des caractères sûrs pour l'en-tête.
         let name: String = file
@@ -90,7 +96,7 @@ async fn run<T, F>(
     state: &AppState,
     original: SessionData,
     fetch: F,
-    finish: impl FnOnce(Fetched<T>, &SessionData) -> Response,
+    finish: impl FnOnce(Fetched<T>, &SessionData, &Services) -> Response,
 ) -> Result<Response, ApiError>
 where
     F: AsyncFnOnce(&mut Context<'_>) -> Result<Fetched<T>, Problem>,
@@ -123,7 +129,9 @@ where
         }
     };
     let provider = fetched.provider;
-    let mut response = finish(fetched, &session);
+    // Services de la composante de la session telle que le fournisseur l'a laissée.
+    let services = university.services_for(session.establishment.as_ref().map(|e| e.id.as_str()));
+    let mut response = finish(fetched, &session, &services);
     let extensions = response.extensions_mut();
     extensions.insert(access::University(original.university.clone()));
     extensions.insert(access::Provider(provider));

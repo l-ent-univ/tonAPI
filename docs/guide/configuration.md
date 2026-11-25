@@ -107,8 +107,11 @@ Valeurs communes :
   l'université.
 - `provider = "demo"` : données fictives.
 - `options = { cache-ttl-secs = …, timeout-secs = … }` sur les fournisseurs distants.
-  `timeout-secs` (défaut 20) n'est lu que par `scodoc-gateway` ; `cache-ttl-secs` n'est lu par
-  aucun fournisseur aujourd'hui [code].
+  `timeout-secs` (défaut 20) n'est lu que par `scodoc-gateway`. `cache-ttl-secs` est la durée
+  pendant laquelle un client peut garder la réponse du service (`meta.cacheSecs`) ; `0` : jamais.
+  Sans réglage : 60 s pour le mail, 5 min pour l'emploi du temps et les devoirs, 10 min pour les
+  notes, les absences, les examens et les documents, 1 h pour les applications et le profil. Le
+  serveur ne garde aucune réponse [code].
 
 ### `sign-in` : services à compte propre
 

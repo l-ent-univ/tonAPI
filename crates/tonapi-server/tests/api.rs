@@ -368,6 +368,64 @@ async fn emploi_du_temps_des_ressources_demandees() {
 }
 
 #[tokio::test]
+async fn notes_d_un_semestre_et_ce_que_la_demo_n_a_pas() {
+    let app = server();
+    let token = login(&app, "demo", json!({})).await.body["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let get = async |path: &str| call(&app, "GET", path, Some(&token), None).await;
+
+    let all = get("/v1/grades").await;
+    assert_eq!(all.status, StatusCode::OK, "{}", all.body);
+    // La démo ne vient d'aucun service distant : rien à garder, et le champ le dit.
+    assert!(
+        all.body["meta"]
+            .as_object()
+            .unwrap()
+            .contains_key("cacheSecs")
+    );
+    assert!(all.body["meta"]["cacheSecs"].is_null());
+    let listed = &all.body["data"]["available"][0];
+    assert_eq!(
+        (&listed["id"], &listed["number"]),
+        (&json!("demo-s3"), &json!(3))
+    );
+    let evaluation = &all.body["data"]["semesters"][0]["modules"][0]["evaluations"][0];
+    assert_eq!(evaluation["kind"], "normal");
+    assert_eq!(evaluation["weights"], json!({}));
+
+    let one = get("/v1/grades?semester=demo-s3").await;
+    assert_eq!(one.body["data"]["semesters"], all.body["data"]["semesters"]);
+    let unknown = get("/v1/grades?semester=demo-s9").await;
+    assert_eq!(unknown.status, StatusCode::NOT_FOUND);
+    assert_eq!(unknown.body["code"], "not_found");
+    assert_eq!(get("/v1/grades?semester=").await.status, StatusCode::OK);
+
+    // La démo n'a ni message, ni répartition, ni PDF.
+    for path in [
+        "/v1/grades/notice?department=INFO",
+        "/v1/grades/demo-s3/evaluations/demo-e1/distribution",
+        "/v1/grades/demo-s3/transcript",
+    ] {
+        let r = get(path).await;
+        assert_eq!(r.status, StatusCode::NOT_IMPLEMENTED, "{path}");
+        assert_eq!(r.body["code"], "not_implemented");
+    }
+    for path in [
+        "/v1/grades?semester=a/b",
+        "/v1/grades/notice",
+        "/v1/grades/notice?department=IN%20FO",
+        "/v1/grades/demo-s3/evaluations/a%3Bb/distribution",
+        "/v1/grades/a%20b/transcript",
+    ] {
+        let r = get(path).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{path}");
+        assert_eq!(r.body["code"], "invalid_request", "{path}");
+    }
+}
+
+#[tokio::test]
 async fn specification_et_documentation() {
     let app = server();
     let r = call(&app, "GET", "/openapi.json", None, None).await;

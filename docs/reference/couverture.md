@@ -31,7 +31,7 @@ Configuration lue dans `universities/` [code]. Essais détaillés pour Paul-Val�
 | `umontpellier/iut-nimes` | planned | tiles-portal, non essayé | ade-ical-link, non essayé | lien | absent | absent | moodle-ajax, non essayé | zimbra-rest, non essayé | tiles-portal, non essayé | ardemat, non essayé |
 | `univ-montp3` | beta | uportal5 + etudiants-api, vu 27/10 | ade-myplanning, vu 27/10 | etudiants-api, vide 27/10 | absent | etudiants-api, vide 27/10 | moodle-ajax, vu 27/10 | bluemind, vu 27/10 | uportal5, vu 27/10 | etudiants-api, vide 27/10 |
 | `univ-rennes` (`autres`, défaut) | beta | uportal5, non essayé | ade-portal-rest, non essayé | absent | absent | absent | moodle-ajax (Shibboleth), non essayé | zimbra-rest, 501 attendu | uportal5, non essayé | mon-dossier-web, 501 |
-| `univ-rennes/iut-lannion` | beta | uportal5, [vu] 15/11/2026 | ade-portal-rest, [vu] 15/11/2026 : 15 séances, comme sur le portail ; 6 928 groupes listés | scodoc-gateway (CAS de l'université), [vu] 15/11/2026 : 1 semestre | scodoc-gateway, [vu] 15/11/2026 : réponse vide | absent | moodle-ajax (Shibboleth), [vu] 15/11/2026 | zimbra-rest, [vu] 15/11/2026 : 501 | uportal5, [vu] 15/11/2026 | mon-dossier-web, 501 |
+| `univ-rennes/iut-lannion` | beta | uportal5, [vu] 15/11/2026 | ade-portal-rest, [vu] 15/11/2026 : 15 séances, comme sur le portail ; 6 928 groupes listés | scodoc-gateway (CAS de l'université), [vu] 15/11/2026 : 1 semestre ; [vu] 25/11/2026 : 3 semestres listés, autre semestre, répartition, relevé PDF | scodoc-gateway, [vu] 15/11/2026 : réponse vide | absent | moodle-ajax (Shibboleth), [vu] 15/11/2026 | zimbra-rest, [vu] 15/11/2026 : 501 | uportal5, [vu] 15/11/2026 | mon-dossier-web, 501 |
 
 ## Précisions
 

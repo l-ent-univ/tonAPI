@@ -85,6 +85,145 @@ pub(crate) fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
+fn entity(name: &str) -> Option<char> {
+    match name {
+        "amp" => Some('&'),
+        "lt" => Some('<'),
+        "gt" => Some('>'),
+        "quot" => Some('"'),
+        "apos" => Some('\''),
+        "nbsp" => Some(' '),
+        "laquo" => Some('«'),
+        "raquo" => Some('»'),
+        // Lettres accentuées et ponctuation des textes écrits en français.
+        "eacute" => Some('é'),
+        "egrave" => Some('è'),
+        "ecirc" => Some('ê'),
+        "euml" => Some('ë'),
+        "agrave" => Some('à'),
+        "acirc" => Some('â'),
+        "ccedil" => Some('ç'),
+        "icirc" => Some('î'),
+        "iuml" => Some('ï'),
+        "ocirc" => Some('ô'),
+        "ugrave" => Some('ù'),
+        "ucirc" => Some('û'),
+        "oelig" => Some('œ'),
+        "Eacute" => Some('É'),
+        "Egrave" => Some('È'),
+        "Agrave" => Some('À'),
+        "Ccedil" => Some('Ç'),
+        "rsquo" => Some('’'),
+        "lsquo" => Some('‘'),
+        "ldquo" => Some('“'),
+        "rdquo" => Some('”'),
+        "hellip" => Some('…'),
+        "ndash" => Some('–'),
+        "mdash" => Some('—'),
+        "euro" => Some('€'),
+        "deg" => Some('°'),
+        _ => {
+            let digits = name.strip_prefix('#')?;
+            let code = match digits.strip_prefix(['x', 'X']) {
+                Some(hex) => u32::from_str_radix(hex, 16).ok()?,
+                None => digits.parse().ok()?,
+            };
+            char::from_u32(code)
+        }
+    }
+}
+
+/// `&amp;`, `&#039;`, `&#x27;`… ; une entité inconnue reste telle quelle.
+pub(crate) fn decode_entities(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find('&') {
+        out.push_str(rest.get(..start).unwrap_or_default());
+        let tail = rest.get(start..).unwrap_or_default();
+        // `;` cherché dans les 11 premiers octets seulement : un `&` sans `;` proche ne relit pas
+        // toute la fin du texte (quadratique sur des milliers de `&`).
+        let decoded = tail
+            .as_bytes()
+            .iter()
+            .take(11)
+            .position(|b| *b == b';')
+            .and_then(|end| Some((entity(tail.get(1..end)?)?, end + 1)));
+        if let Some((character, length)) = decoded {
+            out.push(character);
+            rest = tail.get(length..).unwrap_or_default();
+        } else {
+            out.push('&');
+            rest = tail.get(1..).unwrap_or_default();
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Texte d'un fragment HTML : balises retirées (un espace pour les blocs), entités décodées,
+/// espaces réduits.
+pub(crate) fn html_to_text(html: &str) -> String {
+    const BLOCKS: [&str; 12] = [
+        "br", "p", "div", "li", "ul", "ol", "tr", "td", "h1", "h2", "h3", "h4",
+    ];
+    let mut text = String::with_capacity(html.len());
+    let mut chars = html.chars();
+    while let Some(c) = chars.next() {
+        if c != '<' {
+            text.push(c);
+            continue;
+        }
+        let tag: String = chars.by_ref().take_while(|t| *t != '>').collect();
+        let name = tag
+            .trim_start_matches('/')
+            .split(|t: char| !t.is_ascii_alphanumeric())
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if BLOCKS.contains(&name.as_str()) {
+            text.push(' ');
+        }
+    }
+    decode_entities(&text)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Texte d'un message HTML, une ligne par paragraphe : `<br>` et les blocs passent à la ligne, un
+/// élément de liste commence par « • ». Balises retirées, entités décodées, espaces réduits.
+pub(crate) fn html_to_lines(html: &str) -> String {
+    const BLOCKS: [&str; 14] = [
+        "br", "p", "div", "li", "ul", "ol", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "table",
+    ];
+    let mut text = String::with_capacity(html.len());
+    let mut chars = html.chars();
+    while let Some(c) = chars.next() {
+        if c != '<' {
+            text.push(if c == '\n' || c == '\r' { ' ' } else { c });
+            continue;
+        }
+        let tag: String = chars.by_ref().take_while(|t| *t != '>').collect();
+        let name = tag
+            .trim_start_matches('/')
+            .split(|t: char| !t.is_ascii_alphanumeric())
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if name == "li" && !tag.starts_with('/') {
+            text.push_str("\n• ");
+        } else if BLOCKS.contains(&name.as_str()) {
+            text.push('\n');
+        }
+    }
+    decode_entities(&text)
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|line| !line.is_empty() && line != "•")
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -63,6 +63,44 @@ impl Services {
         }
     }
 
+    /// Réglages `options` d'un service, quand son fournisseur en porte.
+    #[must_use]
+    pub fn options(&self, kind: ServiceKind) -> Option<&ServiceOptions> {
+        match kind {
+            ServiceKind::Timetable => match self.timetable.as_ref()? {
+                TimetableService::AdeIcalLink { options, .. }
+                | TimetableService::AdePortalRest { options, .. }
+                | TimetableService::AdeMyplanning { options, .. } => Some(options),
+                _ => None,
+            },
+            ServiceKind::Grades => match self.grades.as_ref()? {
+                GradesService::ScodocGateway(gateway) => Some(&gateway.options),
+                _ => None,
+            },
+            ServiceKind::Absences => match self.absences.as_ref()? {
+                AbsencesService::ScodocGateway(gateway) => Some(&gateway.options),
+                _ => None,
+            },
+            ServiceKind::Homework => match self.homework.as_ref()? {
+                HomeworkService::MoodleWebservice { options, .. }
+                | HomeworkService::MoodleAjax { options, .. } => Some(options),
+                _ => None,
+            },
+            ServiceKind::Mail => match self.mail.as_ref()? {
+                MailService::ZimbraRest { options, .. } | MailService::Bluemind { options, .. } => {
+                    Some(options)
+                }
+                _ => None,
+            },
+            ServiceKind::Documents => match self.documents.as_ref()? {
+                DocumentsService::MonDossierWeb { options, .. }
+                | DocumentsService::Ardemat { options, .. } => Some(options),
+                _ => None,
+            },
+            ServiceKind::Exams | ServiceKind::Apps | ServiceKind::Profile => None,
+        }
+    }
+
     /// Disponibilité de chaque service, dans l'ordre de [`ServiceKind::ALL`].
     #[must_use]
     pub fn availability(&self) -> Vec<(ServiceKind, ServiceAvailability)> {
@@ -192,7 +230,9 @@ pub struct LinkService {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct ServiceOptions {
-    /// Durée de cache des réponses, en secondes. Défaut propre au fournisseur.
+    /// Durée, en secondes, pendant laquelle un client peut garder la réponse du service sans la
+    /// redemander (`meta.cacheSecs`). `0` : jamais. Défaut propre au service. Le serveur, lui, ne
+    /// garde aucune réponse.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_ttl_secs: Option<u32>,
     /// Délai maximal d'une requête, en secondes. Défaut : 20.

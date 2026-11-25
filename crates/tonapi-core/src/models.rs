@@ -1,5 +1,7 @@
 //! Données renvoyées par l'API. Champs en camelCase, dates ISO 8601 avec fuseau.
 
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -15,6 +17,10 @@ pub struct Meta {
     /// Fournisseur qui a produit les données (`ade-portal-rest`, `demo`…).
     pub provider: String,
     pub fetched_at: DateTime<FixedOffset>,
+    /// Durée, en secondes, pendant laquelle le client peut resservir cette réponse depuis sa
+    /// mémoire sans la redemander. Absent : ne pas la garder. Le serveur ne garde rien, et la
+    /// réponse HTTP reste `no-store` : un navigateur ne l'écrit jamais dans son cache.
+    pub cache_secs: Option<u32>,
 }
 
 /// Cours de l'emploi du temps.
@@ -58,14 +64,74 @@ pub struct Grade {
     pub out_of: f64,
 }
 
-/// Relevé de notes, semestre par semestre.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+/// Notes de la promotion pour une évaluation, une unité ou un semestre, sur le barème de la note
+/// qu'elles accompagnent.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GradeReport {
-    pub semesters: Vec<SemesterGrades>,
+pub struct GradeStats {
+    pub min: Option<f64>,
+    pub mean: Option<f64>,
+    pub max: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+/// Relevé de notes, semestre par semestre.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GradeReport {
+    /// Semestres détaillés : le semestre courant, ou celui demandé.
+    pub semesters: Vec<SemesterGrades>,
+    /// Tous les semestres de l'étudiant, du plus ancien au plus récent, quand le logiciel les
+    /// liste. Leur `id` se passe à `GET /v1/grades?semester=`.
+    pub available: Vec<SemesterRef>,
+}
+
+/// Message d'un département à afficher avec ses relevés.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GradeNotice {
+    /// Texte brut ; absent quand le département n'a rien écrit.
+    pub message: Option<String>,
+}
+
+/// Répartition des notes de la promotion à une évaluation.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GradeDistribution {
+    /// Nombre de notes par point entier : 21 cases, de `[0 ; 1[` à `20`. Vide si `unavailable`.
+    pub counts: Vec<u32>,
+    /// Nombre de notes comptées.
+    pub total: u32,
+    /// Barème des cases.
+    pub out_of: f64,
+    /// Pourquoi il n'y a pas de répartition ; absent quand il y en a une.
+    pub unavailable: Option<DistributionUnavailable>,
+}
+
+/// Raison pour laquelle une répartition n'est pas donnée.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum DistributionUnavailable {
+    /// L'établissement ne partage pas les répartitions.
+    Disabled,
+    /// Le relevé n'est pas publié.
+    Hidden,
+    /// Trop peu de notes pour ne désigner personne.
+    TooFew,
+}
+
+/// Semestre dont le relevé peut être demandé.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SemesterRef {
+    pub id: String,
+    pub name: String,
+    /// Rang du semestre dans la formation (1 à 6 en BUT).
+    pub number: Option<u32>,
+    /// Année universitaire telle que fournie (ex. `2026/2027`).
+    pub year: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SemesterGrades {
     pub id: String,
@@ -77,27 +143,140 @@ pub struct SemesterGrades {
     pub units: Vec<UnitGrade>,
     /// Ressources, SAÉ ou matières et leurs évaluations.
     pub modules: Vec<ModuleGrades>,
+    /// Rang du semestre dans la formation (1 à 6 en BUT).
+    pub number: Option<u32>,
+    /// Année universitaire telle que fournie (ex. `2026 - 2027`).
+    pub year: Option<String>,
+    /// Premier et dernier jour du semestre.
+    pub start: Option<NaiveDate>,
+    pub end: Option<NaiveDate>,
+    /// Type de relevé tel que fourni (ex. `BUT`).
+    pub kind: Option<String>,
+    /// Sigle de la formation.
+    pub program: Option<String>,
+    /// Sigle du département qui gère le semestre.
+    pub department: Option<String>,
+    /// `false` : l'établissement n'a pas publié ce relevé (voir `notice`). Absent : inconnu.
+    pub published: Option<bool>,
+    /// Message de l'établissement sur ce relevé (non publié…), en texte brut.
+    pub notice: Option<String>,
+    /// Date de production du relevé.
+    pub updated_at: Option<DateTime<FixedOffset>>,
+    /// Moyennes générales de la promotion.
+    pub stats: Option<GradeStats>,
+    /// Rang dans chacun des groupes de l'étudiant.
+    pub group_ranks: Vec<GroupRank>,
+    /// Groupes de l'étudiant dans ce semestre (TD, TP, parcours…).
+    pub groups: Vec<StudentGroup>,
+    /// Crédits ECTS du semestre et crédits acquis, quand l'établissement les montre.
+    pub ects: Option<f64>,
+    pub ects_earned: Option<f64>,
+    /// Décision de jury sur le semestre, puis sur l'année.
+    pub decision: Option<JuryDecision>,
+    pub year_decision: Option<JuryDecision>,
+    /// Le relevé PDF de ce semestre peut être demandé (`GET /v1/grades/{id}/transcript`). Absent :
+    /// inconnu pour ce semestre.
+    pub transcript: Option<bool>,
+    /// La répartition des notes d'une évaluation peut être demandée
+    /// (`GET /v1/grades/{id}/evaluations/{evaluation}/distribution`). Absent : inconnu.
+    pub distributions: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+/// Rang dans un groupe, sous la même forme que le rang du semestre.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupRank {
+    /// Nom du groupe, ou son identifiant s'il n'est pas nommé.
+    pub group: String,
+    /// Rang tel que fourni (ex. `3/28`).
+    pub rank: String,
+}
+
+/// Groupe d'étudiants.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StudentGroup {
+    pub id: Option<String>,
+    pub name: String,
+    /// Découpage auquel le groupe appartient (ex. `TD`, `TP`, `Parcours`).
+    pub partition: Option<String>,
+}
+
+/// Décision de jury.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct JuryDecision {
+    /// Code tel que fourni (ex. `ADM`, `AJ`, `RED`).
+    pub code: String,
+    pub date: Option<NaiveDate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnitGrade {
     pub code: String,
     pub name: String,
     pub average: Option<Grade>,
+    /// Crédits ECTS de l'unité.
     pub ects: Option<f64>,
+    /// Crédits acquis, quand l'établissement les montre.
+    pub ects_earned: Option<f64>,
+    /// Couleur de l'unité (`#RRGGBB`).
+    pub color: Option<String>,
+    /// Moyennes de la promotion dans l'unité.
+    pub stats: Option<GradeStats>,
+    /// Rang tel que fourni (ex. `12/84`).
+    pub rank: Option<String>,
+    /// Points ajoutés et retirés à la moyenne de l'unité, déjà comptés dans `average`.
+    pub bonus: Option<f64>,
+    pub malus: Option<f64>,
+    /// Unité acquise lors d'un semestre précédent et conservée.
+    pub capitalized: bool,
+    /// Code de la décision de jury sur l'unité (ex. `ADM`, `CMP`, `AJ`).
+    pub decision: Option<String>,
+    /// Modules qui comptent dans l'unité, avec leur coefficient.
+    pub modules: Vec<UnitModule>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+/// Part d'un module dans une unité.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UnitModule {
+    /// Code du module (`ModuleGrades::code`).
+    pub code: String,
+    pub coefficient: Option<f64>,
+    /// Moyenne du module dans cette unité.
+    pub average: Option<Grade>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ModuleGrades {
     pub code: String,
     pub name: String,
     pub average: Option<Grade>,
     pub evaluations: Vec<Evaluation>,
+    /// Identifiant du module dans le logiciel.
+    pub id: Option<String>,
+    /// Nature du module telle que le logiciel la range (ScoDoc : `ressource` ou `sae`).
+    pub kind: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+/// Place d'une évaluation dans le calcul de la moyenne.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum EvaluationKind {
+    #[default]
+    Normal,
+    /// Rattrapage : remplace la moyenne des évaluations normales si elle est meilleure.
+    Resit,
+    /// Seconde session : remplace les évaluations de la première.
+    SecondSession,
+    /// Points de bonus, hors moyenne.
+    Bonus,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Evaluation {
     pub id: String,
@@ -107,6 +286,15 @@ pub struct Evaluation {
     pub coefficient: Option<f64>,
     /// Mention à la place d'une note (ABS, EXC, ATT…).
     pub status: Option<String>,
+    pub kind: EvaluationKind,
+    /// Poids de l'évaluation dans chaque unité (clé : `UnitGrade::code`). Vide si le logiciel ne
+    /// pondère pas par unité.
+    pub weights: BTreeMap<String, f64>,
+    /// Notes de la promotion à cette évaluation.
+    pub stats: Option<GradeStats>,
+    /// Début et fin de l'épreuve, quand l'heure est connue.
+    pub start: Option<DateTime<FixedOffset>>,
+    pub end: Option<DateTime<FixedOffset>>,
 }
 
 /// Absences et totaux.

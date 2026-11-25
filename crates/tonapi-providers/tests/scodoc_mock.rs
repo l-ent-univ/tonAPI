@@ -6,13 +6,18 @@ mod support;
 use chrono::Utc;
 use serde_json::{Value, json};
 use tonapi_config::{ResolvedUniversity, ServiceKind};
+use tonapi_core::DistributionUnavailable;
 use tonapi_core::ErrorCode;
-use tonapi_providers::{Context, absences, grades, grades_and_absences, service_login};
+use tonapi_providers::{
+    Context, absences, grade_distribution, grade_notice, grade_transcript, grades,
+    grades_and_absences, grades_of, service_login,
+};
 use tonapi_session::{SessionData, StoredCookie};
 
 use support::Server;
 
 const PAYLOAD: &str = include_str!("fixtures/scodoc/premiere_connexion.json");
+const FULL: &str = include_str!("fixtures/scodoc/releve_complet.json");
 
 fn university(server: &Server, sign_in: &Value) -> ResolvedUniversity {
     common::university(server.university(sign_in))
@@ -272,4 +277,254 @@ async fn connexion_au_service_mauvais_mot_de_passe() {
     assert_eq!(error.code, ErrorCode::InvalidCredentials);
     assert!(ctx.session.tokens.is_empty());
     assert_eq!(server.state().password_posts, 1);
+}
+
+// autour du relevé : autre semestre, message, répartition, PDF
+
+/// Réponse de `relevéEtudiant` pour le semestre du relevé complet : ni `config` ni `semestres`.
+fn semester_payload() -> String {
+    let full: Value = serde_json::from_str(FULL).unwrap();
+    json!({ "relevé": full["relevé"], "absences": [] }).to_string()
+}
+
+async fn full_server() -> Server {
+    let server = support::start(FULL).await;
+    {
+        let mut state = server.state();
+        state.semesters.insert("901".to_owned(), semester_payload());
+        state.message = String::from(r#"{"message":"<p>Jury le 12 f&eacute;vrier.</p>"}"#);
+        state.distribution = String::from("[4.5,9,9.5,11,12.25,13,13.5,16,20]");
+        state.pdf = true;
+    }
+    server
+}
+
+#[tokio::test]
+async fn releve_d_un_autre_semestre() {
+    let server = full_server().await;
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let mut ctx = context(&university, &mut session);
+
+    let current = grades(&mut ctx).await.unwrap().data;
+    assert_eq!(current.available.len(), 3);
+    assert_eq!(current.semesters[0].transcript, Some(true));
+
+    let asked = grades_of(&mut ctx, Some("901")).await.unwrap();
+    assert_eq!(asked.provider, "scodoc-gateway");
+    assert_eq!(asked.data.semesters[0].id, "901");
+    assert_eq!(asked.data.semesters[0].units.len(), 3);
+    // Les réglages de la passerelle ne viennent pas avec ce relevé.
+    assert_eq!(asked.data.semesters[0].transcript, None);
+    assert!(asked.data.available.is_empty());
+
+    // Semestre que la passerelle ne connaît pas, puis identifiant qui n'en est pas un.
+    let unknown = grades_of(&mut ctx, Some("123")).await.unwrap_err();
+    assert_eq!(unknown.code, ErrorCode::ServiceUnavailable);
+    let before = server.state().data_calls;
+    let invalid = grades_of(&mut ctx, Some("12a")).await.unwrap_err();
+    assert_eq!(invalid.code, ErrorCode::InvalidRequest);
+    let state = server.state();
+    assert_eq!(
+        state.data_calls, before,
+        "rien n'est demandé pour un identifiant invalide"
+    );
+    assert_eq!(
+        state.data_actions,
+        [
+            "dataPremièreConnexion",
+            "relevéEtudiant:901",
+            "relevéEtudiant:123"
+        ]
+    );
+    // Une seule connexion pour tout, et `GET` hors du premier appel.
+    assert_eq!(state.ticket_validations, 1);
+    assert_eq!(state.data_methods, ["POST", "GET", "GET"]);
+}
+
+#[tokio::test]
+async fn message_du_departement() {
+    let server = full_server().await;
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let mut ctx = context(&university, &mut session);
+
+    let notice = grade_notice(&mut ctx, "DEMO").await.unwrap();
+    assert_eq!(notice.data.message.as_deref(), Some("Jury le 12 février."));
+    server.state().message = String::from(r#"{"message":""}"#);
+    assert_eq!(
+        grade_notice(&mut ctx, "DEMO").await.unwrap().data.message,
+        None
+    );
+    assert_eq!(
+        server.state().data_actions,
+        ["getReportPageMessage:DEMO", "getReportPageMessage:DEMO"]
+    );
+}
+
+#[tokio::test]
+async fn repartition_d_une_evaluation_du_releve_seulement() {
+    let server = full_server().await;
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let mut ctx = context(&university, &mut session);
+
+    let distribution = grade_distribution(&mut ctx, "901", "7301")
+        .await
+        .unwrap()
+        .data;
+    assert_eq!(distribution.unavailable, None);
+    assert_eq!(distribution.total, 9);
+    assert_eq!(distribution.counts[9], 2);
+    assert_eq!(distribution.counts[20], 1);
+
+    // Une évaluation qui n'est pas dans le relevé de l'étudiant n'est jamais demandée.
+    let foreign = grade_distribution(&mut ctx, "901", "9999")
+        .await
+        .unwrap_err();
+    assert_eq!(foreign.code, ErrorCode::NotFound);
+    assert_eq!(
+        server.state().data_actions,
+        [
+            "relevéEtudiant:901",
+            "listeNotes:7301",
+            "relevéEtudiant:901"
+        ]
+    );
+
+    // Ce que la passerelle refuse : trop peu de notes, histogramme coupé.
+    for (answer, reason) in [
+        (r#"["too low"]"#, DistributionUnavailable::TooFew),
+        (
+            r#"{"erreur":"L'histogramme n'est pas activé"}"#,
+            DistributionUnavailable::Disabled,
+        ),
+    ] {
+        server.state().distribution = String::from(answer);
+        let refused = grade_distribution(&mut ctx, "901", "7301")
+            .await
+            .unwrap()
+            .data;
+        assert_eq!(refused.unavailable, Some(reason));
+        assert!(refused.counts.is_empty());
+    }
+
+    // Relevé non publié : pas de répartition, et `listeNotes` n'est pas appelé.
+    let mut hidden: Value = serde_json::from_str(&semester_payload()).unwrap();
+    hidden["relevé"]["publie"] = json!(false);
+    server
+        .state()
+        .semesters
+        .insert("901".to_owned(), hidden.to_string());
+    let calls = server.state().data_calls;
+    let refused = grade_distribution(&mut ctx, "901", "7301")
+        .await
+        .unwrap()
+        .data;
+    assert_eq!(refused.unavailable, Some(DistributionUnavailable::Hidden));
+    assert_eq!(server.state().data_calls, calls + 1);
+}
+
+#[tokio::test]
+async fn releve_pdf_avec_l_identifiant_de_la_session() {
+    let server = full_server().await;
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let mut ctx = context(&university, &mut session);
+
+    let file = grade_transcript(&mut ctx, "890").await.unwrap().data;
+    assert_eq!(file.content_type, "application/pdf");
+    assert_eq!(file.file_name, "releve-890.pdf");
+    assert!(file.bytes.starts_with(b"%PDF"));
+    {
+        let state = server.state();
+        // L'étudiant est celui de la session ouverte, le type celui de son relevé.
+        assert_eq!(
+            state.pdf_queries,
+            ["etudiant=e00000000000&sem_id=890&type=BUT"]
+        );
+        assert_eq!(state.ticket_validations, 1);
+        assert_eq!(state.data_actions, ["dataPremièreConnexion"]);
+    }
+
+    // L'identifiant reste dans la session : le PDF suivant ne relit pas le relevé.
+    let again = grade_transcript(&mut ctx, "880").await.unwrap().data;
+    assert_eq!(again.file_name, "releve-880.pdf");
+    {
+        let state = server.state();
+        assert_eq!(state.data_actions, ["dataPremièreConnexion"]);
+        assert_eq!(state.pdf_queries.len(), 2);
+        assert_eq!(
+            state.pdf_queries[1],
+            "etudiant=e00000000000&sem_id=880&type=BUT"
+        );
+    }
+
+    // La passerelle ne rend pas de PDF : un seul nouvel essai après une reconnexion, puis l'erreur.
+    server.state().pdf = false;
+    let missing = grade_transcript(&mut ctx, "890").await.unwrap_err();
+    assert_eq!(missing.code, ErrorCode::NotFound);
+    assert_eq!(server.state().pdf_queries.len(), 4);
+
+    let invalid = grade_transcript(&mut ctx, "../890").await.unwrap_err();
+    assert_eq!(invalid.code, ErrorCode::InvalidRequest);
+    assert_eq!(server.state().pdf_queries.len(), 4);
+}
+
+#[tokio::test]
+async fn une_lecture_du_releve_suffit_au_pdf_qui_suit() {
+    let server = full_server().await;
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    {
+        let mut ctx = context(&university, &mut session);
+        grades(&mut ctx).await.unwrap();
+    }
+    // Ce que la session garde : l'identifiant pour la passerelle et le type du bulletin, rien du
+    // relevé lui-même.
+    let key = format!("scodoc-student.{}", server.authority());
+    let kept: Value = serde_json::from_str(&session.tokens[&key]).unwrap();
+    assert_eq!(kept, json!({ "id": "e00000000000", "kind": "BUT" }));
+
+    let mut ctx = context(&university, &mut session);
+    grade_transcript(&mut ctx, "901").await.unwrap();
+    let state = server.state();
+    assert_eq!(state.data_actions, ["dataPremièreConnexion"]);
+    assert_eq!(
+        state.pdf_queries,
+        ["etudiant=e00000000000&sem_id=901&type=BUT"]
+    );
+}
+
+#[tokio::test]
+async fn sans_tgc_rien_de_tout_cela_n_est_servi() {
+    let server = full_server().await;
+    let university = university(&server, &university_cas());
+    let mut session = session(Vec::new());
+    let mut ctx = context(&university, &mut session);
+
+    assert_eq!(
+        grades_of(&mut ctx, Some("901")).await.unwrap_err().code,
+        ErrorCode::SessionExpired
+    );
+    assert_eq!(
+        grade_notice(&mut ctx, "DEMO").await.unwrap_err().code,
+        ErrorCode::SessionExpired
+    );
+    assert_eq!(
+        grade_distribution(&mut ctx, "901", "7301")
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::SessionExpired
+    );
+    assert_eq!(
+        grade_transcript(&mut ctx, "901").await.unwrap_err().code,
+        ErrorCode::SessionExpired
+    );
+    // Le CAS a montré son formulaire à chaque fois : aucune session ouverte, aucun PDF demandé.
+    let state = server.state();
+    assert_eq!(state.ticket_validations, 0);
+    assert_eq!(state.password_posts, 0);
+    assert!(state.pdf_queries.is_empty());
 }

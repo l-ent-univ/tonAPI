@@ -1,0 +1,161 @@
+{
+  "config": {
+    "passerelle_version": "7.2.3",
+    "histogramme": true,
+    "releve_PDF": true,
+    "liste_dep_publi_PDF": "DEMO, AUTRE",
+    "afficher_absences": true,
+    "metrique_absences": "demi",
+    "session": "e00000000000",
+    "name": "Camille Demo",
+    "statut": 10
+  },
+  "auth": { "session": "e00000000000", "name": "Camille Demo", "statut": 10 },
+  "semestres": [
+    { "titre": "BUT Démo", "formsemestre_id": 880, "semestre_id": 1, "annee_scolaire": "2025/2026" },
+    { "titre": "BUT Démo", "formsemestre_id": 890, "semestre_id": 2, "annee_scolaire": "2025/2026" },
+    { "formsemestre_id": 901, "semestre_id": 3, "annee_scolaire": "2026/2027" },
+    { "titre": "Sans identifiant", "semestre_id": 4 }
+  ],
+  "relevé": {
+    "version": "0",
+    "type": "BUT",
+    "date": "2026-11-12T09:58:26Z",
+    "publie": true,
+    "etat_inscription": "I",
+    "etudiant": {
+      "nom": "Demo",
+      "prenom": "Camille",
+      "code_nip": "e00000000000",
+      "email": "camille.demo@exemple.invalid",
+      "photo_url": "/ScoDoc/DEMO/api/etudiant/etudid/4242/photo"
+    },
+    "formation": { "id": 11, "acronyme": "BUT DEMO", "titre_officiel": "BUT Démo", "titre": "BUT Démo" },
+    "formsemestre_id": 901,
+    "options": { "show_abs": true, "show_rangs": true, "show_ue_rangs": true, "show_ects": true },
+    "appreciation": [],
+    "ressources": {
+      "R3.01": {
+        "id": 5301,
+        "titre": "Développement web",
+        "moyenne": {},
+        "evaluations": [
+          {
+            "id": 7301,
+            "coef": "02.00",
+            "date": "2026-10-01T00:00:00+02:00",
+            "date_debut": "2026-10-02T08:15:00+02:00",
+            "date_fin": "2026-10-02T10:15:00+02:00",
+            "description": "Contrôle",
+            "evaluation_type": 0,
+            "note": { "value": "13.00", "min": "02.50", "max": "19.00", "moy": "11.40" },
+            "poids": { "UE3.1": 1, "UE3.2": "0.5", "UE3.3": "" }
+          },
+          {
+            "id": 7302,
+            "coef": null,
+            "date_debut": "2026-10-20T00:00:00+02:00",
+            "description": "Rattrapage",
+            "evaluation_type": 1,
+            "note": { "value": "15.00", "min": "~", "max": "~", "moy": "~" },
+            "poids": { "UE3.1": 1 }
+          },
+          {
+            "id": 7303,
+            "coef": "01.00",
+            "description": "Session 2",
+            "evaluation_type": 2,
+            "note": { "value": "NP" }
+          },
+          {
+            "id": 7304,
+            "coef": "01.00",
+            "description": "Points de participation",
+            "evaluation_type": "3",
+            "note": { "value": "00.50" }
+          }
+        ]
+      }
+    },
+    "saes": {
+      "SAÉ 3.01": {
+        "id": 5401,
+        "titre": "Concevoir un service",
+        "moyenne": { "value": "14.00" },
+        "evaluations": []
+      }
+    },
+    "ues_capitalisees": { "UE3.3": { "moy": 12.4 } },
+    "ues": {
+      "UE3.1": {
+        "id": 311,
+        "titre": "Réaliser",
+        "numero": 1,
+        "color": "#B80004",
+        "moyenne": { "value": "13.50", "min": "05.00", "max": "17.00", "moy": "11.00", "rang": "4 ex", "total": 84 },
+        "bonus": "00.25",
+        "malus": "00.00",
+        "capitalise": null,
+        "ressources": { "R3.01": { "id": 5301, "coef": 4, "moyenne": "13.40" } },
+        "saes": { "SAÉ 3.01": { "id": 5401, "coef": "8", "moyenne": { "value": "14.00" } } },
+        "ECTS": { "acquis": 5, "total": 5 }
+      },
+      "UE3.2": {
+        "id": 312,
+        "titre": "Optimiser",
+        "numero": 2,
+        "color": "rouge",
+        "moyenne": { "value": "08.20", "min": "~", "max": "~", "moy": "~", "rang": "", "total": 0 },
+        "bonus": 0,
+        "malus": "00.50",
+        "ressources": { "R3.01": { "id": 5301, "coef": 0, "moyenne": "~" } },
+        "saes": [],
+        "ECTS": { "acquis": 0, "total": "10" }
+      },
+      "UE3.3": {
+        "id": 313,
+        "titre": "Administrer",
+        "numero": 3,
+        "moyenne": {},
+        "ressources": [],
+        "saes": [],
+        "ECTS": { "acquis": 0, "total": 0 }
+      }
+    },
+    "semestre": {
+      "numero": 3,
+      "date_debut": "2026-09-01",
+      "date_fin": "2027-01-31",
+      "annee_universitaire": "2026 - 2027",
+      "groupes": [
+        { "id": 61, "group_name": "TD B", "partition": { "id": 6, "partition_name": "TD" } },
+        { "group_id": 62, "nom": "TP B1", "partition": { "partition_name": "TP" } },
+        "Parcours A",
+        { "id": 61, "group_name": "TD B" },
+        { "id": 63 }
+      ],
+      "absences": { "injustifie": 2, "total": 3, "metrique": "1/2 Jour." },
+      "ECTS": { "acquis": 5, "total": 30 },
+      "notes": { "value": "12.10", "min": "06.00", "moy": "11.50", "max": "16.80" },
+      "rang": {
+        "value": "12",
+        "total": 84,
+        "groupes": {
+          "61": { "value": "3", "total": 28 },
+          "62": ["2 ex", 14],
+          "77": { "value": "-", "total": 9 },
+          "78": { "value": "5", "total": 0, "group_name": "Apprentis" }
+        }
+      },
+      "decision": { "code": "ADM", "date": "2027-02-04T00:00:00+01:00" },
+      "decision_annee": { "code": " red " },
+      "decision_ue": [
+        { "ue_id": 311, "acronyme": "UE3.1", "code": "adm" },
+        { "acronyme": "UE3.2", "code": "AJ" },
+        { "ue_id": 999, "code": "" }
+      ],
+      "situation": "Inscrit le 01/09/2026."
+    }
+  },
+  "absences": []
+}

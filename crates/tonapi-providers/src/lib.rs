@@ -26,8 +26,8 @@ use tonapi_config::{
     ServiceKind, Services, Signal, SignalSource, StudentRecord, TimetableService,
 };
 use tonapi_core::{
-    AbsenceReport, App, Course, Document, ErrorCode, EstablishmentSource, Exam, GradeReport,
-    Homework, MailInbox, Problem, Profile, TimetableGroup,
+    AbsenceReport, App, Course, Document, ErrorCode, EstablishmentSource, Exam, GradeDistribution,
+    GradeNotice, GradeReport, Homework, MailInbox, Problem, Profile, TimetableGroup,
 };
 use tonapi_session::{EstablishmentPick, SessionData};
 
@@ -57,6 +57,47 @@ impl Context<'_> {
 pub(crate) fn client_problem(error: &tonapi_http::HttpError) -> Problem {
     tracing::error!(%error, "client HTTP impossible à construire");
     Problem::new(ErrorCode::Internal).detail("configuration TLS de l'université illisible")
+}
+
+/// Durée par défaut pendant laquelle un client peut garder la réponse d'un service : ce qui change
+/// peu se garde longtemps, la boîte de réception presque pas.
+const fn default_keep_secs(kind: ServiceKind) -> u32 {
+    match kind {
+        ServiceKind::Mail => 60,
+        ServiceKind::Timetable | ServiceKind::Homework => 5 * 60,
+        ServiceKind::Grades
+        | ServiceKind::Absences
+        | ServiceKind::Exams
+        | ServiceKind::Documents => 10 * 60,
+        ServiceKind::Apps | ServiceKind::Profile => 60 * 60,
+    }
+}
+
+/// Au-delà d'un jour, une réponse gardée n'est plus celle du jour.
+const MAX_KEEP_SECS: u32 = 24 * 60 * 60;
+
+/// Durée, en secondes, pendant laquelle un client peut resservir la réponse d'un service sans la
+/// redemander : `options.cache-ttl-secs` de la configuration, sinon un défaut par service. `None`
+/// pour un service absent, un simple lien, la démo, ou `cache-ttl-secs = 0`.
+///
+/// C'est une indication donnée au client (`meta.cacheSecs`) : ni le serveur ni les fournisseurs
+/// ne gardent de réponse.
+#[must_use]
+pub fn keep_secs(services: &Services, kind: ServiceKind) -> Option<u32> {
+    let remote = services.availability().into_iter().any(|(found, how)| {
+        found == kind && matches!(how, ServiceAvailability::Api { provider } if provider != "demo")
+    });
+    if !remote {
+        return None;
+    }
+    match services
+        .options(kind)
+        .and_then(|options| options.cache_ttl_secs)
+    {
+        Some(0) => None,
+        Some(secs) => Some(secs.min(MAX_KEEP_SECS)),
+        None => Some(default_keep_secs(kind)),
+    }
 }
 
 /// Fichier servi tel quel (attestation PDF…).
@@ -346,20 +387,101 @@ pub async fn timetable_groups(
     }
 }
 
+/// Relevé de notes : le semestre courant, ou tous ceux que le logiciel donne d'un coup.
 pub async fn grades(ctx: &mut Context<'_>) -> Result<Fetched<GradeReport>, Problem> {
+    grades_of(ctx, None).await
+}
+
+/// Le relevé réduit au semestre demandé ; `not_found` s'il n'y est pas.
+fn only_semester(mut report: GradeReport, semester: Option<&str>) -> Result<GradeReport, Problem> {
+    let Some(id) = semester else {
+        return Ok(report);
+    };
+    report.semesters.retain(|found| found.id == id);
+    if report.semesters.is_empty() {
+        return Err(Problem::new(ErrorCode::NotFound).detail("semestre inconnu"));
+    }
+    Ok(report)
+}
+
+/// Relevé du semestre demandé (un identifiant de `GradeReport::available` ou d'un semestre déjà
+/// rendu). Sans semestre : comme [`grades`].
+pub async fn grades_of(
+    ctx: &mut Context<'_>,
+    semester: Option<&str>,
+) -> Result<Fetched<GradeReport>, Problem> {
     let services = ctx.services();
     match &services.grades {
-        Some(GradesService::Demo) => Ok(fetched(demo::grades(), "demo")),
-        Some(GradesService::EtudiantsApi { base_url }) => Ok(fetched(
-            etudiants_api::fetch_grades(ctx, base_url).await?,
-            "etudiants-api",
-        )),
-        Some(GradesService::ScodocGateway(config)) => scodoc::fetch_grades(ctx, config)
+        Some(GradesService::Demo) => Ok(fetched(only_semester(demo::grades(), semester)?, "demo")),
+        Some(GradesService::EtudiantsApi { base_url }) => {
+            let report = etudiants_api::fetch_grades(ctx, base_url).await?;
+            Ok(fetched(only_semester(report, semester)?, "etudiants-api"))
+        }
+        Some(GradesService::ScodocGateway(config)) => scodoc::fetch_grades(ctx, config, semester)
             .await
             .map(|data| fetched(data, "scodoc-gateway")),
         Some(GradesService::Link(_) | GradesService::None) | None => {
             Err(absent(&services, ServiceKind::Grades))
         }
+    }
+}
+
+/// Ce que seule la passerelle ScoDoc sait faire autour d'un relevé.
+fn scodoc_only(services: &Services, what: &str) -> Problem {
+    match &services.grades {
+        Some(GradesService::Demo | GradesService::EtudiantsApi { .. }) => {
+            Problem::new(ErrorCode::NotImplemented).detail(format!(
+                "{what} : pas disponible avec ce fournisseur de notes"
+            ))
+        }
+        _ => absent(services, ServiceKind::Grades),
+    }
+}
+
+/// Message d'un département (`SemesterGrades::department`) à afficher avec ses relevés.
+pub async fn grade_notice(
+    ctx: &mut Context<'_>,
+    department: &str,
+) -> Result<Fetched<GradeNotice>, Problem> {
+    let services = ctx.services();
+    match &services.grades {
+        Some(GradesService::ScodocGateway(config)) => scodoc::fetch_notice(ctx, config, department)
+            .await
+            .map(|data| fetched(data, "scodoc-gateway")),
+        _ => Err(scodoc_only(&services, "message du département")),
+    }
+}
+
+/// Répartition des notes de la promotion à une évaluation du relevé d'un semestre.
+pub async fn grade_distribution(
+    ctx: &mut Context<'_>,
+    semester: &str,
+    evaluation: &str,
+) -> Result<Fetched<GradeDistribution>, Problem> {
+    let services = ctx.services();
+    match &services.grades {
+        Some(GradesService::ScodocGateway(config)) => {
+            scodoc::fetch_distribution(ctx, config, semester, evaluation)
+                .await
+                .map(|data| fetched(data, "scodoc-gateway"))
+        }
+        _ => Err(scodoc_only(&services, "répartition des notes")),
+    }
+}
+
+/// Relevé PDF d'un semestre.
+pub async fn grade_transcript(
+    ctx: &mut Context<'_>,
+    semester: &str,
+) -> Result<Fetched<Download>, Problem> {
+    let services = ctx.services();
+    match &services.grades {
+        Some(GradesService::ScodocGateway(config)) => {
+            scodoc::fetch_transcript(ctx, config, semester)
+                .await
+                .map(|data| fetched(data, "scodoc-gateway"))
+        }
+        _ => Err(scodoc_only(&services, "relevé PDF")),
     }
 }
 

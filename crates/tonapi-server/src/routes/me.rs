@@ -48,7 +48,7 @@ pub async fn me(
     State(state): State<AppState>,
     AuthSession(session): AuthSession,
 ) -> Result<Response, ApiError> {
-    respond(&state, session, async |ctx| {
+    respond(&state, session, None, async |ctx| {
         let (profile, provider) = match tonapi_providers::profile(ctx).await {
             Ok(fetched) => (fetched.data, fetched.provider),
             Err(_) => (

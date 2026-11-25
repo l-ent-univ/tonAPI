@@ -337,6 +337,7 @@ pub(crate) fn parse_grades(value: &Value) -> Result<GradeReport, Problem> {
                             grade,
                             coefficient: None,
                             status,
+                            ..Evaluation::default()
                         });
                     }
                 }
@@ -358,6 +359,7 @@ pub(crate) fn parse_grades(value: &Value) -> Result<GradeReport, Problem> {
                             grade: None,
                             coefficient: None,
                             status: Some(status),
+                            ..Evaluation::default()
                         });
                     }
                 }
@@ -366,6 +368,7 @@ pub(crate) fn parse_grades(value: &Value) -> Result<GradeReport, Problem> {
                     name,
                     average,
                     evaluations,
+                    ..ModuleGrades::default()
                 });
             }
             semesters.push(SemesterGrades {
@@ -379,10 +382,14 @@ pub(crate) fn parse_grades(value: &Value) -> Result<GradeReport, Problem> {
                 rank: None,
                 units: Vec::new(),
                 modules,
+                ..SemesterGrades::default()
             });
         }
     }
-    Ok(GradeReport { semesters })
+    Ok(GradeReport {
+        semesters,
+        ..GradeReport::default()
+    })
 }
 
 /// Épreuves de toutes les périodes, triées par date (les épreuves sans date à la fin).

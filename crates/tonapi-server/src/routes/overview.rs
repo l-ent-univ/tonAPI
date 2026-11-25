@@ -65,6 +65,9 @@ pub struct OverviewItem {
     pub data: Option<Value>,
     pub problem: Option<Problem>,
     pub duration_ms: u64,
+    /// Durée, en secondes, pendant laquelle le client peut garder `data` (comme `meta.cacheSecs`
+    /// de la route du service). Absent : ne pas le garder.
+    pub cache_secs: Option<u32>,
 }
 
 /// Plusieurs services en un appel, interrogés en parallèle.
@@ -108,13 +111,34 @@ pub async fn overview(
         establishment: merged.establishment.as_ref().map(|e| e.id.clone()),
         provider: "overview".to_owned(),
         fetched_at: Utc::now().fixed_offset(),
+        // Chaque élément porte sa propre durée.
+        cache_secs: None,
     };
+    let kept = university.services_for(merged.establishment.as_ref().map(|e| e.id.as_str()));
+    let items: Vec<OverviewItem> = items
+        .into_iter()
+        .map(|mut item| {
+            if item.data.is_some() {
+                item.cache_secs = kind_of(&item.service)
+                    .and_then(|kind| tonapi_providers::keep_secs(&kept, kind));
+            }
+            item
+        })
+        .collect();
     let mut response = axum::Json(DataResponse { data: items, meta }).into_response();
     no_store(&mut response);
     if merged != session {
         attach_session(&state, &merged, &mut response)?;
     }
     Ok(response)
+}
+
+/// Service de configuration derrière une clé de `services=`.
+fn kind_of(key: &str) -> Option<ServiceKind> {
+    match key {
+        "timetable-groups" => Some(ServiceKind::Timetable),
+        other => ServiceKind::ALL.iter().find(|k| k.key() == other).copied(),
+    }
 }
 
 /// Services demandés (`services=…`), ou par défaut le profil et chaque service servi par l'API.
@@ -182,11 +206,7 @@ fn groups(
         .services_for(session.establishment.as_ref().map(|e| e.id.as_str()))
         .availability();
     let provider = |key: &str| -> Option<String> {
-        let kind = match key {
-            "profile" => ServiceKind::Profile,
-            "timetable-groups" => ServiceKind::Timetable,
-            other => *ServiceKind::ALL.iter().find(|k| k.key() == other)?,
-        };
+        let kind = kind_of(key)?;
         available.iter().find_map(|(k, a)| match a {
             ServiceAvailability::Api { provider } if *k == kind => Some(provider.clone()),
             _ => None,
@@ -307,6 +327,7 @@ async fn run_all(
                     data,
                     problem,
                     duration_ms: ms,
+                    cache_secs: None,
                 },
             ));
         }

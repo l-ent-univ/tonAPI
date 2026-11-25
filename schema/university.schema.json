@@ -994,7 +994,7 @@
       "description": "Réglages communs à tous les fournisseurs distants. Tous facultatifs.",
       "properties": {
         "cache-ttl-secs": {
-          "description": "Durée de cache des réponses, en secondes. Défaut propre au fournisseur.",
+          "description": "Durée, en secondes, pendant laquelle un client peut garder la réponse du service sans la\nredemander (`meta.cacheSecs`). `0` : jamais. Défaut propre au service. Le serveur, lui, ne\ngarde aucune réponse.",
           "format": "uint32",
           "minimum": 0,
           "type": [

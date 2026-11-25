@@ -10,6 +10,7 @@ use tonapi_core::{ErrorCode, Homework, Problem};
 use url::Url;
 
 use super::{AJAX, CallError, WEBSERVICE};
+pub(super) use crate::common::{decode_entities, html_to_text};
 use crate::net::upstream;
 
 /// `errorcode` qui disent « la session web est perdue » (Moodle, tafac et lent-ios).
@@ -364,82 +365,4 @@ pub(super) fn clean_name(name: &str) -> String {
         }
     }
     name.to_owned()
-}
-
-fn entity(name: &str) -> Option<char> {
-    match name {
-        "amp" => Some('&'),
-        "lt" => Some('<'),
-        "gt" => Some('>'),
-        "quot" => Some('"'),
-        "apos" => Some('\''),
-        "nbsp" => Some(' '),
-        "laquo" => Some('«'),
-        "raquo" => Some('»'),
-        _ => {
-            let digits = name.strip_prefix('#')?;
-            let code = match digits.strip_prefix(['x', 'X']) {
-                Some(hex) => u32::from_str_radix(hex, 16).ok()?,
-                None => digits.parse().ok()?,
-            };
-            char::from_u32(code)
-        }
-    }
-}
-
-/// `&amp;`, `&#039;`, `&#x27;`… ; une entité inconnue reste telle quelle.
-pub(super) fn decode_entities(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let mut rest = input;
-    while let Some(start) = rest.find('&') {
-        out.push_str(rest.get(..start).unwrap_or_default());
-        let tail = rest.get(start..).unwrap_or_default();
-        // `;` cherché dans les 11 premiers octets seulement : un `&` sans `;` proche ne relit pas
-        // toute la fin du texte (quadratique sur des milliers de `&`).
-        let decoded = tail
-            .as_bytes()
-            .iter()
-            .take(11)
-            .position(|b| *b == b';')
-            .and_then(|end| Some((entity(tail.get(1..end)?)?, end + 1)));
-        if let Some((character, length)) = decoded {
-            out.push(character);
-            rest = tail.get(length..).unwrap_or_default();
-        } else {
-            out.push('&');
-            rest = tail.get(1..).unwrap_or_default();
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-/// Texte d'un fragment HTML : balises retirées (un espace pour les blocs), entités décodées,
-/// espaces réduits.
-pub(super) fn html_to_text(html: &str) -> String {
-    const BLOCKS: [&str; 12] = [
-        "br", "p", "div", "li", "ul", "ol", "tr", "td", "h1", "h2", "h3", "h4",
-    ];
-    let mut text = String::with_capacity(html.len());
-    let mut chars = html.chars();
-    while let Some(c) = chars.next() {
-        if c != '<' {
-            text.push(c);
-            continue;
-        }
-        let tag: String = chars.by_ref().take_while(|t| *t != '>').collect();
-        let name = tag
-            .trim_start_matches('/')
-            .split(|t: char| !t.is_ascii_alphanumeric())
-            .next()
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        if BLOCKS.contains(&name.as_str()) {
-            text.push(' ');
-        }
-    }
-    decode_entities(&text)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }

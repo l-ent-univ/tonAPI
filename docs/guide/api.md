@@ -24,7 +24,7 @@ Hors dev, `/docs` et `/openapi.json` ne sont pas servis par défaut ([serveur.md
 | Session | `POST /v1/auth/login`, `POST /v1/auth/mfa` | non |
 | Session | `POST /v1/auth/service-login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout` | oui |
 | Étudiant | `GET /v1/me`, `PUT /v1/me/establishment` | oui |
-| Données | `GET /v1/timetable`, `/v1/timetable/groups`, `/v1/grades`, `/v1/absences`, `/v1/exams`, `/v1/homework`, `/v1/mail/inbox`, `/v1/apps`, `/v1/documents`, `/v1/documents/{id}` | oui |
+| Données | `GET /v1/timetable`, `/v1/timetable/groups`, `/v1/grades`, `/v1/grades/notice`, `/v1/grades/{semester}/transcript`, `/v1/grades/{semester}/evaluations/{evaluation}/distribution`, `/v1/absences`, `/v1/exams`, `/v1/homework`, `/v1/mail/inbox`, `/v1/apps`, `/v1/documents`, `/v1/documents/{id}` | oui |
 | Appel groupé | `GET /v1/overview` | oui |
 | Documentation | `GET /openapi.json`, `GET /docs` (si `TONAPI_DOCS`) | non |
 
@@ -140,6 +140,45 @@ Seuls `ade-portal-rest` et la démo le font. Les autres fournisseurs répondent 
 
 Chaque cours porte `color` et `activityId` quand le logiciel les donne (ADE par son API REST :
 couleur `R,V,B`, numéro de l'activité) ; `null` sinon.
+
+## Notes
+
+`GET /v1/grades` renvoie le relevé du semestre courant (`semesters`) et, quand le logiciel les
+liste, tous les semestres de l'étudiant (`available`). `GET /v1/grades?semester=<id>` renvoie le
+relevé d'un de ces semestres ; `not_found` si le fournisseur ne le connaît pas.
+
+Un semestre porte, quand le logiciel les donne : numéro, année, dates, département, publication
+(`published`, `notice`), moyennes de la promotion (`stats`), rangs du semestre et de chaque groupe,
+crédits ECTS, décisions de jury. Une unité porte sa couleur, ses bonus et malus, sa
+capitalisation, sa décision de jury et les modules qui y comptent avec leur coefficient. Une
+évaluation porte sa nature (`normal`, `resit`, `second-session`, `bonus`), son poids dans chaque
+unité (`weights`) et les notes de la promotion (`stats`). Ce que l'établissement masque (rangs,
+crédits acquis) n'est pas rendu.
+
+Trois routes complètent le relevé. Seul `scodoc-gateway` les sert ; les autres fournisseurs
+répondent `not_implemented` (501).
+
+- `GET /v1/grades/notice?department=<sigle>` : message du département (`department` d'un
+  semestre), en texte brut ; `message` absent s'il n'a rien écrit.
+- `GET /v1/grades/{semester}/evaluations/{evaluation}/distribution` : notes de la promotion par
+  point entier (21 cases de 0 à 20). `unavailable` vaut `disabled`, `hidden` ou `too-few` quand il
+  n'y a pas de répartition. `not_found` si l'évaluation n'est pas dans le relevé de l'étudiant.
+- `GET /v1/grades/{semester}/transcript` : relevé PDF du semestre, en pièce jointe.
+
+Dans un semestre, `transcript` et `distributions` disent si ces deux routes ont une réponse à
+donner ; ils ne sont connus qu'avec le relevé du semestre courant.
+
+## Durée de garde d'une réponse
+
+Chaque réponse de données porte `meta.cacheSecs` : le nombre de secondes pendant lesquelles le
+client peut la resservir depuis sa mémoire sans la redemander. Absent (`null`) : ne pas la garder
+(démo, `/v1/me`, service réglé à `0`). Dans l'appel groupé, chaque élément porte son `cacheSecs`.
+
+C'est une indication, pas un cache : le serveur ne garde aucune réponse et répond toujours
+`Cache-Control: no-store`, pour qu'un navigateur n'écrive jamais ces données sur disque. La durée
+vient de `options.cache-ttl-secs` du service, sinon d'un défaut par service
+([configuration.md](configuration.md)). Un client qui garde une réponse la jette à la déconnexion
+et quand l'étudiant demande à rafraîchir.
 
 ## Erreurs
 

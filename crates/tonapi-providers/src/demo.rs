@@ -8,7 +8,7 @@ use chrono_tz::Europe::Paris;
 use tonapi_core::{
     Absence, AbsenceReport, AbsenceTotals, App, Course, Document, DocumentKind, ErrorCode,
     Evaluation, Exam, Grade, GradeReport, Homework, MailAddress, MailInbox, MailMessage,
-    ModuleGrades, Problem, Profile, SemesterGrades, TimetableGroup, UnitGrade,
+    ModuleGrades, Problem, Profile, SemesterGrades, SemesterRef, TimetableGroup, UnitGrade,
 };
 
 use crate::Download;
@@ -256,6 +256,7 @@ fn evaluation(
         } else {
             None
         },
+        ..Evaluation::default()
     }
 }
 
@@ -272,12 +273,14 @@ pub(crate) fn grades() -> GradeReport {
                     name: "Réaliser un développement d'application".into(),
                     average: Some(grade(14.1)),
                     ects: Some(5.0),
+                    ..UnitGrade::default()
                 },
                 UnitGrade {
                     code: "UE3.2".into(),
                     name: "Optimiser des applications".into(),
                     average: Some(grade(12.75)),
                     ects: Some(5.0),
+                    ..UnitGrade::default()
                 },
             ],
             modules: vec![
@@ -295,6 +298,7 @@ pub(crate) fn grades() -> GradeReport {
                         ),
                         evaluation("demo-e2", "Projet front", (2026, 10, 9), Some(14.0), 2.0),
                     ],
+                    ..ModuleGrades::default()
                 },
                 ModuleGrades {
                     code: "R3.07".into(),
@@ -304,8 +308,17 @@ pub(crate) fn grades() -> GradeReport {
                         evaluation("demo-e3", "QCM SQL", (2026, 9, 30), Some(11.5), 1.0),
                         evaluation("demo-e4", "Partiel", (2026, 10, 7), None, 3.0),
                     ],
+                    ..ModuleGrades::default()
                 },
             ],
+            number: Some(3),
+            ..SemesterGrades::default()
+        }],
+        available: vec![SemesterRef {
+            id: "demo-s3".into(),
+            name: "Semestre 3".into(),
+            number: Some(3),
+            year: None,
         }],
     }
 }

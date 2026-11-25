@@ -4,6 +4,8 @@
 //!
 //! - `/scodoc/services/doAuth.php` : pose `PHPSESSID`, renvoie vers le CAS, valide le ticket ;
 //! - `/scodoc/services/data.php?q=dataPremièreConnexion` : le contenu fourni, ou `{"redirect"}` ;
+//! - `data.php?q=relevéEtudiant|getReportPageMessage|listeNotes` et `bulletin_PDF.php` : ce que le
+//!   test a rangé dans [`Mock`], derrière la même session ;
 //! - `/cas/login` et `POST /cas/` : formulaire à jeton `lt`, TGC `tgc-ok`.
 #![allow(dead_code)] // chaque consommateur n'utilise qu'une partie
 
@@ -31,6 +33,18 @@ pub struct Mock {
     pub always_expired: bool,
     pub data_calls: u32,
     pub data_methods: Vec<String>,
+    /// Actions demandées à `data.php`, avec leur paramètre (`relevéEtudiant:890`).
+    pub data_actions: Vec<String>,
+    /// Corps de `relevéEtudiant`, par semestre.
+    pub semesters: HashMap<String, String>,
+    /// Corps de `getReportPageMessage`.
+    pub message: String,
+    /// Corps de `listeNotes`.
+    pub distribution: String,
+    /// `bulletin_PDF.php` rend un PDF ; sinon une page d'erreur.
+    pub pdf: bool,
+    /// Paramètres reçus par `bulletin_PDF.php`.
+    pub pdf_queries: Vec<String>,
     /// Tickets validés par `doAuth.php`.
     pub ticket_validations: u32,
     /// Passages par le CAS sans TGC (formulaire affiché).
@@ -102,6 +116,7 @@ pub async fn start(payload: &str) -> Server {
     let app = Router::new()
         .route("/scodoc/services/doAuth.php", get(do_auth))
         .route("/scodoc/services/data.php", any(data))
+        .route("/scodoc/services/bulletin_PDF.php", post(transcript))
         .route("/scodoc/", get(|| async { "passerelle" }))
         .route("/cas/login", get(cas_login))
         .route("/cas/", post(cas_post))
@@ -213,8 +228,28 @@ async fn data(
     let mut state = shared.lock().unwrap();
     state.data_calls += 1;
     state.data_methods.push(method.to_string());
-    if query.get("q").map(String::as_str) != Some("dataPremièreConnexion") {
-        return json(r#"{"erreur":"Mauvaise requête."}"#);
+    let action = query.get("q").cloned().unwrap_or_default();
+    let param = |name: &str| query.get(name).cloned().unwrap_or_default();
+    let detail = match action.as_str() {
+        "relevéEtudiant" => param("semestre"),
+        "getReportPageMessage" => param("dep"),
+        "listeNotes" => param("eval"),
+        _ => String::new(),
+    };
+    state.data_actions.push(if detail.is_empty() {
+        action.clone()
+    } else {
+        format!("{action}:{detail}")
+    });
+    let known = [
+        "dataPremièreConnexion",
+        "relevéEtudiant",
+        "getReportPageMessage",
+        "listeNotes",
+    ];
+    let wrong = r#"{"erreur":"Mauvaise requête."}"#;
+    if !known.contains(&action.as_str()) {
+        return json(wrong);
     }
     let lost = r#"{"redirect":"/services/doAuth.php"}"#;
     if state.always_expired {
@@ -226,10 +261,38 @@ async fn data(
     }
     let authenticated =
         cookie(&headers, "PHPSESSID").is_some_and(|id| state.sessions.get(&id) == Some(&true));
-    if authenticated {
-        json(&state.payload)
+    if !authenticated {
+        return json(lost);
+    }
+    match action.as_str() {
+        "dataPremièreConnexion" => json(&state.payload),
+        "relevéEtudiant" => json(state.semesters.get(&detail).map_or(wrong, String::as_str)),
+        "getReportPageMessage" => json(&state.message),
+        _ => json(&state.distribution),
+    }
+}
+
+async fn transcript(
+    State(shared): State<Shared>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response<Body> {
+    let mut state = shared.lock().unwrap();
+    let mut asked: Vec<String> = query.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    asked.sort();
+    state.pdf_queries.push(asked.join("&"));
+    let authenticated =
+        cookie(&headers, "PHPSESSID").is_some_and(|id| state.sessions.get(&id) == Some(&true));
+    if authenticated && state.pdf {
+        Response::builder()
+            .header(header::CONTENT_TYPE, "application/pdf")
+            .body(Body::from(&b"%PDF-1.4 faux releve"[..]))
+            .unwrap()
     } else {
-        json(lost)
+        Response::builder()
+            .header(header::CONTENT_TYPE, "text/html")
+            .body(Body::from("<html>Connexion requise</html>"))
+            .unwrap()
     }
 }
 
