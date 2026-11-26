@@ -1,5 +1,7 @@
 //! Connexion CAS contre un faux CAS local qui reproduit la chaîne de Montpellier :
 //! passerelle esup-otp (`/cas`), CAS mot de passe (`/pre-otp`), API OTP et socket Engine.IO.
+//! Sous `/wf`, celle de Rennes : le second facteur est une étape du webflow d'Apereo CAS, et le
+//! code part par mail.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -9,7 +11,8 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, Response, StatusCode, Uri, header};
 use tonapi_config::CasFlavor;
-use tonapi_http::cas::{self, CasError, CasServer, Credentials, Outcome};
+use tonapi_http::cas::{self, CasError, CasServer, Credentials, OtpForm, Outcome};
+use tonapi_http::otp::OtpTransport;
 use tonapi_http::{Browser, BrowserOptions, CookieJar, otp};
 use url::Url;
 
@@ -25,6 +28,8 @@ struct Mock {
     refuse_password: Option<StatusCode>,
     /// Réponse du CAS au POST du code : page de refus que le code ne connaît pas.
     refuse_code: Option<StatusCode>,
+    /// Requête (`auto` ou vide) du dernier envoi de code demandé à l'API.
+    code_sent: Option<String>,
 }
 
 const LOCKED_PAGE: &str = "<html><body><h1>Compte temporairement verrouillé</h1><p>Réessayez plus tard.</p></body></html>";
@@ -104,6 +109,26 @@ fn otp_page(base: &str, error: bool) -> String {
         <input type="hidden" name="uid_hint" value=""><input name="token"><div id="errors">{error}</div></form>
         <script type="module">start({{"apiUrl":"{base}/otp/","uid":"e1","userHash":"H","validated_otp_too_old":false}})</script>
         </body></html>"#
+    )
+}
+
+/// Étape du code dans le webflow d'Apereo CAS : `execution` change à chaque réponse.
+fn webflow_otp_page(base: &str, execution: &str, error: bool) -> String {
+    let error = if error {
+        r#"<div id="errors" class="notification text-center" data-status="error" role="alert"><p>Verification failed!</p><p>Please try again...</p></div>"#
+    } else {
+        ""
+    };
+    let api = format!("{base}/wfotp").replace('/', "\\/");
+    format!(
+        r#"<html><head><title>Verification</title></head><body>
+        <form method="post" id="fm1">{error}<input type="hidden" name="_eventId_submit" value="Login" /><input type="hidden" name="execution" value="{execution}" /></form>
+        <script type="module">
+          const apiUrl = "{api}";
+          const uid = "e2";
+          const userHash = "H2";
+          (async () => {{ const url = new URL(apiUrl); }})();
+        </script></body></html>"#
     )
 }
 
@@ -208,6 +233,61 @@ async fn handle(
             } else {
                 html(otp_page(&base, true), None)
             }
+        }
+        (Method::GET, "/wfapp/") => {
+            if has_cookie(&headers, "wfapp=ok") {
+                html("<html><body>bienvenue</body></html>".into(), None)
+            } else if query(&uri, "ticket").as_deref() == Some("ST-wf") {
+                redirect(&format!("{base}/wfapp/"), Some("wfapp=ok; Path=/wfapp"))
+            } else {
+                redirect(
+                    &format!("{base}/wf/login?service={}", enc(&format!("{base}/wfapp/"))),
+                    None,
+                )
+            }
+        }
+        (Method::GET, "/wf/login") => {
+            if has_cookie(&headers, "TGC=wf") {
+                redirect(&format!("{base}/wfapp/?ticket=ST-wf"), None)
+            } else {
+                html(login_page(false), None)
+            }
+        }
+        (Method::POST, "/wf/login") if form(&body, "password").is_some() => {
+            s.password_posts += 1;
+            let ok = query(&uri, "service").is_some()
+                && form(&body, "username").as_deref() == Some("etu")
+                && form(&body, "password").as_deref() == Some("s3cret+&=")
+                && form(&body, "execution").as_deref() == Some("E1");
+            if ok {
+                html(webflow_otp_page(&base, "W1", false), None)
+            } else {
+                html(login_page(true), None)
+            }
+        }
+        (Method::POST, "/wf/login") => {
+            let in_flow = query(&uri, "service").is_some()
+                && form(&body, "_eventId_submit").as_deref() == Some("Login")
+                && form(&body, "execution").is_some_and(|e| e == "W1" || e == "W2");
+            if in_flow && form(&body, "token").as_deref() == Some("654321") {
+                redirect(
+                    &format!("{base}/wfapp/?ticket=ST-wf"),
+                    Some("TGC=wf; Path=/wf; HttpOnly"),
+                )
+            } else {
+                // Le vrai CAS refuse un code en 401, avec la même page.
+                status_html(
+                    StatusCode::UNAUTHORIZED,
+                    &webflow_otp_page(&base, "W2", true),
+                )
+            }
+        }
+        (Method::GET, "/wfotp/users/e2/H2") => text(
+            r#"{"code":"Ok","user":{"methods":{"codeRequired":true,"totp":{"active":false,"transports":[]},"random_code":{"active":false,"transports":["sms"]},"random_code_mail":{"active":true,"transports":["mail"]},"push":{"active":false,"transports":["push"]}},"transports":{"mail":"e***@exemple.test"}}}"#,
+        ),
+        (Method::POST, "/wfotp/users/e2/methods/random_code_mail/transports/mail/H2") => {
+            s.code_sent = Some(uri.query().unwrap_or_default().to_owned());
+            text(r#"{"code":"Ok"}"#)
         }
         (Method::GET, "/otp/users/e1/H") => text(
             r#"{"code":"Ok","user":{"methods":{"codeRequired":true,"waitingFor":true,"totp":{"active":true},"push":{"active":true}},"transports":{"push":"Google Pixel 8"}}}"#,
@@ -471,4 +551,73 @@ async fn page_de_refus_inconnue_apres_le_code() {
         matches!(outcome, Err(CasError::Unexpected(_))),
         "{outcome:?}"
     );
+}
+
+/// Rennes : le code est une étape du webflow, il part par mail, et un mauvais code est refusé
+/// en 401 avec la même page.
+#[tokio::test]
+async fn second_facteur_du_webflow_avec_un_code_envoye_par_mail() {
+    let (state, base) = start(true).await;
+    let app = Url::parse(&format!("{base}/wfapp/")).unwrap();
+    let cas_server = CasServer::new(
+        Url::parse(&format!("{base}/wf/")).unwrap(),
+        CasFlavor::Apereo,
+    );
+    let mut b = browser(CookieJar::default());
+
+    let Outcome::SecondFactor(challenge) = cas::open(&mut b, &cas_server, app, Some(ETU))
+        .await
+        .unwrap()
+    else {
+        panic!("second facteur attendu")
+    };
+    assert!(challenge.password_posted);
+    assert_eq!(challenge.uid, "e2");
+    assert!(matches!(challenge.form, OtpForm::Webflow { .. }));
+
+    let methods = otp::methods(&mut b, &challenge).await.unwrap();
+    assert_eq!(methods.mail.as_deref(), Some("e***@exemple.test"));
+    assert_eq!(methods.sms, None);
+    assert!(methods.code && !methods.app && methods.push.is_none());
+    assert_eq!(methods.only_transport(), Some(OtpTransport::Mail));
+
+    // Le SMS n'est pas un transport de ce compte : rien ne part.
+    let refused = otp::send_code(&mut b, &challenge, OtpTransport::Sms, false).await;
+    assert!(
+        matches!(refused, Err(CasError::Unexpected(_))),
+        "{refused:?}"
+    );
+    assert_eq!(state.lock().unwrap().code_sent, None);
+    otp::send_code(&mut b, &challenge, OtpTransport::Mail, true)
+        .await
+        .unwrap();
+    assert_eq!(state.lock().unwrap().code_sent.as_deref(), Some("auto"));
+    otp::send_code(&mut b, &challenge, OtpTransport::Mail, false)
+        .await
+        .unwrap();
+    assert_eq!(state.lock().unwrap().code_sent.as_deref(), Some(""));
+
+    let Outcome::SecondFactor(again) =
+        cas::submit_code(&mut b, &cas_server, &challenge, "000000", true)
+            .await
+            .unwrap()
+    else {
+        panic!("le mauvais code devait être refusé")
+    };
+    assert_eq!(
+        again.error.as_deref(),
+        Some("Verification failed! Please try again...")
+    );
+    // La page du refus porte la suite du webflow : c'est elle qui reçoit le code suivant.
+    assert_ne!(again.form, challenge.form);
+
+    let Outcome::SignedIn { page, .. } =
+        cas::submit_code(&mut b, &cas_server, &again, "654 321", true)
+            .await
+            .unwrap()
+    else {
+        panic!("connexion attendue")
+    };
+    assert!(page.body.contains("bienvenue"));
+    assert_eq!(state.lock().unwrap().password_posts, 1);
 }

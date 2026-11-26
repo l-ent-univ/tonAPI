@@ -8,7 +8,7 @@ use serde::Serialize;
 use tonapi_config::{PortalConfig, ResolvedUniversity, Sso};
 use tonapi_core::{ErrorCode, Problem};
 use tonapi_http::cas::{self, CasError, CasServer, Credentials, OtpChallenge, Outcome};
-use tonapi_http::otp::{self, OtpMethods};
+use tonapi_http::otp::{self, OtpMethods, OtpTransport};
 use tonapi_http::{Browser, BrowserOptions, CookieJar};
 use tonapi_session::{SessionData, StoredCookie};
 use url::Url;
@@ -26,8 +26,13 @@ const PENDING_TTL_SECS: i64 = 300;
 #[serde(rename_all = "camelCase")]
 pub struct MfaPrompt {
     pub methods: OtpMethods,
+    /// L'API OTP a dit les méthodes du compte. Sinon `methods` n'annonce que le code saisi,
+    /// toujours possible.
+    pub methods_known: bool,
     /// Message de l'université ou de tonAPI (code refusé, notification non validée).
     pub message: Option<String>,
+    /// Transport par lequel un code vient d'être envoyé à l'étudiant.
+    pub sent: Option<OtpTransport>,
 }
 
 /// Résultat d'une étape de connexion.
@@ -57,6 +62,13 @@ pub enum MfaAction {
     /// Notification sur le téléphone, attendue au plus `wait`.
     Push {
         wait: Duration,
+    },
+    /// Faire envoyer un code par SMS ou par mail. La session reste en attente : le code reçu
+    /// se valide ensuite avec [`MfaAction::Code`]. `unasked` : envoi que l'étudiant n'a pas
+    /// demandé (son seul moyen d'obtenir un code, voir `OtpMethods::only_transport`).
+    Send {
+        transport: OtpTransport,
+        unasked: bool,
     },
 }
 
@@ -226,15 +238,16 @@ async fn prompt(
     browser: &mut Browser,
     challenge: &OtpChallenge,
     message: Option<String>,
+    sent: Option<OtpTransport>,
     now: DateTime<Utc>,
 ) -> Result<LoginOutcome, Problem> {
     // Sans la liste des méthodes, le code saisi reste toujours possible.
-    let methods = otp::methods(browser, challenge)
-        .await
-        .unwrap_or(OtpMethods {
-            push: None,
-            code: true,
-        });
+    let known = otp::methods(browser, challenge).await.ok();
+    let methods_known = known.is_some();
+    let methods = known.unwrap_or(OtpMethods {
+        code: true,
+        ..OtpMethods::default()
+    });
     session.cookies = browser.jar.to_stored(now.timestamp());
     session.tokens.insert(
         OTP_TOKEN.to_owned(),
@@ -249,7 +262,9 @@ async fn prompt(
         session,
         MfaPrompt {
             methods,
+            methods_known,
             message: message.or_else(|| challenge.error.clone()),
+            sent,
         },
     ))
 }
@@ -322,7 +337,7 @@ pub async fn login(
             } => {
                 reached_cas(&browser, &cas)?;
                 if let Some(challenge) = step_up(university, &cas, &mut browser).await {
-                    return prompt(session, &mut browser, &challenge, None, input.now).await;
+                    return prompt(session, &mut browser, &challenge, None, None, input.now).await;
                 }
                 let session = signed_in(session, &browser, input.now, input.ttl_secs);
                 return Ok(LoginOutcome::SignedIn(
@@ -331,7 +346,7 @@ pub async fn login(
                 ));
             }
             Outcome::SecondFactor(challenge) if challenge.password_posted => {
-                return prompt(session, &mut browser, &challenge, None, input.now).await;
+                return prompt(session, &mut browser, &challenge, None, None, input.now).await;
             }
             // Identifiants non vérifiés : essai suivant, avec un pot vide.
             Outcome::SignedIn { .. } | Outcome::SecondFactor(_) => {}
@@ -341,7 +356,10 @@ pub async fn login(
         .detail("le CAS n'a pas demandé le mot de passe : connexion refusée"))
 }
 
-/// Valide le second facteur d'une session en attente.
+/// Valide le second facteur d'une session en attente, ou fait envoyer son code.
+///
+/// `net` : les réglages de la connexion qui a mené au second facteur. Un CAS qui lie son ticket
+/// au `User-Agent` ne l'honore ensuite que pour celui qui a posté le code.
 pub async fn complete_mfa(
     university: &ResolvedUniversity,
     pending: SessionData,
@@ -349,6 +367,7 @@ pub async fn complete_mfa(
     remember_device: bool,
     now: DateTime<Utc>,
     ttl_secs: i64,
+    net: NetSettings,
 ) -> Result<LoginOutcome, Problem> {
     let cas = cas_server(university).ok_or(ErrorCode::InvalidRequest)?;
     let challenge: OtpChallenge = pending
@@ -362,7 +381,7 @@ pub async fn complete_mfa(
         return Err(Problem::new(ErrorCode::InvalidToken)
             .detail("second facteur sans mot de passe vérifié : recommencer la connexion"));
     }
-    let mut browser = browser(university, pending.cookies.clone(), NetSettings::default())?;
+    let mut browser = browser(university, pending.cookies.clone(), net)?;
 
     let code = match action {
         MfaAction::Code(code) => code,
@@ -372,9 +391,23 @@ pub async fn complete_mfa(
                 .map_err(cas_problem)?;
             let Some(code) = received else {
                 let message = Some("Notification non validée à temps : réessayez.".to_owned());
-                return prompt(pending, &mut browser, &challenge, message, now).await;
+                return prompt(pending, &mut browser, &challenge, message, None, now).await;
             };
             code
+        }
+        MfaAction::Send { transport, unasked } => {
+            otp::send_code(&mut browser, &challenge, transport, unasked)
+                .await
+                .map_err(cas_problem)?;
+            return prompt(
+                pending,
+                &mut browser,
+                &challenge,
+                None,
+                Some(transport),
+                now,
+            )
+            .await;
         }
     };
     match cas::submit_code(&mut browser, &cas, &challenge, &code, remember_device)
@@ -384,23 +417,17 @@ pub async fn complete_mfa(
         Outcome::SignedIn { .. } => {
             let session = signed_in(pending, &browser, now, ttl_secs);
             Ok(LoginOutcome::SignedIn(
-                crate::with_detected_establishment(
-                    university,
-                    session,
-                    now,
-                    NetSettings::default(),
-                )
-                .await,
+                crate::with_detected_establishment(university, session, now, net).await,
             ))
         }
-        Outcome::SecondFactor(mut next) => {
+        Outcome::SecondFactor(mut again) => {
             // Même connexion, mot de passe déjà vérifié : la page suivante en hérite.
-            next.password_posted = challenge.password_posted;
-            let message = next
+            again.password_posted = challenge.password_posted;
+            let message = again
                 .error
                 .clone()
                 .or_else(|| Some("Code refusé.".to_owned()));
-            prompt(pending, &mut browser, &next, message, now).await
+            prompt(pending, &mut browser, &again, message, None, now).await
         }
     }
 }

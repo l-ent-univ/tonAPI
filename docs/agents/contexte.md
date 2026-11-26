@@ -23,7 +23,7 @@ propriétaire.
 | Configuration | types TOML, héritage université → composante, validation, schémas, modèles | une configuration valide ne prouve pas un accès réel ([../guide/configuration.md](../guide/configuration.md)) |
 | Établissements | `demo`, `umontpellier` (4 composantes), `univ-montp3`, `univ-rennes` (2 composantes) | réels marqués `beta` ou `planned` ([../reference/couverture.md](../reference/couverture.md)) |
 | API | routes `/v1`, appel groupé, OpenAPI ([../guide/api.md](../guide/api.md)) | une route peut répondre `not_implemented` |
-| Session et SSO | jeton chiffré, CAS (`apereo`, `esup-otp-gateway`, `phpcas`), second facteur esup-otp, comptes de service | second facteur de Rennes jamais essayé en réel |
+| Session et SSO | jeton chiffré, CAS (`apereo`, `esup-otp-gateway`, `phpcas`), second facteur esup-otp (passerelle de Montpellier ; étape du webflow d'Apereo CAS à Rennes, code envoyé par SMS ou par mail), comptes de service | à Rennes, seul le code envoyé par mail a été essayé en réel (26/11/2026) ; notification, application et SMS non essayés |
 | Exploitation | clés obligatoires hors dev, répartiteurs de confiance, `/readyz` et arrêt en trois temps, journal JSON par requête, `/metrics` interne, Dockerfile et `compose.yaml` ([../exploitation/serveur.md](../exploitation/serveur.md), [../exploitation/docker.md](../exploitation/docker.md)) | image jamais construite hors CI ; limites non partagées entre instances ; accords des DSI et RGPD ([../exploitation/production.md](../exploitation/production.md)) |
 
 Fournisseurs branchés dans `crates/tonapi-providers/src/lib.rs` et testés contre de faux serveurs :
@@ -72,7 +72,8 @@ réglages réseau de la connexion (`NetSettings::user_agent`). [vu, 25/11/2026] 
 `User-Agent` de la connexion : `still_signed_in` répond oui pour une session vivante et non
 après la déconnexion, et `logout` ferme la session CAS. [déduit] Sous un autre `User-Agent`,
 `logout` ne ferme rien : ce CAS efface le ticket qu'un autre `User-Agent` lui présente au lieu
-de l'honorer. `complete_mfa` et `refresh` se présentent encore sous le `User-Agent` de tonAPI.
+de l'honorer. `complete_mfa` prend lui aussi les réglages réseau de la connexion ; `refresh` se présente encore
+sous le `User-Agent` de tonAPI.
 
 Variables d'environnement, valeurs par défaut et rotation des clés :
 [../exploitation/serveur.md](../exploitation/serveur.md). Sans `TONAPI_SESSION_KEYS`, le serveur refuse de

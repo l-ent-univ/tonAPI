@@ -11,7 +11,7 @@ use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize};
 use tonapi_config::{ResolvedUniversity, ServiceAvailability, ServiceKind};
 use tonapi_core::{ErrorCode, EstablishmentChoice, Problem};
-use tonapi_providers::{Context, LoginInput, LoginOutcome, MfaAction};
+use tonapi_providers::{Context, LoginInput, LoginOutcome, MfaAction, OtpTransport};
 use tonapi_session::SessionData;
 use utoipa::ToSchema;
 
@@ -60,8 +60,22 @@ pub struct LoginResponse {
 pub struct MfaMethods {
     /// Appareil qui reçoit la notification, si la validation par notification est possible.
     push: Option<String>,
-    /// Un code (application d'authentification, code de secours) est accepté.
+    /// Un code (application d'authentification, code de secours, code envoyé) est accepté.
     code: bool,
+    /// Une application d'authentification est active sur le compte.
+    app: bool,
+    /// Numéro masqué où un code peut être envoyé par SMS (`method: sms`).
+    sms: Option<String>,
+    /// Adresse masquée où un code peut être envoyé par mail (`method: mail`).
+    mail: Option<String>,
+}
+
+/// Transport d'un code envoyé à l'étudiant.
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum MfaSent {
+    Sms,
+    Mail,
 }
 
 /// L'université demande un second facteur.
@@ -76,6 +90,8 @@ pub struct MfaRequired {
     methods: MfaMethods,
     /// Code refusé, notification non validée…
     message: Option<String>,
+    /// Un code vient d'être envoyé par ce transport : le valider avec `method: code`.
+    sent: Option<MfaSent>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -85,6 +101,10 @@ pub enum MfaMethod {
     Push,
     /// Saisir un code.
     Code,
+    /// Faire envoyer un code par SMS, si `methods.sms` est renseigné. Réponse `202` avec `sent`.
+    Sms,
+    /// Faire envoyer un code par mail, si `methods.mail` est renseigné. Réponse `202` avec `sent`.
+    Mail,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -185,8 +205,15 @@ fn outcome_response(
                     methods: MfaMethods {
                         push: prompt.methods.push,
                         code: prompt.methods.code,
+                        app: prompt.methods.app,
+                        sms: prompt.methods.sms,
+                        mail: prompt.methods.mail,
                     },
                     message: prompt.message,
+                    sent: prompt.sent.map(|transport| match transport {
+                        OtpTransport::Sms => MfaSent::Sms,
+                        OtpTransport::Mail => MfaSent::Mail,
+                    }),
                 }),
             )
                 .into_response()
@@ -323,7 +350,8 @@ fn record_login(university: &str, outcome: &str) {
     );
 }
 
-/// Second facteur : notification sur le téléphone ou code.
+/// Second facteur : notification sur le téléphone, code saisi, ou code à faire envoyer par SMS
+/// ou par mail.
 #[utoipa::path(
     post,
     path = "/v1/auth/mfa",
@@ -332,7 +360,7 @@ fn record_login(university: &str, outcome: &str) {
     request_body = MfaRequest,
     responses(
         (status = 200, description = "Connecté", body = LoginResponse),
-        (status = 202, description = "Code refusé ou notification non validée : nouveau jeton `pending`", body = MfaRequired),
+        (status = 202, description = "Code refusé, notification non validée ou code envoyé (`sent`) : nouveau jeton `pending`", body = MfaRequired),
         (status = 400, description = "`invalid_request`", body = Problem, content_type = "application/problem+json"),
         (status = 401, description = "`invalid_token`, `session_expired` : recommencer la connexion", body = Problem, content_type = "application/problem+json"),
         (status = 502, description = "`service_unavailable`", body = Problem, content_type = "application/problem+json"),
@@ -361,6 +389,14 @@ pub async fn mfa(
         (MfaMethod::Code, Some(code)) if !code.trim().is_empty() => MfaAction::Code(code),
         (MfaMethod::Code, _) => return Err(invalid("`code` est obligatoire avec `method: code`")),
         (MfaMethod::Push, _) => MfaAction::Push { wait: PUSH_WAIT },
+        (MfaMethod::Sms, _) => MfaAction::Send {
+            transport: OtpTransport::Sms,
+            unasked: false,
+        },
+        (MfaMethod::Mail, _) => MfaAction::Send {
+            transport: OtpTransport::Mail,
+            unasked: false,
+        },
     };
     let registry = state.registry.load_full();
     let university = university(&registry, &pending.university)?;
@@ -375,6 +411,7 @@ pub async fn mfa(
         request.remember_device.unwrap_or(true),
         now,
         state.settings.session_ttl_secs,
+        tonapi_providers::NetSettings::default(),
     )
     .await;
     // Toute issue autre qu'une connexion compte, erreurs comprises.

@@ -507,6 +507,29 @@ async fn second_facteur_controle_ses_entrees() {
     )
     .await;
     assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    // Un code à faire envoyer est une méthode connue : c'est le jeton qui est refusé.
+    for method in ["sms", "mail"] {
+        let r = call(
+            &app,
+            "POST",
+            "/v1/auth/mfa",
+            None,
+            Some(json!({ "pending": "v1.dev.abc", "method": method })),
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{method}");
+        assert_eq!(r.body["code"], "invalid_token");
+    }
+    let r = call(
+        &app,
+        "POST",
+        "/v1/auth/mfa",
+        None,
+        Some(json!({ "pending": "v1.dev.abc", "method": "fax" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

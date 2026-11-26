@@ -1,4 +1,5 @@
-//! API esup-otp (second facteur) : méthodes du compte et validation par notification (push).
+//! API esup-otp (second facteur) : méthodes du compte, code envoyé par SMS ou par mail et
+//! validation par notification (push).
 //!
 //! Le push suit le navigateur : ouvrir la socket Engine.IO 4 en long polling **avant** d'envoyer la
 //! notification, puis attendre le paquet `42["userAuth",{"code":"Ok","otp":"<code>"}]`. Ce code est
@@ -9,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use reqwest::Method;
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::browser::{Browser, HttpError};
@@ -21,9 +22,54 @@ use crate::cas::{CasError, OtpChallenge};
 pub struct OtpMethods {
     /// Appareil qui reçoit les notifications (« marque modèle »).
     pub push: Option<String>,
-    /// Un code à saisir est accepté (application TOTP, codes de secours).
+    /// Un code à saisir est accepté (application TOTP, codes de secours, code envoyé).
     pub code: bool,
+    /// Une application d'authentification (TOTP) est active.
+    pub app: bool,
+    /// Numéro, masqué par l'API, où un code peut être envoyé par SMS.
+    pub sms: Option<String>,
+    /// Adresse, masquée par l'API, où un code peut être envoyé par mail.
+    pub mail: Option<String>,
 }
+
+/// Moyen par lequel l'API envoie un code à l'étudiant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OtpTransport {
+    Sms,
+    Mail,
+}
+
+impl OtpTransport {
+    /// Nom du transport dans l'API.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OtpTransport::Sms => "sms",
+            OtpTransport::Mail => "mail",
+        }
+    }
+}
+
+impl OtpMethods {
+    /// Seul moyen qu'a l'étudiant d'obtenir un code : ni application, ni notification, et un
+    /// seul de SMS et mail. La page de l'université envoie alors le code sans qu'il le demande.
+    #[must_use]
+    pub fn only_transport(&self) -> Option<OtpTransport> {
+        if self.app || self.push.is_some() {
+            return None;
+        }
+        match (&self.sms, &self.mail) {
+            (Some(_), None) => Some(OtpTransport::Sms),
+            (None, Some(_)) => Some(OtpTransport::Mail),
+            _ => None,
+        }
+    }
+}
+
+/// Méthodes qui envoient un code. `random_code` prend l'un ou l'autre transport ;
+/// `random_code_mail` est la méthode propre au mail de certaines universités.
+const CODE_METHODS: [&str; 2] = ["random_code", "random_code_mail"];
 
 fn api_headers(challenge: &OtpChallenge) -> HeaderMap {
     let mut headers = HeaderMap::new();
@@ -48,11 +94,12 @@ fn api_url(challenge: &OtpChallenge, path: &str) -> Result<Url, CasError> {
         .map_err(|_| CasError::Unexpected("URL de l'API OTP".into()))
 }
 
-/// Méthodes actives du compte (`GET /users/<uid>/<hash>`).
-pub async fn methods(
+/// Compte de l'étudiant dans l'API (`GET /users/<uid>/<hash>`) : l'objet `user`. Aucun cookie
+/// n'est nécessaire, le hash de la page tient lieu d'identité.
+async fn user(
     browser: &mut Browser,
     challenge: &OtpChallenge,
-) -> Result<OtpMethods, CasError> {
+) -> Result<serde_json::Value, CasError> {
     let url = api_url(
         challenge,
         &format!("users/{}/{}", challenge.uid, challenge.user_hash),
@@ -63,19 +110,93 @@ pub async fn methods(
     if !status.is_success() {
         return Err(CasError::Unexpected(format!("API OTP : HTTP {status}")));
     }
-    let json: serde_json::Value = serde_json::from_str(&body)
+    let mut json: serde_json::Value = serde_json::from_str(&body)
         .map_err(|_| CasError::Unexpected("API OTP : réponse illisible".into()))?;
-    let methods = &json["user"]["methods"];
+    Ok(json["user"].take())
+}
+
+/// Méthode active qui envoie un code par ce transport, et sa destination masquée.
+fn channel(user: &serde_json::Value, transport: OtpTransport) -> Option<(&'static str, String)> {
+    let to = user["transports"][transport.as_str()].as_str()?.trim();
+    if to.is_empty() {
+        return None;
+    }
+    let method = CODE_METHODS.into_iter().find(|name| {
+        let method = &user["methods"][name];
+        method["active"] == true
+            && method["transports"]
+                .as_array()
+                .is_some_and(|list| list.iter().any(|t| t == transport.as_str()))
+    })?;
+    Some((method, to.to_owned()))
+}
+
+fn read_methods(user: &serde_json::Value) -> OtpMethods {
+    let methods = &user["methods"];
     let push = (methods["push"]["active"] == true).then(|| {
-        json["user"]["transports"]["push"]
+        user["transports"]["push"]
             .as_str()
             .unwrap_or("téléphone")
             .to_owned()
     });
-    let code = methods["codeRequired"] == true
-        || methods["totp"]["active"] == true
-        || methods["bypass"]["active"] == true;
-    Ok(OtpMethods { push, code })
+    let app = methods["totp"]["active"] == true;
+    let code = methods["codeRequired"] == true || app || methods["bypass"]["active"] == true;
+    OtpMethods {
+        push,
+        code,
+        app,
+        sms: channel(user, OtpTransport::Sms).map(|(_, to)| to),
+        mail: channel(user, OtpTransport::Mail).map(|(_, to)| to),
+    }
+}
+
+/// Méthodes actives du compte.
+pub async fn methods(
+    browser: &mut Browser,
+    challenge: &OtpChallenge,
+) -> Result<OtpMethods, CasError> {
+    Ok(read_methods(&user(browser, challenge).await?))
+}
+
+/// Fait envoyer un code à l'étudiant par SMS ou par mail
+/// (`POST /users/<uid>/methods/<méthode>/transports/<transport>/<hash>`). `unasked` : le code
+/// part sans que l'étudiant l'ait demandé, ce que l'API apprend comme la page de l'université le
+/// lui dit (`?auto`).
+///
+/// Erreur si le compte n'a pas ce transport ou si l'API refuse l'envoi.
+pub async fn send_code(
+    browser: &mut Browser,
+    challenge: &OtpChallenge,
+    transport: OtpTransport,
+    unasked: bool,
+) -> Result<(), CasError> {
+    let user = user(browser, challenge).await?;
+    let (method, _) = channel(&user, transport)
+        .ok_or_else(|| CasError::Unexpected("API OTP : transport absent du compte".into()))?;
+    let mut url = api_url(
+        challenge,
+        &format!(
+            "users/{}/methods/{method}/transports/{}/{}",
+            challenge.uid,
+            transport.as_str(),
+            challenge.user_hash
+        ),
+    )?;
+    if unasked {
+        url.set_query(Some("auto"));
+    }
+    let (status, _, body) = browser
+        .send(Method::POST, url, api_headers(challenge), None, None)
+        .await?;
+    let sent = status.is_success()
+        && serde_json::from_str::<serde_json::Value>(&body).is_ok_and(|json| json["code"] == "Ok");
+    if sent {
+        Ok(())
+    } else {
+        Err(CasError::Unexpected(format!(
+            "envoi du code : refusé par l'API OTP (HTTP {status})"
+        )))
+    }
 }
 
 /// Paquets d'une réponse de polling Engine.IO 4 (séparés par `\x1e`).
@@ -254,6 +375,59 @@ async fn send_push(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn methodes_et_transports_du_compte() {
+        // Forme vue à Rennes (novembre 2026) : le mail seul, par `random_code_mail`.
+        let user: serde_json::Value = serde_json::from_str(
+            r#"{"methods":{"codeRequired":true,"waitingFor":false,
+                "totp":{"active":false,"transports":[]},
+                "random_code":{"active":false,"transports":["sms"]},
+                "random_code_mail":{"active":true,"transports":["mail"]},
+                "bypass":{"active":false,"transports":[]},
+                "push":{"active":false,"transports":["push"]}},
+              "transports":{"mail":"e***@exemple.test","push":"téléphone"}}"#,
+        )
+        .unwrap();
+        let methods = read_methods(&user);
+        assert_eq!(
+            methods,
+            OtpMethods {
+                push: None,
+                code: true,
+                app: false,
+                sms: None,
+                mail: Some("e***@exemple.test".into()),
+            }
+        );
+        assert_eq!(methods.only_transport(), Some(OtpTransport::Mail));
+        assert_eq!(
+            channel(&user, OtpTransport::Mail),
+            Some(("random_code_mail", "e***@exemple.test".to_owned()))
+        );
+        // Une méthode inactive, ou sans destination, n'envoie rien.
+        assert_eq!(channel(&user, OtpTransport::Sms), None);
+
+        // `random_code` porte les deux transports ; avec une application, rien ne part d'office.
+        let both: serde_json::Value = serde_json::from_str(
+            r#"{"methods":{"totp":{"active":true},"random_code":{"active":true,"transports":["sms","mail"]}},
+              "transports":{"sms":"06******12","mail":"e***@exemple.test"}}"#,
+        )
+        .unwrap();
+        let methods = read_methods(&both);
+        assert!(methods.app && methods.code);
+        assert_eq!(methods.sms.as_deref(), Some("06******12"));
+        assert_eq!(
+            channel(&both, OtpTransport::Sms).map(|(method, _)| method),
+            Some("random_code")
+        );
+        assert_eq!(methods.only_transport(), None);
+        let two = OtpMethods {
+            app: false,
+            ..methods
+        };
+        assert_eq!(two.only_transport(), None);
+    }
 
     #[test]
     fn paquets_engine_io() {

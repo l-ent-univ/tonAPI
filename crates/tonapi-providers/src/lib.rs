@@ -36,7 +36,7 @@ pub use sso::{
     LoginInput, LoginOutcome, MfaAction, MfaPrompt, complete_mfa, login, logout, refresh,
     still_signed_in,
 };
-pub use tonapi_http::otp::OtpMethods;
+pub use tonapi_http::otp::{OtpMethods, OtpTransport};
 
 /// Ce dont un fournisseur a besoin pour une requête.
 pub struct Context<'a> {

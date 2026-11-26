@@ -42,11 +42,13 @@ fetchedAt } }`. `/v1/documents/{id}` renvoie le fichier en pièce jointe.
 POST /v1/auth/login   { university, username, password, establishment?, previousToken? }
   200 { token, expiresAt, university, establishment }        connecté
   202 { status: "mfaRequired", pending, expiresAt,
-        methods: { push, code }, message }                   second facteur demandé
+        methods: { push, code, app, sms, mail },
+        message, sent }                                      second facteur demandé
 
-POST /v1/auth/mfa     { pending, method: "push" | "code", code?, rememberDevice? }
+POST /v1/auth/mfa     { pending, method: "push" | "code" | "sms" | "mail", code?, rememberDevice? }
   200 { token, … }                                          connecté
-  202 { status: "mfaRequired", pending, … }                  code refusé ou notification non validée
+  202 { status: "mfaRequired", pending, … }                  code refusé, notification non validée
+                                                             ou code envoyé (`sent`)
 ```
 
 - `password` sert à la connexion puis est oublié ; il n'entre pas dans le jeton.
@@ -61,6 +63,12 @@ POST /v1/auth/mfa     { pending, method: "push" | "code", code?, rememberDevice?
   nouveau `pending`.
 - `method: "push"` : la requête attend la validation sur le téléphone, 100 s au plus. La route est
   bornée à 120 s : un client ou un répartiteur doit attendre au moins ce temps.
+- `methods.sms` et `methods.mail` : numéro et adresse, masqués par l'université, où un code peut
+  être envoyé. `method: "sms"` ou `"mail"` le fait envoyer : la réponse est un `202` avec `sent`,
+  et le code reçu se valide ensuite avec `method: "code"`. Chaque envoi compte dans la limite du
+  second facteur. `methods.app` : une application d'authentification est active.
+- À Rennes, le jeton `pending` porte l'état de la page de code du CAS (`execution`, 22 ko observés) :
+  il est bien plus long qu'un jeton de session.
 - `rememberDevice` (défaut `true`) demande à l'université de mémoriser l'appareil.
 - Un `401` (`invalid_token`, `session_expired`) sur `/v1/auth/mfa` : recommencer `/v1/auth/login`.
 

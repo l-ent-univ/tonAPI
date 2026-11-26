@@ -260,7 +260,28 @@ Conséquences pour un compte avec MFA active **[déduit]** :
 - le POST du mot de passe renvoie une page 200 → tafac : « CAS login failed… » (401) et **compte 1 échec** dans son rate-limit ;
 - même si la MFA était passée dans un navigateur, le TGC du navigateur n'est pas celui de tafac ; il n'y a pas d'import de session.
 
-Le protocole esup-otp-api (userHash, socket.io, push, TOTP, WebAuthn) est documenté en détail côté Montpellier : [../Montpellier/cas-umontpellier.md § esup-otp-api](../montpellier/cas-umontpellier.md). Il devrait s'appliquer tel quel à `mfa-api.univ-rennes.fr`, mais **la page MFA de Rennes n'a jamais été capturée** (forme du formulaire, champ `token`, page « appareil de confiance ») **[incertain]**.
+Le protocole esup-otp-api (userHash, socket.io, push, TOTP, WebAuthn) est documenté en détail côté Montpellier : [../Montpellier/cas-umontpellier.md § esup-otp-api](../montpellier/cas-umontpellier.md).
+
+### 4.1 Page de code observée le 26 nov. 2026
+
+Observée avec un compte étudiant qui a activé la MFA (code par mail), le titulaire du compte fournissant le code. Aucune valeur du compte n'est reproduite.
+
+| Fait | Statut |
+|---|---|
+| Après un mot de passe juste, le POST sur `/login?service=…` répond **`200`** avec la page « Verification » : c'est une étape du **même webflow** (pas de redirection, pas de passerelle) | **[vu]** |
+| Formulaire `<form method="post" id="fm1">` sans `action`, deux champs cachés : `_eventId_submit=Login` et `execution` (≈ 22 ko) ; **pas de champ `token` dans la page** : le script de l'API l'ajoute (`name="token"`, 6 chiffres) | **[vu]** |
+| Script `type="module"` de la page : `const apiUrl = "https:\/\/mfa-api.univ-rennes.fr"`, `const uid = "<uid>"`, `const userHash = "<hash>"`, `const otpManagerUrl = "https:\/\/mfa.univ-rennes.fr"`, puis import de `<apiUrl>/public/custom/login.js?v=1` et appel de `getUserOtpMethods_and_displayChoices` (« esup-otp-api >= 2.3.0 requis »). Pas d'appel `start({…})` comme à Montpellier | **[vu]** |
+| Cookies posés par le CAS à ce stade : `MFATRUSTED`, `XSRF-TOKEN`, cookie de langue. Pas de `TGC` avant le code | **[vu]** |
+| `GET <apiUrl>/users/<uid>/<hash>` (sans cookie) → `{ code: "Ok", user: { methods, transports, last_send_message, last_validated, has_enabled_method } }`. Méthodes listées : `totp`, `random_code` (transports `["sms"]`), `random_code_mail` (transports `["mail"]`), `bypass`, `push` ; `transports.mail` est l'adresse masquée | **[vu]** |
+| `POST <apiUrl>/users/<uid>/methods/random_code_mail/transports/mail/<hash>` (avec `?auto` quand l'étudiant ne l'a pas demandé) → `code: "Ok"`, le mail arrive | **[vu]** |
+| Le code envoyé reste valable pour une **autre** exécution du webflow : mot de passe reposté, nouvelle page de code, code posté → connexion | **[vu]** |
+| Code posté (`_eventId_submit`, `execution`, `token`) sur l'URL de la page. Bon code → redirection vers le service avec `ticket=ST-…`, `TGC` posé ; **aucune page « appareil de confiance »** n'est apparue | **[vu]** |
+| Mauvais code → **`401`** avec la même page, un nouveau `execution` et `<div id="errors" … data-status="error">` « Verification failed! Please try again... » | **[vu]** |
+| La session ouverte ainsi sert ensuite le portail, Moodle, ScoDoc, ADE et le mail sans nouveau code | **[vu]** |
+| Notification (push), application TOTP, SMS, WebAuthn, carte NFC | **[inconnu]** : méthodes inactives sur le compte observé |
+| Rôle du cookie `MFATRUSTED` (appareil reconnu, durée) | **[inconnu]** |
+
+tonAPI lit cette page (`OtpForm::Webflow`, `crates/tonapi-http/src/cas.rs`) et fait envoyer le code (`otp::send_code`).
 
 ---
 
@@ -417,7 +438,7 @@ Les messages d'erreur renvoyés au navigateur sont construits à partir de statu
 
 - Version exacte d'Apereo CAS (7.2 ou 7.3) ; durée réelle du TGT (max et inactivité) ; existence d'un « remember me » côté serveur.
 - Page d'erreur « mauvais mot de passe » réelle et ce qu'en extrait `extractCasError`.
-- Page MFA de Rennes : quand elle apparaît (opt-in via ESUP OTP Manager ? par service ?), forme du formulaire, « appareil de confiance », durée.
+- MFA de Rennes : quand elle apparaît (opt-in via ESUP OTP Manager ? par service ?), rôle du cookie `MFATRUSTED`, méthodes autres que le code par mail (§4.1).
 - `deviceFingerprint` : nouveau depuis fin septembre, ou déjà là ?
 - Hôtes réels du WAYF et de l'IdP Shibboleth (`wayf.univ-rennes.fr` / `ident-shib.univ-rennes1.fr` selon tafac, `discovery.renater.fr` / `idp.univ-rennes.fr` dans le transcript simulé de lent-ios).
 - Durée de vie de `JSESSIONID` ENT, de la session ScoDoc (`PHPSESSID`), de MonDossierWeb, du `MoodleSession`, du `ZM_AUTH_TOKEN`, des `accessToken`/`refreshToken` du portail ADE.

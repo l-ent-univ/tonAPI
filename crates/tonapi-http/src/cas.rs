@@ -54,12 +54,33 @@ impl CasServer {
     }
 }
 
+/// Formulaire où le code du second facteur est posté, avec le champ `token`.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OtpForm {
+    /// Passerelle esup-otp-cas-server (Montpellier) : `ticket`, `uid_hint` et `token`.
+    Gateway { ticket: String },
+    /// Étape du webflow d'Apereo CAS (Rennes) : les champs cachés de la page (`execution`,
+    /// `_eventId_submit`) et `token`. `execution` change à chaque réponse du CAS.
+    Webflow { fields: Vec<(String, String)> },
+}
+
+// Le ticket et `execution` valent pour la connexion en cours : jamais dans une trace.
+impl std::fmt::Debug for OtpForm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            OtpForm::Gateway { .. } => "Gateway",
+            OtpForm::Webflow { .. } => "Webflow",
+        })
+    }
+}
+
 /// Second facteur esup-otp demandé après le mot de passe.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct OtpChallenge {
     /// Page « Authentification renforcée », où le code est posté.
     pub page_url: Url,
-    pub ticket: String,
+    pub form: OtpForm,
     pub uid: String,
     pub user_hash: String,
     /// Racine de l'API esup-otp.
@@ -143,11 +164,14 @@ pub async fn submit_code(
     remember_device: bool,
 ) -> Result<Outcome, CasError> {
     let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
-    let fields = vec![
-        ("ticket".to_owned(), challenge.ticket.clone()),
-        ("uid_hint".to_owned(), challenge.uid.clone()),
-        ("token".to_owned(), code),
-    ];
+    let mut fields = match &challenge.form {
+        OtpForm::Gateway { ticket } => vec![
+            ("ticket".to_owned(), ticket.clone()),
+            ("uid_hint".to_owned(), challenge.uid.clone()),
+        ],
+        OtpForm::Webflow { fields } => fields.clone(),
+    };
+    fields.push(("token".to_owned(), code));
     let page = browser
         .post_form(challenge.page_url.clone(), &fields, &challenge.page_url)
         .await?;
@@ -393,7 +417,7 @@ fn classify(cas: &CasServer, page: &Page) -> Kind {
     {
         return Kind::Login(form.clone());
     }
-    if let Some(challenge) = otp_challenge(page, &forms) {
+    if let Some(challenge) = otp_challenge(cas, page, &forms) {
         return Kind::Otp(challenge);
     }
     if let Some(form) = forms
@@ -422,11 +446,40 @@ fn classify(cas: &CasServer, page: &Page) -> Kind {
     Kind::Other
 }
 
-/// Page esup-otp : `start({"apiUrl":…,"uid":…,"userHash":…})` et un formulaire avec `ticket`.
-/// La page peut contenir d'autres `start(` (déclaration de la fonction, `restart(`…) : on retient
-/// le premier appel dont l'argument est un objet avec `apiUrl`.
-fn otp_challenge(page: &Page, forms: &[Form]) -> Option<OtpChallenge> {
+/// Page du second facteur esup-otp, sous l'une de ses deux formes. L'API désignée par la page
+/// doit être en `https`, comme l'exige le script de la page (ou sur le schéma du CAS, pour les
+/// faux serveurs des tests).
+fn otp_challenge(cas: &CasServer, page: &Page, forms: &[Form]) -> Option<OtpChallenge> {
     let body = &page.body;
+    let (form, api_url, uid, user_hash) =
+        gateway_otp_page(body, forms).or_else(|| webflow_otp_page(body, forms))?;
+    let mut api_url = Url::parse(&api_url).ok()?;
+    if api_url.scheme() != "https" && api_url.scheme() != cas.base.scheme() {
+        return None;
+    }
+    // Les chemins de l'API s'ajoutent à sa racine : elle finit par une barre.
+    if !api_url.path().ends_with('/') {
+        let path = format!("{}/", api_url.path());
+        api_url.set_path(&path);
+    }
+    Some(OtpChallenge {
+        page_url: page.url.clone(),
+        form,
+        uid,
+        user_hash,
+        api_url,
+        error: forms::error_message(body),
+        password_posted: false,
+    })
+}
+
+/// Formulaire, adresse de l'API, identifiant et hash lus sur une page de second facteur.
+type OtpPage = (OtpForm, String, String, String);
+
+/// Passerelle esup-otp-cas-server : `start({"apiUrl":…,"uid":…,"userHash":…})` et un formulaire
+/// avec `ticket`. La page peut contenir d'autres `start(` (déclaration de la fonction,
+/// `restart(`…) : on retient le premier appel dont l'argument est un objet avec `apiUrl`.
+fn gateway_otp_page(body: &str, forms: &[Form]) -> Option<OtpPage> {
     let params = body.match_indices("start(").find_map(|(index, call)| {
         let rest = body[index + call.len()..].trim_start();
         if !rest.starts_with('{') {
@@ -439,15 +492,87 @@ fn otp_challenge(page: &Page, forms: &[Form]) -> Option<OtpChallenge> {
             .filter(|value| value.get("apiUrl").is_some())
     })?;
     let ticket = forms.iter().find_map(|f| f.value("ticket"))?.to_owned();
-    Some(OtpChallenge {
-        page_url: page.url.clone(),
-        ticket,
-        uid: params["uid"].as_str()?.to_owned(),
-        user_hash: params["userHash"].as_str()?.to_owned(),
-        api_url: Url::parse(params["apiUrl"].as_str()?).ok()?,
-        error: forms::error_message(body),
-        password_posted: false,
+    Some((
+        OtpForm::Gateway { ticket },
+        params["apiUrl"].as_str()?.to_owned(),
+        params["uid"].as_str()?.to_owned(),
+        params["userHash"].as_str()?.to_owned(),
+    ))
+}
+
+/// Étape esup-otp du webflow d'Apereo CAS (Rennes, novembre 2026) : un formulaire sans mot de
+/// passe qui porte `execution`, et un script qui déclare `apiUrl`, `uid` et `userHash` en
+/// constantes. Le champ `token` n'est pas dans la page : le script de l'API l'ajoute.
+fn webflow_otp_page(body: &str, forms: &[Form]) -> Option<OtpPage> {
+    let form = forms
+        .iter()
+        .find(|f| !f.has_password && f.value("execution").is_some_and(|e| !e.is_empty()))?;
+    let api_url = script_constant(body, "apiUrl")?;
+    let uid = script_constant(body, "uid")?;
+    let user_hash = script_constant(body, "userHash")?;
+    if uid.is_empty() || user_hash.is_empty() {
+        return None;
+    }
+    let fields = form
+        .fields
+        .iter()
+        .filter(|(name, _)| name != "token")
+        .cloned()
+        .collect();
+    Some((OtpForm::Webflow { fields }, api_url, uid, user_hash))
+}
+
+/// Valeur d'une constante de script déclarée avec une chaîne : `const nom = "valeur";` (ou `let`,
+/// `var`, guillemets simples). La chaîne est lue comme Thymeleaf l'écrit : `\/`, `\xHH`,
+/// `\uHHHH`.
+fn script_constant(body: &str, name: &str) -> Option<String> {
+    body.match_indices(name).find_map(|(index, _)| {
+        let before = body[..index].trim_end();
+        let declared = ["const", "let", "var"].iter().any(|keyword| {
+            before.strip_suffix(keyword).is_some_and(|rest| {
+                !rest
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+            })
+        });
+        // Un mot entier, suivi de `=` : `uid`, pas `uidHint`.
+        let after = body[index + name.len()..].trim_start().strip_prefix('=')?;
+        if !declared || body[..index].len() == before.len() {
+            return None;
+        }
+        script_string(after.trim_start())
     })
+}
+
+/// Chaîne JavaScript entre guillemets au début de `source`, échappements décodés.
+fn script_string(source: &str) -> Option<String> {
+    let mut chars = source.chars();
+    let quote = chars.next().filter(|c| *c == '"' || *c == '\'')?;
+    let mut value = String::new();
+    loop {
+        match chars.next()? {
+            c if c == quote => return Some(value),
+            '\n' | '\r' => return None,
+            '\\' => match chars.next()? {
+                'x' => value.push(hex_char(&mut chars, 2)?),
+                'u' => value.push(hex_char(&mut chars, 4)?),
+                'n' => value.push('\n'),
+                'r' => value.push('\r'),
+                't' => value.push('\t'),
+                other => value.push(other),
+            },
+            c => value.push(c),
+        }
+    }
+}
+
+fn hex_char(chars: &mut std::str::Chars<'_>, digits: usize) -> Option<char> {
+    let hex: String = chars.take(digits).collect();
+    if hex.len() != digits {
+        return None;
+    }
+    char::from_u32(u32::from_str_radix(&hex, 16).ok()?)
 }
 
 /// Où poster le mot de passe. Apereo CAS 7 poste sur l'URL de la page, query comprise, alors que
@@ -615,7 +740,109 @@ mod tests {
             panic!("page OTP non reconnue")
         };
         assert_eq!(challenge.uid, "e1");
-        assert_eq!(challenge.ticket, "TK");
+        assert_eq!(
+            challenge.form,
+            OtpForm::Gateway {
+                ticket: "TK".into()
+            }
+        );
+    }
+
+    fn rennes() -> CasServer {
+        CasServer::new(
+            Url::parse("https://sso-cas.exemple.test/").unwrap(),
+            CasFlavor::Apereo,
+        )
+    }
+
+    /// Forme de la page « Verification » du CAS de Rennes (novembre 2026), valeurs inventées.
+    fn webflow_page(error: &str) -> String {
+        format!(
+            r#"<html><head><title>Verification</title></head><body><main>
+            <form method="post" id="fm1">{error}
+              <input type="hidden" name="_eventId_submit" value="Login" /><input type="hidden" name="execution" value="E2" /></form>
+            <script type="module">
+              // (ugly) syntax explained here
+              const apiUrl = "https:\/\/mfa-api.exemple.test";
+              const uid = "e\x31";
+              const userHash = "h\u0041sh";
+              const otpManagerUrl = "https:\/\/mfa.exemple.test";
+              (async () => {{ const url = new URL(apiUrl); }})();
+            </script></main></body></html>"#
+        )
+    }
+
+    #[test]
+    fn page_otp_du_webflow_apereo() {
+        let url = "https://sso-cas.exemple.test/login?service=https%3A%2F%2Fx";
+        let Kind::Otp(challenge) = classify(&rennes(), &page(url, &webflow_page(""))) else {
+            panic!("page de code non reconnue")
+        };
+        assert_eq!(challenge.page_url.as_str(), url);
+        assert_eq!(
+            challenge.form,
+            OtpForm::Webflow {
+                fields: vec![
+                    ("_eventId_submit".to_owned(), "Login".to_owned()),
+                    ("execution".to_owned(), "E2".to_owned()),
+                ]
+            }
+        );
+        assert_eq!(challenge.uid, "e1");
+        assert_eq!(challenge.user_hash, "hAsh");
+        assert_eq!(challenge.api_url.as_str(), "https://mfa-api.exemple.test/");
+        assert_eq!(challenge.error, None);
+
+        // Code refusé : la même page, avec le message du CAS.
+        let refused = webflow_page(
+            r#"<div id="errors" class="notification text-center" data-status="error" role="alert"><p>Verification failed!</p><p>Please try again...</p></div>"#,
+        );
+        let Kind::Otp(challenge) = classify(&rennes(), &page(url, &refused)) else {
+            panic!("page de code refusé non reconnue")
+        };
+        assert_eq!(
+            challenge.error.as_deref(),
+            Some("Verification failed! Please try again...")
+        );
+    }
+
+    #[test]
+    fn page_du_webflow_qui_n_est_pas_celle_du_code() {
+        let url = "https://sso-cas.exemple.test/login";
+        // Sans les constantes du script : une autre étape du CAS.
+        let other = r#"<form method="post" id="fm1"><input type="hidden" name="execution" value="E2"></form>"#;
+        assert!(matches!(
+            classify(&rennes(), &page(url, other)),
+            Kind::Other
+        ));
+        // Une API qui n'est pas en https n'est pas appelée.
+        let insecure = webflow_page("").replace("https:\\/\\/mfa-api", "http:\\/\\/mfa-api");
+        assert!(matches!(
+            classify(&rennes(), &page(url, &insecure)),
+            Kind::UnknownMfa
+        ));
+        // Le formulaire du mot de passe reste celui du mot de passe.
+        let login =
+            webflow_page(r#"<input name="username"><input type="password" name="password">"#);
+        assert!(matches!(
+            classify(&rennes(), &page(url, &login)),
+            Kind::Login(_)
+        ));
+    }
+
+    #[test]
+    fn constantes_de_script() {
+        let script = r#"const apiUrl = "a\/b"; let uidHint = "non"; var uid='o\'k';
+            constuid = "non"; const  userHash  =  "\x3Dé";  const vide = "";"#;
+        assert_eq!(script_constant(script, "apiUrl").as_deref(), Some("a/b"));
+        assert_eq!(script_constant(script, "uid").as_deref(), Some("o'k"));
+        assert_eq!(script_constant(script, "userHash").as_deref(), Some("=é"));
+        assert_eq!(script_constant(script, "vide").as_deref(), Some(""));
+        assert_eq!(script_constant(script, "absent"), None);
+        // Pas une chaîne, chaîne non fermée, mot plus long.
+        assert_eq!(script_constant("const uid = 12;", "uid"), None);
+        assert_eq!(script_constant("const uid = \"a\nb\";", "uid"), None);
+        assert_eq!(script_constant("const myuid = \"a\";", "uid"), None);
     }
 
     #[test]
@@ -628,7 +855,12 @@ mod tests {
         let Kind::Otp(challenge) = classify(&um(), &otp) else {
             panic!("page OTP non reconnue")
         };
-        assert_eq!(challenge.ticket, "TK");
+        assert_eq!(
+            challenge.form,
+            OtpForm::Gateway {
+                ticket: "TK".into()
+            }
+        );
         assert_eq!(challenge.uid, "e1");
         assert_eq!(
             challenge.api_url.as_str(),
