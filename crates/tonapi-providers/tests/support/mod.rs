@@ -4,8 +4,8 @@
 //!
 //! - `/scodoc/services/doAuth.php` : pose `PHPSESSID`, renvoie vers le CAS, valide le ticket ;
 //! - `/scodoc/services/data.php?q=dataPremièreConnexion` : le contenu fourni, ou `{"redirect"}` ;
-//! - `data.php?q=relevéEtudiant|getReportPageMessage|listeNotes` et `bulletin_PDF.php` : ce que le
-//!   test a rangé dans [`Mock`], derrière la même session ;
+//! - `data.php?q=relevéEtudiant|getReportPageMessage|listeNotes|getStudentPic` et
+//!   `bulletin_PDF.php` : ce que le test a rangé dans [`Mock`], derrière la même session ;
 //! - `/cas/login` et `POST /cas/` : formulaire à jeton `lt`, TGC `tgc-ok`.
 #![allow(dead_code)] // chaque consommateur n'utilise qu'une partie
 
@@ -45,6 +45,8 @@ pub struct Mock {
     pub pdf: bool,
     /// Paramètres reçus par `bulletin_PDF.php`.
     pub pdf_queries: Vec<String>,
+    /// Réponse de `getStudentPic` : son `Content-Type` et son corps. Sans elle, une page vide.
+    pub picture: Option<(String, Vec<u8>)>,
     /// Tickets validés par `doAuth.php`.
     pub ticket_validations: u32,
     /// Passages par le CAS sans TGC (formulaire affiché).
@@ -246,6 +248,7 @@ async fn data(
         "relevéEtudiant",
         "getReportPageMessage",
         "listeNotes",
+        "getStudentPic",
     ];
     let wrong = r#"{"erreur":"Mauvaise requête."}"#;
     if !known.contains(&action.as_str()) {
@@ -268,6 +271,16 @@ async fn data(
         "dataPremièreConnexion" => json(&state.payload),
         "relevéEtudiant" => json(state.semesters.get(&detail).map_or(wrong, String::as_str)),
         "getReportPageMessage" => json(&state.message),
+        "getStudentPic" => {
+            let (kind, bytes) = state
+                .picture
+                .clone()
+                .unwrap_or_else(|| ("text/html".to_owned(), Vec::new()));
+            Response::builder()
+                .header(header::CONTENT_TYPE, kind)
+                .body(Body::from(bytes))
+                .unwrap()
+        }
         _ => json(&state.distribution),
     }
 }

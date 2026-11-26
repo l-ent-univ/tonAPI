@@ -1,0 +1,4 @@
+{
+  "v-uiId": 3,
+  "uidl": "{\"Vaadin-Security-Key\": \"jeton-csrf-invente\", \"syncId\": 0, \"clientId\": 0, \"changes\": [], \"state\": {\"0\": {\"theme\": \"valo-ul\", \"pageState\": {\"title\": \"Mon Dossier Web\"}}, \"544\": {\"caption\": \"Etat-civil\", \"styles\": [\"selected\"]}, \"547\": {\"caption\": \"Inscriptions\"}, \"549\": {\"caption\": \"Notes & résultats\"}, \"552\": {\"caption\": \"Camille DEMO\", \"styles\": [\"v-nom\"]}}, \"types\": {\"544\": \"1\", \"547\": \"1\", \"549\": \"1\"}, \"hierarchy\": {\"0\": [\"544\", \"547\", \"549\", \"552\"]}}"
+}

@@ -10,7 +10,7 @@ use tonapi_core::DistributionUnavailable;
 use tonapi_core::ErrorCode;
 use tonapi_providers::{
     Context, absences, grade_distribution, grade_notice, grade_transcript, grades,
-    grades_and_absences, grades_and_absences_of, grades_of, service_login,
+    grades_and_absences, grades_and_absences_of, grades_of, service_login, student_picture,
 };
 use tonapi_session::{SessionData, StoredCookie};
 
@@ -551,4 +551,88 @@ async fn notes_et_absences_d_un_autre_semestre_d_une_seule_lecture() {
     let state = server.state();
     assert_eq!(state.data_actions.len(), 2);
     assert_eq!(state.data_actions[1], "dataPremièreConnexion");
+}
+
+/// Début d'un fichier JPEG, inventé.
+const PHOTO: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F'];
+
+#[tokio::test]
+async fn photo_de_l_etudiant_puis_session_perdue_rouverte_une_fois() {
+    let server = full_server().await;
+    server.state().picture = Some(("image/jpeg; charset=binary".to_owned(), PHOTO.to_vec()));
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let mut ctx = context(&university, &mut session);
+
+    let photo = student_picture(&mut ctx).await.unwrap();
+    assert_eq!(photo.provider, "scodoc-gateway");
+    assert_eq!(photo.data.content_type, "image/jpeg");
+    assert_eq!(photo.data.file_name, "photo.jpeg");
+    assert_eq!(photo.data.bytes, PHOTO);
+    assert_eq!(server.state().ticket_validations, 1);
+    assert_eq!(server.state().data_actions, ["getStudentPic"]);
+    assert_eq!(server.state().data_methods, ["GET"]);
+
+    // La session PHP posée sert à la demande suivante, sans repasser par le CAS.
+    student_picture(&mut ctx).await.unwrap();
+    assert_eq!(server.state().ticket_validations, 1);
+
+    // Perdue côté passerelle : rouverte, et la photo redemandée une seule fois.
+    server.expire_sessions();
+    let again = student_picture(&mut ctx).await.unwrap();
+    assert_eq!(again.data.bytes, PHOTO);
+    assert_eq!(server.state().ticket_validations, 2);
+    assert_eq!(server.state().data_calls, 4);
+}
+
+#[tokio::test]
+async fn sans_image_pas_de_photo() {
+    let server = full_server().await;
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let mut ctx = context(&university, &mut session);
+
+    // Une page vide à la place de l'image, même après une nouvelle connexion.
+    let none = student_picture(&mut ctx).await.unwrap_err();
+    assert_eq!(none.code, ErrorCode::NotFound);
+
+    // Un SVG est un document : jamais rendu comme photo.
+    server.state().picture = Some(("image/svg+xml".to_owned(), b"<svg/>".to_vec()));
+    let svg = student_picture(&mut ctx).await.unwrap_err();
+    assert_eq!(svg.code, ErrorCode::NotFound);
+
+    // Une image annoncée mais vide n'en est pas une.
+    server.state().picture = Some(("image/png".to_owned(), Vec::new()));
+    let empty = student_picture(&mut ctx).await.unwrap_err();
+    assert_eq!(empty.code, ErrorCode::NotFound);
+
+    // La passerelle refuse la session même rouverte : la session de l'université est perdue.
+    server.state().always_expired = true;
+    let refused = student_picture(&mut ctx).await.unwrap_err();
+    assert_eq!(refused.code, ErrorCode::SessionExpired);
+}
+
+#[tokio::test]
+async fn photo_sans_tgc_ou_sans_passerelle() {
+    let server = full_server().await;
+    server.state().picture = Some(("image/png".to_owned(), PHOTO.to_vec()));
+    let university = university(&server, &university_cas());
+    let mut signed_out = session(Vec::new());
+    let expired = student_picture(&mut context(&university, &mut signed_out))
+        .await
+        .unwrap_err();
+    assert_eq!(expired.code, ErrorCode::SessionExpired);
+    assert_eq!(server.state().password_posts, 0);
+
+    // Sans passerelle ScoDoc pour la composante : le service n'existe pas.
+    let without = common::university(json!({
+        "id": "test",
+        "name": "Université de test",
+        "sso": { "kind": "cas", "base-url": server.cas() },
+    }));
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let absent = student_picture(&mut context(&without, &mut session))
+        .await
+        .unwrap_err();
+    assert_eq!(absent.code, ErrorCode::ServiceAbsent);
 }

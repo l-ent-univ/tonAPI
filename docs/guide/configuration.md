@@ -97,7 +97,7 @@ utilisé pour un service qu'il ne rend pas, est refusé.
 | `mail` | `zimbra-rest` (`base-url`, `entry-url` facultatif) ; `bluemind` (`base-url`) |
 | `apps` | `portal` |
 | `profile` | `portal`, avec `record = { kind = "etudiants-api", base-url = … }` facultatif pour le numéro étudiant et la formation |
-| `documents` | `etudiants-api` (`base-url`, `certificate-url` facultatif) ; `ardemat` (`base-url`, `service-url`) ; `mon-dossier-web` (`base-url`, déclaré mais non implémenté) |
+| `documents` | `etudiants-api` (`base-url`, `certificate-url` facultatif) ; `ardemat` (`base-url`, `service-url`) ; `mon-dossier-web` (`base-url` : certificats de scolarité) |
 
 Valeurs communes :
 
@@ -216,10 +216,9 @@ redémarrage (`TONAPI_RELOAD`, [serveur.md](../exploitation/serveur.md)).
 
 ## Ce qu'une configuration valide ne prouve pas
 
-- Que le fournisseur est implémenté : `mon-dossier-web` est accepté et répond `not_implemented`.
+- Que le fournisseur est implémenté pour cette combinaison : une variante acceptée par le schéma
+  peut répondre `not_implemented` (tableau `sign-in` ci-dessus, webmail Zimbra derrière SAML).
   Le dispatch réel est dans `crates/tonapi-providers/src/lib.rs` ([fournisseurs.md](../reference/fournisseurs.md)).
-- Que la combinaison est prise en charge (tableau `sign-in` ci-dessus, webmail Zimbra derrière
-  SAML).
 - Que les hôtes répondent, que le CAS accepte ce parcours ou que les formats sont ceux attendus.
 - Qu'un essai réel a eu lieu : voir [couverture.md](../reference/couverture.md).
 
