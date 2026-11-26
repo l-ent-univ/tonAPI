@@ -65,6 +65,15 @@ un état de fonctionnement : configuration, clés, limiteurs, places par hôte, 
 ([../reference/architecture.md](../reference/architecture.md#état-gardé-par-le-processus)). La déconnexion ferme la
 session CAS au mieux et répond `204` ; il n'y a pas de révocation centrale des jetons.
 
+Un client qui garde lui-même la session (les fournisseurs appelés comme bibliothèque, sans le
+serveur) dispose de `still_signed_in` [code] : le CAS dit si le TGC vit encore, sans ouvrir de
+service, ce qui distingue « un service a refusé » de « la session a expiré ». `logout` prend les
+réglages réseau de la connexion (`NetSettings::user_agent`). [vu, 25/11/2026] À Rennes, sous le
+`User-Agent` de la connexion : `still_signed_in` répond oui pour une session vivante et non
+après la déconnexion, et `logout` ferme la session CAS. [déduit] Sous un autre `User-Agent`,
+`logout` ne ferme rien : ce CAS efface le ticket qu'un autre `User-Agent` lui présente au lieu
+de l'honorer. `complete_mfa` et `refresh` se présentent encore sous le `User-Agent` de tonAPI.
+
 Variables d'environnement, valeurs par défaut et rotation des clés :
 [../exploitation/serveur.md](../exploitation/serveur.md). Sans `TONAPI_SESSION_KEYS`, le serveur refuse de
 démarrer, sauf avec `TONAPI_ENV=dev` (clé temporaire, jetons perdus au redémarrage).

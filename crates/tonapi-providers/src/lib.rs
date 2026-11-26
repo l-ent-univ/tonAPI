@@ -34,6 +34,7 @@ use tonapi_session::{EstablishmentPick, SessionData};
 pub use net::NetSettings;
 pub use sso::{
     LoginInput, LoginOutcome, MfaAction, MfaPrompt, complete_mfa, login, logout, refresh,
+    still_signed_in,
 };
 pub use tonapi_http::otp::OtpMethods;
 

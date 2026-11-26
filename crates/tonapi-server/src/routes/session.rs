@@ -533,7 +533,12 @@ pub async fn logout(
     let _slot = state.account_slots.acquire(&session)?;
     let registry = state.registry.load_full();
     if let Some(university) = registry.get(&session.university) {
-        tonapi_providers::logout(university, &session).await;
+        tonapi_providers::logout(
+            university,
+            &session,
+            tonapi_providers::NetSettings::default(),
+        )
+        .await;
     }
     Ok(StatusCode::NO_CONTENT)
 }

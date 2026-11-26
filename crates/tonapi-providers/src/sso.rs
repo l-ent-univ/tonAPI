@@ -137,15 +137,17 @@ fn browser(
 
 /// Ferme la session CAS de l'étudiant (le TGC n'est plus reconnu). Au mieux : un CAS qui ne répond
 /// pas en 5 s ne fait pas échouer la déconnexion de l'API.
-pub async fn logout(university: &ResolvedUniversity, session: &SessionData) {
+///
+/// `net` : les réglages de la connexion. Un CAS qui lie son ticket au `User-Agent` ne ferme la
+/// session que pour celui qui s'est connecté.
+pub async fn logout(university: &ResolvedUniversity, session: &SessionData, net: NetSettings) {
     let Some(cas) = cas_server(university) else {
         return;
     };
     let Ok(url) = cas.base.join("logout") else {
         return;
     };
-    let Ok(mut browser) = browser(university, session.cookies.clone(), NetSettings::default())
-    else {
+    let Ok(mut browser) = browser(university, session.cookies.clone(), net) else {
         return;
     };
     let _ = browser
@@ -157,6 +159,35 @@ pub async fn logout(university: &ResolvedUniversity, session: &SessionData) {
             Some(Duration::from_secs(5)),
         )
         .await;
+}
+
+/// Dit si le CAS reconnaît encore la session de l'étudiant, sans ouvrir aucun service : sa page de
+/// connexion, demandée sans service avec les cookies de la session, n'affiche le formulaire que
+/// lorsque le TGC ne vaut plus rien.
+///
+/// `Ok(false)` : le CAS redemande le mot de passe ou un second facteur, il faut se reconnecter.
+/// Toute autre réponse (CAS injoignable, erreur 5xx, page ailleurs que sur le CAS) est une erreur :
+/// elle ne dit rien de la session, qui ne doit pas être fermée pour autant. La session n'est pas
+/// modifiée : un TGC réécrit par le CAS pendant la question n'est pas rendu.
+///
+/// Pour un client qui garde lui-même la session (cookies obtenus ailleurs ou par [`login`]) et
+/// doit distinguer « un service a refusé » de « la session a expiré ». Sans CAS (démo) : `Ok(true)`.
+pub async fn still_signed_in(
+    university: &ResolvedUniversity,
+    session: &SessionData,
+    net: NetSettings,
+) -> Result<bool, Problem> {
+    let Some(cas) = cas_server(university) else {
+        return Ok(true);
+    };
+    let mut browser = browser(university, session.cookies.clone(), net)?;
+    match cas::open(&mut browser, &cas, cas.login_url(None), None).await {
+        Ok(Outcome::SignedIn { page, .. }) if cas.owns(&page.url) => Ok(true),
+        Ok(Outcome::SignedIn { .. }) => Err(Problem::new(ErrorCode::UpstreamChanged)
+            .detail("le CAS a renvoyé vers un autre hôte : état de la session inconnu")),
+        Ok(Outcome::SecondFactor(_)) | Err(CasError::NotAuthenticated) => Ok(false),
+        Err(error) => Err(cas_problem(error)),
+    }
 }
 
 /// Cookies d'une session précédente (du même compte, vérifié par le serveur) gardés pour la
