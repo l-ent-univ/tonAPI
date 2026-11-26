@@ -48,6 +48,21 @@ pub(super) fn classify_reply(value: Value) -> Result<Reply, Problem> {
     Ok(Reply::Data(value))
 }
 
+/// Type d'une photo qu'une balise `<img>` affiche et qui ne peut rien exécuter, d'après l'en-tête
+/// `Content-Type` de la passerelle. Pas de SVG : ouvert seul, c'est un document avec ses scripts.
+pub(super) fn picture_type(content_type: Option<&str>) -> Option<&'static str> {
+    const SHOWN: [&str; 6] = [
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "image/avif",
+        "image/bmp",
+    ];
+    let declared = content_type?.split(';').next()?.trim().to_ascii_lowercase();
+    SHOWN.into_iter().find(|kind| *kind == declared)
+}
+
 /// Contenu d'une cellule de note.
 #[derive(Debug, PartialEq)]
 pub(super) enum Cell {

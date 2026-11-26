@@ -6,8 +6,8 @@
 //! absences se lisent donc dans la même réponse, avec deux analyses pures.
 //!
 //! Autour du relevé : celui d'un autre semestre (`relevéEtudiant`), le message d'un département
-//! (`getReportPageMessage`), la répartition des notes d'une évaluation (`listeNotes`) et le relevé
-//! PDF (`bulletin_PDF.php`).
+//! (`getReportPageMessage`), la répartition des notes d'une évaluation (`listeNotes`), le relevé
+//! PDF (`bulletin_PDF.php`) et la photo de l'étudiant (`getStudentPic`).
 //!
 //! Emplacements dans `SessionData::tokens` : `scodoc.<hôte>` (cookies d'un service à compte propre)
 //! et `scodoc-student.<hôte>` (identifiant de l'étudiant pour la passerelle et type de son
@@ -46,7 +46,7 @@ mod parse;
 use parse::parse_grades;
 use parse::{
     Reply, classify_reply, hidden_distribution, is_published, owns_evaluation, parse_absences,
-    parse_distribution, parse_notice, parse_report, student_id, transcript_type,
+    parse_distribution, parse_notice, parse_report, picture_type, student_id, transcript_type,
 };
 
 const PROVIDER: &str = "scodoc-gateway";
@@ -400,7 +400,60 @@ impl<'a> Gateway<'a> {
         }
         Ok((status.is_success() && bytes.starts_with(b"%PDF")).then_some(bytes))
     }
+
+    /// Un essai de `getStudentPic`.
+    async fn picture_once(&mut self) -> Result<PictureReply, Problem> {
+        let query = Query {
+            action: "getStudentPic",
+            params: &[],
+        };
+        let (status, headers, bytes) = self
+            .net
+            .browser
+            .send_bytes(
+                Method::GET,
+                data_url(&self.base, &query),
+                request_headers(&self.base, ACCEPT_PICTURE),
+                None,
+                Some(self.timeout),
+            )
+            .await
+            .map_err(|e| http_problem(PROVIDER, &e))?;
+        if status.is_server_error() {
+            return Err(Problem::new(ErrorCode::ServiceUnavailable)
+                .detail(format!("{PROVIDER} : HTTP {status}")));
+        }
+        let declared = headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok());
+        Ok(match picture_type(declared) {
+            Some(kind) if status.is_success() && !bytes.is_empty() => {
+                PictureReply::Picture(kind, bytes)
+            }
+            _ if serde_json::from_slice::<Value>(&bytes)
+                .is_ok_and(|value| session_lost(&value)) =>
+            {
+                PictureReply::SessionLost
+            }
+            _ => PictureReply::None,
+        })
+    }
 }
+
+/// Ce que `getStudentPic` répond.
+enum PictureReply {
+    /// Une image d'un type qu'une page peut afficher, et ce type.
+    Picture(&'static str, Vec<u8>),
+    /// `{"redirect":…}` : la session PHP est perdue.
+    SessionLost,
+    /// Autre chose qu'une image : pas de photo.
+    None,
+}
+
+/// Ce qu'un navigateur demande pour une balise `<img>`.
+const ACCEPT_PICTURE: &str = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8";
+/// Photo au plus : celle d'un trombinoscope pèse quelques dizaines de kilo-octets.
+const MAX_PICTURE_BYTES: usize = 5 * 1024 * 1024;
 
 /// Relevé PDF au plus : un bulletin fait quelques centaines de kilo-octets.
 const MAX_TRANSCRIPT_BYTES: usize = 20 * 1024 * 1024;
@@ -546,6 +599,47 @@ async fn transcript_with(
         Some(_) => Err(bad("relevé PDF démesuré")),
         None => Err(Problem::new(ErrorCode::NotFound)
             .detail(format!("{PROVIDER} : pas de relevé PDF pour ce semestre"))),
+    }
+}
+
+/// Photo de l'étudiant, telle que la passerelle la sert (`data.php?q=getStudentPic`).
+///
+/// Seule une image qu'une page affiche sans rien exécuter est rendue (pas de SVG) ; toute autre
+/// réponse est une absence de photo : `not_found`. La passerelle ne dit pas pourquoi elle n'en a
+/// pas.
+pub(crate) async fn fetch_picture(
+    ctx: &mut Context<'_>,
+    config: &ScoDocGateway,
+) -> Result<Download, Problem> {
+    let mut gateway = Gateway::open(ctx, config)?;
+    let result = picture_with(&mut gateway).await;
+    gateway.close(ctx);
+    let (kind, bytes) = result?;
+    Ok(Download {
+        content_type: kind.to_owned(),
+        file_name: format!("photo.{}", kind.trim_start_matches("image/")),
+        bytes,
+    })
+}
+
+/// Avec une session déjà ouverte, elle n'est rouverte que si la photo ne vient pas ; puis un seul
+/// nouvel essai.
+async fn picture_with(gateway: &mut Gateway<'_>) -> Result<(&'static str, Vec<u8>), Problem> {
+    let mut reply = if gateway.has_session() {
+        gateway.picture_once().await?
+    } else {
+        PictureReply::SessionLost
+    };
+    if !matches!(reply, PictureReply::Picture(..)) {
+        gateway.sign_in().await?;
+        reply = gateway.picture_once().await?;
+    }
+    match reply {
+        PictureReply::Picture(kind, bytes) if bytes.len() <= MAX_PICTURE_BYTES => Ok((kind, bytes)),
+        PictureReply::Picture(..) => Err(bad("photo démesurée")),
+        PictureReply::SessionLost => Err(gateway.refused()),
+        PictureReply::None => Err(Problem::new(ErrorCode::NotFound)
+            .detail(format!("{PROVIDER} : pas de photo pour cet étudiant"))),
     }
 }
 

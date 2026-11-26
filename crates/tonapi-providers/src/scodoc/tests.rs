@@ -12,7 +12,9 @@ use tonapi_config::{GradesService, ResolvedUniversity, ServiceOptions, Universit
 use tonapi_core::{DistributionUnavailable, EvaluationKind, Grade, GradeStats};
 use tonapi_session::SessionData;
 
-use super::parse::{Cell, at, cell, evaluation_date, natural_cmp, parse_report, rank};
+use super::parse::{
+    Cell, at, cell, evaluation_date, natural_cmp, parse_report, picture_type, rank,
+};
 use super::*;
 use crate::NetSettings;
 
@@ -35,6 +37,27 @@ fn grade(value: f64) -> Option<Grade> {
 
 fn day(text: &str) -> NaiveDate {
     NaiveDate::parse_from_str(text, "%Y-%m-%d").unwrap()
+}
+
+// photo
+
+#[test]
+fn type_d_une_photo_affichable() {
+    assert_eq!(picture_type(Some("image/jpeg")), Some("image/jpeg"));
+    assert_eq!(
+        picture_type(Some(" Image/PNG ; charset=binary")),
+        Some("image/png")
+    );
+    for refused in [
+        "image/svg+xml",
+        "text/html; charset=utf-8",
+        "application/json",
+        "image/",
+        "",
+    ] {
+        assert_eq!(picture_type(Some(refused)), None, "{refused}");
+    }
+    assert_eq!(picture_type(None), None);
 }
 
 // notes

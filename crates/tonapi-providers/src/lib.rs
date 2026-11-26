@@ -11,6 +11,7 @@ mod cache;
 mod common;
 mod demo;
 mod etudiants_api;
+mod mon_dossier_web;
 mod moodle;
 mod net;
 mod scodoc;
@@ -132,11 +133,6 @@ fn absent(services: &Services, kind: ServiceKind) -> Problem {
         Some((_, ServiceAvailability::Link { url })) => problem.link(url.as_str()),
         _ => problem,
     }
-}
-
-fn mon_dossier_web_pending() -> Problem {
-    Problem::new(ErrorCode::NotImplemented)
-        .detail("le fournisseur `mon-dossier-web` n'est pas encore implémenté")
 }
 
 fn tiles(ctx: &Context<'_>) -> bool {
@@ -486,6 +482,18 @@ pub async fn grade_transcript(
     }
 }
 
+/// Photo de l'étudiant, quand le logiciel de notes de sa composante en garde une (passerelle
+/// ScoDoc). `not_found` : la passerelle n'a pas rendu d'image.
+pub async fn student_picture(ctx: &mut Context<'_>) -> Result<Fetched<Download>, Problem> {
+    let services = ctx.services();
+    match &services.grades {
+        Some(GradesService::ScodocGateway(config)) => scodoc::fetch_picture(ctx, config)
+            .await
+            .map(|data| fetched(data, "scodoc-gateway")),
+        _ => Err(scodoc_only(&services, "photo de l'étudiant")),
+    }
+}
+
 /// Notes puis absences ; une seule lecture quand les deux viennent de la même passerelle ScoDoc.
 pub async fn grades_and_absences(
     ctx: &mut Context<'_>,
@@ -575,7 +583,10 @@ pub async fn documents(ctx: &mut Context<'_>) -> Result<Fetched<Vec<Document>>, 
             ardemat::fetch_documents(ctx, base_url, service_url).await?,
             "ardemat",
         )),
-        Some(DocumentsService::MonDossierWeb { .. }) => Err(mon_dossier_web_pending()),
+        Some(DocumentsService::MonDossierWeb { base_url, .. }) => Ok(fetched(
+            mon_dossier_web::fetch_documents(ctx, base_url).await?,
+            "mon-dossier-web",
+        )),
         Some(DocumentsService::Link(_) | DocumentsService::None) | None => {
             Err(absent(&services, ServiceKind::Documents))
         }
@@ -599,7 +610,10 @@ pub async fn document(ctx: &mut Context<'_>, id: &str) -> Result<Fetched<Downloa
             ardemat::download(ctx, base_url, service_url, id).await?,
             "ardemat",
         )),
-        Some(DocumentsService::MonDossierWeb { .. }) => Err(mon_dossier_web_pending()),
+        Some(DocumentsService::MonDossierWeb { base_url, .. }) => Ok(fetched(
+            mon_dossier_web::download(ctx, base_url, id).await?,
+            "mon-dossier-web",
+        )),
         Some(DocumentsService::Link(_) | DocumentsService::None) | None => {
             Err(absent(&services, ServiceKind::Documents))
         }

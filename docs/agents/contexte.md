@@ -28,9 +28,15 @@ propriétaire.
 
 Fournisseurs branchés dans `crates/tonapi-providers/src/lib.rs` et testés contre de faux serveurs :
 `ade-ical-link`, `ade-myplanning`, `ade-portal-rest`, `scodoc-gateway`, `etudiants-api`,
-`moodle-ajax`, `moodle-webservice`, `zimbra-rest`, `bluemind`, `ardemat`, `portal` (uPortal 4 et 5)
-et `tiles-portal`, plus `demo`. `mon-dossier-web` est accepté par la configuration et répond
-`not_implemented`. Catalogue et limites : [../reference/fournisseurs.md](../reference/fournisseurs.md).
+`moodle-ajax`, `moodle-webservice`, `zimbra-rest`, `bluemind`, `ardemat`, `mon-dossier-web`,
+`portal` (uPortal 4 et 5) et `tiles-portal`, plus `demo`. Catalogue et limites :
+[../reference/fournisseurs.md](../reference/fournisseurs.md).
+
+[code] `mon-dossier-web` sert les certificats de scolarité d'ESUP MonDossierWeb (liste par
+`/v1/documents`, PDF par `/v1/documents/{id}`) : le parcours Vaadin est porté du serveur de tafac,
+qui le fait à Rennes ; tonAPI ne l'a jamais essayé avec un vrai compte. De même pour la photo de
+l'étudiant que garde la passerelle ScoDoc : `student_picture` (`crates/tonapi-providers/src/lib.rs`),
+pour un client qui appelle les fournisseurs comme bibliothèque, sans route `/v1`.
 
 ## Essais réels
 
@@ -85,5 +91,5 @@ La recherche technique est dans [../recherche/](../recherche/README.md) : observ
 certaines pistes hypothétiques, pas tenues à jour avec le code. Le catalogue de la CLI
 (`tonapi providers`) décrit les variantes acceptées, pas les services réellement utilisables.
 
-Suites possibles : essais réels à Rennes et Lannion, signaux de composante pour uPortal, notes
+Suites possibles : essais réels à Rennes et Lannion (dont le certificat de scolarité et la photo), signaux de composante pour uPortal, notes
 réelles à Paul-Valéry, actions de [../exploitation/production.md](../exploitation/production.md).

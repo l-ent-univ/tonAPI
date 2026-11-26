@@ -1,9 +1,9 @@
 # Fournisseurs
 
 Un fournisseur traduit un logiciel universitaire (ADE, ScoDoc, Moodle…) vers les modèles communs
-de tonAPI. Douze fournisseurs distants sont branchés dans le dispatch, plus `demo` ;
-`mon-dossier-web` est accepté par la configuration mais répond `not_implemented`. Un essai réel ne
-vaut que pour l'établissement où il a eu lieu, même si le logiciel est le même ailleurs.
+de tonAPI. Treize fournisseurs distants sont branchés dans le dispatch, plus `demo`. Un essai réel
+ne vaut que pour l'établissement où il a eu lieu, même si le logiciel est le même ailleurs.
+`mon-dossier-web` est branché mais n'a jamais été essayé par tonAPI avec un vrai compte.
 
 État lu dans `crates/tonapi-providers/src/lib.rs` et `sso.rs` [code]. Les essais réels cités ci-dessous
 sont des rappels [vu, dates indiquées] ; la matrice par établissement est dans
@@ -64,7 +64,7 @@ une analyse tolérante et un test, pas par un nouveau fournisseur.
 
 | Fournisseur | Parcours | Essai réel | Limites |
 |---|---|---|---|
-| `scodoc-gateway` | Passerelle ScoDoc (`services/data.php`), par le CAS de l'université ou un CAS de composante (`own-cas`) ; relevé d'un autre semestre (`relevéEtudiant`), message du département, répartition d'une évaluation (`listeNotes`), relevé PDF (`bulletin_PDF.php`) | IUT de Béziers, CAS propre, 27/10/2026 [vu] ; IUT de Lannion, CAS de l'université, 15/11/2026, puis 25/11/2026 : relevé étendu (promotion, poids par UE, couleurs, groupes, crédits), autre semestre, message du département (vide), répartition et relevé PDF [vu] | second facteur d'un CAS de composante `not_implemented` ; `local-password` `not_implemented` ; rangs, bonus, malus, capitalisation, décisions de jury, rattrapages et relevé non publié jamais vus en réel (absents du compte essayé) : formes lues dans le code de la passerelle et de tafac ; une répartition relit le relevé du semestre à chaque demande |
+| `scodoc-gateway` | Passerelle ScoDoc (`services/data.php`), par le CAS de l'université ou un CAS de composante (`own-cas`) ; relevé d'un autre semestre (`relevéEtudiant`), message du département, répartition d'une évaluation (`listeNotes`), relevé PDF (`bulletin_PDF.php`), photo de l'étudiant (`getStudentPic`, par la bibliothèque seulement : `student_picture`, sans route `/v1`) | IUT de Béziers, CAS propre, 27/10/2026 [vu] ; IUT de Lannion, CAS de l'université, 15/11/2026, puis 25/11/2026 : relevé étendu (promotion, poids par UE, couleurs, groupes, crédits), autre semestre, message du département (vide), répartition et relevé PDF [vu] | second facteur d'un CAS de composante `not_implemented` ; `local-password` `not_implemented` ; rangs, bonus, malus, capitalisation, décisions de jury, rattrapages et relevé non publié jamais vus en réel (absents du compte essayé) : formes lues dans le code de la passerelle et de tafac ; une répartition relit le relevé du semestre à chaque demande ; photo jamais essayée par tonAPI [code, portée de tafac] : ce que la passerelle répond sans photo [inconnu], toute réponse qui n'est pas une image donne `not_found` |
 | `etudiants-api` (notes) | application de scolarité, `api/etudiants/notes` | Paul-Valéry, 27/10/2026 : réponse sans semestre [vu] | format d'une note réelle [inconnu], lu dans le code client |
 
 ### Examens
@@ -107,7 +107,7 @@ Le profil peut être complété par l'application de scolarité
 |---|---|---|---|
 | `etudiants-api` | `api/etudiants/attestations`, fichier en PDF ; `certificate-url` ajouté comme lien | Paul-Valéry, 27/10/2026 : certificat en lien, aucune attestation [vu] | téléchargement d'une attestation jamais essayé |
 | `ardemat` | ticket CAS demandé pour l'application sans le consommer, `api/etudiants/<ticket>`, `api/attestations/download` | IUT de Béziers, 28/10/2026 : liste 200 sans attestation [vu] | téléchargement d'un vrai PDF jamais essayé |
-| `mon-dossier-web` | aucun | | `not_implemented` [code] |
+| `mon-dossier-web` | ESUP MonDossierWeb (Vaadin 8) derrière le CAS : page d'accueil, ouverture de l'interface, clic sur « Inscriptions », puis le PDF de chaque certificat de scolarité (`APP/connector/…`) | aucun par tonAPI ; parcours porté du serveur de tafac, qui le fait à Rennes [code] | certificats de scolarité seulement ; une interface rouverte à chaque lecture ; deux lectures simultanées avec la même session se gênent ; libellé « Inscriptions » et thème `valo-ul` non configurables ; Mon Dossier Web de Montpellier (Vaadin 7) jamais essayé |
 
 ### Démonstration
 

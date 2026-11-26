@@ -30,9 +30,11 @@ leur sens d'origine.
 | uPortal 5 (Rennes) | `uportal5` ; essayé à Paul-Valéry, jamais à Rennes |
 | API REST du portail ADE (Rennes) | `ade-portal-rest`, faux serveurs seulement |
 | ScoDoc de Lannion par le CAS de l'université | `scodoc-gateway` (`university-cas`), jamais essayé |
+| Certificat de scolarité par MonDossierWeb (Rennes, [ent.md §7](rennes/ent.md)) | `mon-dossier-web`, faux serveurs seulement |
+| Photo de l'étudiant par la passerelle ScoDoc (Rennes, [scodoc.md](rennes/scodoc.md)) | `student_picture` (bibliothèque), faux serveurs seulement |
 | Rattachement à une composante | règles `[[affiliation.rules]]` ; signaux fournis seulement par `tiles-portal` (composante d'inscription, adresse) |
 
-Non implémenté : Mon Dossier Web (`mon-dossier-web` répond `not_implemented`), webmail Partage
+Non implémenté : le profil lu dans Mon Dossier Web (Montpellier), webmail Partage
 derrière SAML (Rennes), détection du groupe ScoDoc vers ADE de
 [detection-groupe.md](detection-groupe.md), API ScoDoc 9 REST, HyperPlanning, Celcat.
 
