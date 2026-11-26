@@ -70,7 +70,8 @@ impl Services {
             ServiceKind::Timetable => match self.timetable.as_ref()? {
                 TimetableService::AdeIcalLink { options, .. }
                 | TimetableService::AdePortalRest { options, .. }
-                | TimetableService::AdeMyplanning { options, .. } => Some(options),
+                | TimetableService::AdeMyplanning { options, .. }
+                | TimetableService::Tempo { options, .. } => Some(options),
                 _ => None,
             },
             ServiceKind::Grades => match self.grades.as_ref()? {
@@ -350,6 +351,15 @@ pub enum TimetableService {
         #[serde(default, skip_serializing_if = "ServiceOptions::is_default")]
         options: ServiceOptions,
     },
+    /// TEMPO (Rennes 2) : l'emploi du temps de l'étudiant, `api/events?start=…&end=…` en JSON
+    /// derrière le CAS (`auth` reçoit le ticket). Lu dans le code de Tafac.
+    Tempo {
+        /// Racine de TEMPO (ex. `https://tempo.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+        #[serde(default, skip_serializing_if = "ServiceOptions::is_default")]
+        options: ServiceOptions,
+    },
     /// Simple lien vers le site de l'établissement.
     Link(LinkService),
     /// Service non proposé.
@@ -366,6 +376,7 @@ provider_ids!(TimetableService {
     Self::AdeIcalLink { .. } => "ade-ical-link",
     Self::AdePortalRest { .. } => "ade-portal-rest",
     Self::AdeMyplanning { .. } => "ade-myplanning",
+    Self::Tempo { .. } => "tempo",
     Self::Link(_) => "link",
     Self::None => "none",
     Self::Demo => "demo",

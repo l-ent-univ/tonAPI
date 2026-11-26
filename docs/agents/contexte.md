@@ -21,15 +21,17 @@ propriétaire.
 | Domaine | Présent | Limite à garder en tête |
 |---|---|---|
 | Configuration | types TOML, héritage université → composante, validation, schémas, modèles | une configuration valide ne prouve pas un accès réel ([../guide/configuration.md](../guide/configuration.md)) |
-| Établissements | `demo`, `umontpellier` (4 composantes), `univ-montp3`, `univ-rennes` (2 composantes) | réels marqués `beta` ou `planned` ([../reference/couverture.md](../reference/couverture.md)) |
+| Établissements | `demo`, `umontpellier` (4 composantes), `univ-montp3`, `univ-rennes` (2 composantes), `univ-rennes-2`, `univ-sorbonne-nouvelle` | réels marqués `beta` ou `planned` ([../reference/couverture.md](../reference/couverture.md)) ; Rennes 2 et la Sorbonne Nouvelle sont `planned`, écrites d'après le code de Tafac et jamais essayées |
 | API | routes `/v1`, appel groupé, OpenAPI ([../guide/api.md](../guide/api.md)) | une route peut répondre `not_implemented` |
 | Session et SSO | jeton chiffré, CAS (`apereo`, `esup-otp-gateway`, `phpcas`), second facteur esup-otp (passerelle de Montpellier ; étape du webflow d'Apereo CAS à Rennes, code envoyé par SMS ou par mail), comptes de service | à Rennes, seul le code envoyé par mail a été essayé en réel (26/11/2026) ; notification, application et SMS non essayés |
 | Exploitation | clés obligatoires hors dev, répartiteurs de confiance, `/readyz` et arrêt en trois temps, journal JSON par requête, `/metrics` interne, Dockerfile et `compose.yaml` ([../exploitation/serveur.md](../exploitation/serveur.md), [../exploitation/docker.md](../exploitation/docker.md)) | image jamais construite hors CI ; limites non partagées entre instances ; accords des DSI et RGPD ([../exploitation/production.md](../exploitation/production.md)) |
 
 Fournisseurs branchés dans `crates/tonapi-providers/src/lib.rs` et testés contre de faux serveurs :
-`ade-ical-link`, `ade-myplanning`, `ade-portal-rest`, `scodoc-gateway`, `etudiants-api`,
+`ade-ical-link`, `ade-myplanning`, `ade-portal-rest`, `tempo`, `scodoc-gateway`, `etudiants-api`,
 `moodle-ajax`, `moodle-webservice`, `zimbra-rest`, `bluemind`, `ardemat`, `portal` (uPortal 4 et 5)
-et `tiles-portal`, plus `demo`. `mon-dossier-web` est accepté par la configuration et répond
+et, pour les autres portails, `tiles-portal`, `drupal` et `isorbonne`, plus `demo`. `tempo`,
+`drupal` et `isorbonne` sont portés du code de Tafac (Rennes 2, Sorbonne Nouvelle) et n'ont
+jamais répondu qu'à de faux serveurs. `mon-dossier-web` est accepté par la configuration et répond
 `not_implemented`. Catalogue et limites : [../reference/fournisseurs.md](../reference/fournisseurs.md).
 
 ## Essais réels
@@ -85,5 +87,9 @@ La recherche technique est dans [../recherche/](../recherche/README.md) : observ
 certaines pistes hypothétiques, pas tenues à jour avec le code. Le catalogue de la CLI
 (`tonapi providers`) décrit les variantes acceptées, pas les services réellement utilisables.
 
-Suites possibles : essais réels à Rennes et Lannion, signaux de composante pour uPortal, notes
-réelles à Paul-Valéry, actions de [../exploitation/production.md](../exploitation/production.md).
+Suites possibles : essais réels à Rennes et Lannion, premier essai à Rennes 2 et à la Sorbonne
+Nouvelle (ce qu'un compte doit y confirmer est listé dans
+[../recherche/rennes-2.md](../recherche/rennes-2.md) et
+[../recherche/sorbonne-nouvelle.md](../recherche/sorbonne-nouvelle.md)), emploi du temps de la
+Sorbonne Nouvelle (ADE 6.12), signaux de composante pour uPortal, notes réelles à Paul-Valéry,
+actions de [../exploitation/production.md](../exploitation/production.md).

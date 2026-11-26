@@ -77,9 +77,25 @@ allowed-hosts = ["exemple.fr", "renater.fr"]
 | `uportal4-prolongation` | uPortal 4 avec ESUP ProlongationENT | applications, profil |
 | `uportal5` | uPortal 5 | applications, profil |
 | `tiles-portal` | portail à tuiles avec client CAS intégré (logiciel non identifié, vu à Montpellier en octobre 2026) | applications, profil, signaux de composante |
+| `drupal` | portail Drupal derrière le CAS, sans API (lu dans le code de Tafac pour Rennes 2, jamais essayé) | applications, profil (nom seulement) |
+| `isorbonne` | iSorbonne, portail JSF de la Sorbonne Nouvelle (lu dans le code de Tafac, jamais essayé) | applications, profil (nom seulement) |
 | `none` | pas de portail exploitable | rien |
 
 Tous prennent `base-url`. `apps` ou `profile` avec `provider = "portal"` exigent un `[portal]`.
+
+`drupal` lit des pages : ce qui dépend du site se règle ici.
+
+```toml
+[portal]
+kind = "drupal"
+base-url = "https://etudiants.exemple.fr/"
+name-field = "field-nomprenom"   # champ « Prénom Nom » de la page `user` ; sans lui, pas de nom
+
+[portal.catalogue]               # sans cette table, pas d'applications
+path = "tous-outils"             # page du catalogue, relative à `base-url`
+view = "outils"                  # nom machine de la vue (classe `view-id-outils`)
+item-path = "/outil/"            # début du chemin d'un outil, dans son attribut `about`
+```
 
 ### `[services]`
 
@@ -89,7 +105,7 @@ utilisé pour un service qu'il ne rend pas, est refusé.
 
 | Service | Fournisseurs et paramètres |
 |---|---|
-| `timetable` | `ade-ical-link` (`link-page`, `feed-host`) ; `ade-portal-rest` (`base-url`) ; `ade-myplanning` (`base-url`, `project-id`, défaut 1) |
+| `timetable` | `ade-ical-link` (`link-page`, `feed-host`) ; `ade-portal-rest` (`base-url`) ; `ade-myplanning` (`base-url`, `project-id`, défaut 1) ; `tempo` (`base-url`) |
 | `grades` | `scodoc-gateway` (`base-url`, `sign-in`) ; `etudiants-api` (`base-url`) |
 | `absences` | `scodoc-gateway` (`base-url`, `sign-in`) |
 | `exams` | `etudiants-api` (`base-url`) |
@@ -206,6 +222,9 @@ choisir sa composante (`establishment` à la connexion, ou `PUT /v1/me/establish
 - toute URL en `https://` ; `http://`, `javascript:`, `data:`, `file:` et schémas voisins refusés ;
 - chemins `tls.extra-ca` relatifs, sans `..`, lisibles et au format PEM ;
 - `[portal]` présent si `apps` ou `profile` utilisent `portal` ;
+- réglages d'un portail `drupal` : noms de champ et de vue sans autre caractère que lettres,
+  chiffres, `-` et `_` ; chemins sans `..`, relatif pour `catalogue.path`, entre deux barres pour
+  `catalogue.item-path` ;
 - `kind = "demo"` réservé à l'université `demo` ;
 - une seule composante `default = true` ;
 - règle de rattachement avec exactement un motif non vide.

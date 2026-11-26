@@ -117,6 +117,9 @@ fn entry_url(university: &ResolvedUniversity, cas: &CasServer) -> Url {
             }
             None
         }
+        // Portails sans adresse de connexion à eux : leur page d'entrée renvoie au CAS.
+        PortalConfig::Drupal { base_url, .. } => return crate::drupal::entry_url(base_url),
+        PortalConfig::Isorbonne { base_url } => return crate::isorbonne::entry_url(base_url),
         PortalConfig::None => None,
     };
     cas.login_url(service.as_ref())

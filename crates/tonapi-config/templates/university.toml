@@ -22,7 +22,7 @@ base-url = "https://a-remplir.invalid/cas/"   # racine du CAS, sans /login
 
 # Portail (ENT), pour la liste des applications et le profil.
 # [portal]
-# kind = "uportal5"        # uportal5 | uportal4-prolongation | tiles-portal
+# kind = "uportal5"        # uportal5 | uportal4-prolongation | tiles-portal | drupal | isorbonne
 # base-url = "https://ent.exemple.fr/"
 
 # [services.timetable]

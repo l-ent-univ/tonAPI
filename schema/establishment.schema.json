@@ -1284,6 +1284,29 @@
         },
         {
           "additionalProperties": false,
+          "description": "TEMPO (Rennes 2) : l'emploi du temps de l'étudiant, `api/events?start=…&end=…` en JSON\nderrière le CAS (`auth` reçoit le ticket). Lu dans le code de Tafac.",
+          "properties": {
+            "base-url": {
+              "description": "Racine de TEMPO (ex. `https://tempo.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "tempo",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "Simple lien vers le site de l'établissement.",
           "properties": {
             "label": {

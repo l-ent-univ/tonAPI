@@ -1,0 +1,61 @@
+#:schema ../../schema/university.schema.json
+# Université Rennes 2 (à ne pas confondre avec `univ-rennes`, l'Université de Rennes).
+# Tout vient du code de Tafac, qui sert cette université avec de vrais comptes ; tonAPI n'y a
+# jamais été essayé. Sources et provenance de chaque valeur : docs/recherche/rennes-2.md.
+
+id = "univ-rennes-2"
+name = "Université Rennes 2"
+short-name = "Rennes 2"
+status = "planned"
+
+[links]
+account-help = "https://services.univ-rennes2.fr/sesame/index.php/aide"
+
+# [code] Apereo CAS servi à la racine : formulaire à `execution`, `/login` et `/logout`. Pas de
+# second facteur dans la configuration de Tafac ; si le CAS en demande un, la connexion échoue.
+[sso]
+kind = "cas"
+base-url = "https://cas.univ-rennes2.fr/"
+
+# [code] Portail Drupal : la racine renvoie au CAS, la session se lit sur la classe du `<body>`,
+# le nom sur la page `user` et les applications sur la page « Tous les outils ».
+[portal]
+kind = "drupal"
+base-url = "https://etudiants.univ-rennes2.fr/"
+name-field = "field-nomprenom"
+
+[portal.catalogue]
+path = "tous-outils"
+view = "outils"
+item-path = "/outil/"
+
+# [code] TEMPO : emploi du temps personnel, `api/events`, session ouverte par `auth` et le CAS.
+[services.timetable]
+provider = "tempo"
+base-url = "https://tempo.univ-rennes2.fr/"
+
+# [code] Moodle « Cursus » : l'entrée `login/index.php?authCAS=CAS` va droit au CAS, sans
+# Shibboleth.
+[services.homework]
+provider = "moodle-ajax"
+base-url = "https://cursus.univ-rennes2.fr/"
+entry = "cas"
+
+# [code] Webmail Partage (Zimbra) derrière une fédération SAML (IdP de l'université, puis CAS) :
+# `zimbra-rest` s'y arrête et répond `not_implemented`.
+[services.mail]
+provider = "zimbra-rest"
+base-url = "https://webmail.etudiant.univ-rennes2.fr/"
+entry-url = "https://webmail.univ-rennes2.fr/"
+
+[services.apps]
+provider = "portal"
+
+[services.profile]
+provider = "portal"
+
+# [code] Certificat de scolarité : Mon Dossier Web, menu « Inscriptions ». Fournisseur non
+# implémenté.
+[services.documents]
+provider = "mon-dossier-web"
+base-url = "https://mondossierweb.univ-rennes2.fr/"

@@ -3,7 +3,8 @@
 Trois établissements ont été essayés avec un vrai compte étudiant : l'IUT de Béziers (Université
 de Montpellier) les 27 et 28/10/2026, l'Université Paul-Valéry Montpellier 3 le 27/10/2026 et
 l'IUT de Lannion (Université de Rennes) le 15/11/2026. La composante `autres` de Rennes et les
-autres composantes de Montpellier n'ont jamais été essayées.
+autres composantes de Montpellier n'ont jamais été essayées. Rennes 2 et la Sorbonne Nouvelle non
+plus : leur configuration et leurs fournisseurs viennent du code de Tafac, sans aucun compte.
 Chaque case indique le fournisseur configuré et la preuve disponible.
 
 Configuration lue dans `universities/` [code]. Essais détaillés pour Paul-Valéry dans
@@ -32,6 +33,8 @@ Configuration lue dans `universities/` [code]. Essais détaillés pour Paul-Val�
 | `univ-montp3` | beta | uportal5 + etudiants-api, vu 27/10 | ade-myplanning, vu 27/10 | etudiants-api, vide 27/10 | absent | etudiants-api, vide 27/10 | moodle-ajax, vu 27/10 | bluemind, vu 27/10 | uportal5, vu 27/10 | etudiants-api, vide 27/10 |
 | `univ-rennes` (`autres`, défaut) | beta | uportal5, non essayé | ade-portal-rest, non essayé | absent | absent | absent | moodle-ajax (Shibboleth), non essayé | zimbra-rest, 501 attendu | uportal5, non essayé | mon-dossier-web, 501 |
 | `univ-rennes/iut-lannion` | beta | uportal5, [vu] 15/11/2026 | ade-portal-rest, [vu] 15/11/2026 : 15 séances, comme sur le portail ; 6 928 groupes listés | scodoc-gateway (CAS de l'université), [vu] 15/11/2026 : 1 semestre ; [vu] 25/11/2026 : 3 semestres listés, autre semestre, répartition, relevé PDF | scodoc-gateway, [vu] 15/11/2026 : réponse vide | absent | moodle-ajax (Shibboleth), [vu] 15/11/2026 | zimbra-rest, [vu] 15/11/2026 : 501 | uportal5, [vu] 15/11/2026 ; [vu] 26/11/2026 : 31 applications, 5 favoris, l'adresse de chaque tuile lue dans son fragment (lecture corrigée ce jour-là) | mon-dossier-web, 501 |
+| `univ-rennes-2` | planned | drupal, non essayé | tempo, non essayé | absent | absent | absent | moodle-ajax (CAS), non essayé | zimbra-rest, non essayé, 501 attendu (SAML) | drupal, non essayé | mon-dossier-web, 501 |
+| `univ-sorbonne-nouvelle` | planned | isorbonne, non essayé | lien | absent | absent | absent | moodle-ajax (CAS), non essayé | absent | isorbonne, non essayé | mon-dossier-web, 501 |
 
 ## Précisions
 
@@ -68,6 +71,14 @@ sur une règle `ade-group-path` : à la connexion, `ade-portal-rest` donne le ch
 l'étudiant dans l'arbre ADE. Avec ce compte, la composante `iut-lannion` est détectée sans choix
 de l'étudiant [vu, 15/11/2026]. La connexion passe alors d'environ 0,6 s à 1,3 s, le temps
 d'ouvrir la session ADE et de lire l'arbre (une mesure de chaque).
+
+**Rennes 2 et Sorbonne Nouvelle** : aucune requête n'a été envoyée à ces universités. Les
+fournisseurs `drupal`, `isorbonne` et `tempo` sont portés du code de Tafac et essayés contre de
+faux serveurs seulement [code] ([../recherche/rennes-2.md](../recherche/rennes-2.md),
+[../recherche/sorbonne-nouvelle.md](../recherche/sorbonne-nouvelle.md), qui listent ce qu'un
+compte doit confirmer, dans l'ordre). À Rennes 2, le webmail passe par une fédération SAML :
+`zimbra-rest` y répondra `not_implemented` [déduit, comme à Rennes]. À la Sorbonne Nouvelle,
+l'emploi du temps reste un lien : `ade-myplanning` ne convient pas tel quel à son ADE 6.12 [code].
 
 ## Mettre à jour
 

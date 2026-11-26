@@ -1,0 +1,17 @@
+id = "portail-drupal"
+name = "Université au portail mal réglé"
+
+[sso]
+kind = "cas"
+base-url = "https://cas.exemple.test/"
+
+# Le chemin du catalogue sort du portail et le nom de la vue contient une classe de trop.
+[portal]
+kind = "drupal"
+base-url = "https://etudiants.exemple.test/"
+name-field = "field-nomprenom"
+
+[portal.catalogue]
+path = "../ailleurs/tous-outils"
+view = "outils autre"
+item-path = "outil"

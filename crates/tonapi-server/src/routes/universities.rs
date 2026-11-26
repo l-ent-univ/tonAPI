@@ -110,7 +110,7 @@ pub struct UniversityDetail {
     timezone: String,
     login: LoginInfo,
     /// Logiciel du portail qui sert les applications et le profil : `uportal4-prolongation`,
-    /// `uportal5`, `tiles-portal`, ou absent.
+    /// `uportal5`, `tiles-portal`, `drupal`, `isorbonne`, ou absent.
     portal: Option<&'static str>,
     /// Liens utiles (`website`, `passwordReset`…).
     links: Vec<LinkInfo>,
@@ -254,6 +254,8 @@ pub async fn detail(
                 PortalConfig::Uportal4Prolongation { .. } => Some("uportal4-prolongation"),
                 PortalConfig::Uportal5 { .. } => Some("uportal5"),
                 PortalConfig::TilesPortal { .. } => Some("tiles-portal"),
+                PortalConfig::Drupal { .. } => Some("drupal"),
+                PortalConfig::Isorbonne { .. } => Some("isorbonne"),
                 PortalConfig::None => None,
             },
             links,

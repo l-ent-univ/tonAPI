@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use tonapi_config::{
-    GradesService, Registry, establishment_schema, establishment_template, university_schema,
+    GradesService, PortalConfig, Registry, Status, TimetableService, establishment_schema,
+    establishment_template, university_schema,
 };
 
 fn repo() -> PathBuf {
@@ -24,6 +25,20 @@ fn les_universites_du_depot_se_chargent_sans_refus() {
     for id in ["demo", "umontpellier", "univ-rennes"] {
         assert!(registry.get(id).is_some(), "{id} absente");
     }
+    // Rennes 2 et la Sorbonne Nouvelle : annoncées, avec leur portail.
+    let rennes_2 = &registry.get("univ-rennes-2").unwrap().university;
+    assert_eq!(rennes_2.status, Status::Planned);
+    assert!(matches!(
+        &rennes_2.portal,
+        PortalConfig::Drupal { catalogue: Some(catalogue), .. } if catalogue.path == "tous-outils"
+    ));
+    assert!(matches!(
+        rennes_2.services.timetable,
+        Some(TimetableService::Tempo { .. })
+    ));
+    let sorbonne = &registry.get("univ-sorbonne-nouvelle").unwrap().university;
+    assert_eq!(sorbonne.status, Status::Planned);
+    assert!(matches!(sorbonne.portal, PortalConfig::Isorbonne { .. }));
 }
 
 #[test]
@@ -65,6 +80,7 @@ fn chaque_fixture_invalide_est_refusee() {
         "id-different",
         "champ-inconnu",
         "a-remplir",
+        "portail-drupal",
     ] {
         assert!(refused(&format!("{dir}/university.toml")), "{dir} accepté");
         assert!(registry.get(dir).is_none());
@@ -80,6 +96,27 @@ fn chaque_fixture_invalide_est_refusee() {
     assert_eq!(
         composantes.establishments.keys().collect::<Vec<_>>(),
         ["a-defaut"]
+    );
+}
+
+#[test]
+fn chaque_reglage_d_un_portail_drupal_est_verifie() {
+    let (_, report) = Registry::load(&invalid());
+    let mut paths: Vec<&str> = report
+        .rejected
+        .iter()
+        .filter(|i| i.file.ends_with("portail-drupal/university.toml"))
+        .filter_map(|i| i.path.as_deref())
+        .collect();
+    paths.sort_unstable();
+    // Le champ du nom, lui, est bien écrit.
+    assert_eq!(
+        paths,
+        [
+            "portal.catalogue.item-path",
+            "portal.catalogue.path",
+            "portal.catalogue.view"
+        ]
     );
 }
 

@@ -1,0 +1,51 @@
+#:schema ../../schema/university.schema.json
+# Université Sorbonne Nouvelle (ex-Paris 3). Tout vient du code de Tafac, qui ne la propose
+# encore qu'en développement ; tonAPI n'y a jamais été essayé. Sources et provenance de chaque
+# valeur : docs/recherche/sorbonne-nouvelle.md.
+
+id = "univ-sorbonne-nouvelle"
+name = "Université Sorbonne Nouvelle"
+short-name = "Sorbonne Nouvelle"
+status = "planned"
+
+[links]
+account-activation = "https://activation.sorbonne-nouvelle.fr/"
+
+# [code] Apereo CAS 6 servi sous `/cas` : formulaire à `execution`, `/cas/login` et `/cas/logout`.
+# Pas de second facteur dans la configuration de Tafac.
+[sso]
+kind = "cas"
+base-url = "https://cas.sorbonne-nouvelle.fr/cas/"
+
+# [code] iSorbonne, portail JSF de l'université : la page `secure/index.xhtml` renvoie au CAS,
+# porte le nom de l'étudiant (lien de déconnexion) et les tuiles des applications.
+[portal]
+kind = "isorbonne"
+base-url = "https://isorbonne.sorbonne-nouvelle.fr/ENT/"
+
+# [code] ADE Planning 6.12, interface `direct/myplanning.jsp`, projet 5. `ade-myplanning` a été
+# écrit pour ADE 6.15 : l'appel de connexion de la 6.12 a une autre signature et le flux
+# `anonymous_cal.jsp` n'y a jamais été demandé. En attendant, un simple lien.
+[services.timetable]
+provider = "link"
+url = "https://planning.sorbonne-nouvelle.fr/direct/myplanning.jsp"
+label = "Planning"
+
+# [code] Moodle « iCampus », resté sous l'ancien nom de l'université : l'entrée
+# `login/index.php?authCAS=CAS` va droit au CAS, sans Shibboleth.
+[services.homework]
+provider = "moodle-ajax"
+base-url = "https://icampus.univ-paris3.fr/"
+entry = "cas"
+
+[services.apps]
+provider = "portal"
+
+[services.profile]
+provider = "portal"
+
+# [code] Certificat de scolarité : ESUP MonDossierWeb sous un chemin de l'hôte des applications.
+# Fournisseur non implémenté.
+[services.documents]
+provider = "mon-dossier-web"
+base-url = "https://apps.sorbonne-nouvelle.fr/esup-mdw/"

@@ -31,7 +31,8 @@ pub use services::{
 };
 pub use templates::{PLACEHOLDER, PLACEHOLDER_HOST, establishment_template, university_template};
 pub use university::{
-    CasFlavor, CasSso, Links, MfaConfig, PortalConfig, SamlConfig, Sso, Status, Tls, UniversityFile,
+    CasFlavor, CasSso, DrupalCatalogue, Links, MfaConfig, PortalConfig, SamlConfig, Sso, Status,
+    Tls, UniversityFile,
 };
 pub use validate::{Issue, is_valid_id};
 
