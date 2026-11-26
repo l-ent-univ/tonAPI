@@ -65,6 +65,21 @@ fn lien_du_fragment_de_portlet() {
         fragment_link("<iframe data-src=\"https://x.test/\">", &base),
         None
     );
+    // Lanceur d'uPortal 5 (forme vue à Rennes) : les attributs commencent à la ligne suivante,
+    // et le style qui précède ne nomme que des adresses du portail.
+    let launcher = "<style>\n  #Pluto_1_app .portlet-icon { background-image: url('/media/icons/x.png'); }\n</style>\n\n<a\n    id=\"Pluto_1_app\"\n    class=\"portlet-link\"\n    href=\"https://planning.exemple.test/portal/\"\n    rel=\"noopener noreferrer\"\n    target=\"_blank\">\n  <span class=\"portlet-title\">Mon emploi du temps</span>\n</a>";
+    assert_eq!(
+        fragment_link(launcher, &base).map(String::from).as_deref(),
+        Some("https://planning.exemple.test/portal/")
+    );
+    // Une balise qui commence comme `<a` n'en est pas une.
+    assert_eq!(
+        fragment_link(
+            "<abbr href=\"https://x.test/\">x</abbr><article href=\"https://y.test/\">",
+            &base
+        ),
+        None
+    );
 }
 
 use super::parse::*;

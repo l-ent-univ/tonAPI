@@ -71,11 +71,22 @@ fn token_like(part: &str) -> bool {
 /// absolu hors du portail. Les fragments d'erreur ne pointent que vers le portail : ignorés.
 pub(crate) fn fragment_link(html: &str, base: &Url) -> Option<Url> {
     let lower = html.to_ascii_lowercase();
+    // `tag` : le nom de la balise avec son chevron (`<a`). Ce qui le suit est un blanc, quel
+    // qu'il soit : uPortal écrit `<a` puis un retour à la ligne avant les attributs. [vu] Rennes,
+    // 26/11/2026.
     let attribute = |tag: &str, name: &str| -> Vec<String> {
         let mut out = Vec::new();
         let mut from = 0;
         while let Some(at) = lower.get(from..).and_then(|rest| rest.find(tag)) {
             let start = from + at;
+            let named = lower
+                .as_bytes()
+                .get(start + tag.len())
+                .is_some_and(u8::is_ascii_whitespace);
+            if !named {
+                from = start + tag.len();
+                continue;
+            }
             let end = lower
                 .get(start..)
                 .and_then(|rest| rest.find('>'))
@@ -94,7 +105,7 @@ pub(crate) fn fragment_link(html: &str, base: &Url) -> Option<Url> {
     };
     attribute("<iframe", "src")
         .iter()
-        .chain(attribute("<a ", "href").iter())
+        .chain(attribute("<a", "href").iter())
         .find_map(|raw| outside(raw))
 }
 

@@ -13,8 +13,8 @@
 //! session) et réessaie **une seule fois**.
 //!
 //! Sources : `docs/recherche/montpellier/ent.md` (uPortal 4.3.1, confirmé avec un compte réel),
-//! `docs/recherche/rennes/apis/uportal5.md` (uPortal 5 : seule la réponse invitée a été observée, la forme
-//! d'une session connectée est lue dans le code d'un client tiers).
+//! `docs/recherche/rennes/apis/uportal5.md` (uPortal 5 : réponse invitée, puis session connectée
+//! observée le 26/11/2026, §10).
 
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::{Method, StatusCode};

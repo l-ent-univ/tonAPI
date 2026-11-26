@@ -234,8 +234,33 @@ Tous ces appels passent, côté tafac, par le proxy serveur `/__ent_proxy/*` qui
 ## 9. Points incertains
 
 - Version exacte d'uPortal (5.1.x / 5.2.x ?).
-- Forme d'un `layout.json` **connecté** : noms d'onglets et de sections, présence systématique d'une section « Favoris », contenu réel de `favorites`/`favoriteGroups`.
+- Contenu réel de `layout.favorites` et `favoriteGroups` (§10 : `favorites` est une liste, non relevée).
 - Contenu réel de `layoutDoc` et de `marketplace/entries.json` (jamais archivés).
-- Claims réels de `userinfo` pour un étudiant Rennes (nom, prénom, e-mail, numéro étudiant ?).
+- Claims de `userinfo` au-delà de ceux que tonAPI lit (§10) : numéro étudiant, photo ?
 - Existence et chemin d'un endpoint de session/keep-alive uPortal natif (non utilisé par tafac).
 - Durée de vie du `JSESSIONID` ENT.
+
+---
+
+## 10. Observé avec un compte connecté le 26 nov. 2026
+
+Compte étudiant de l'IUT de Lannion, session ouverte par tonAPI. Aucune valeur du compte n'est reproduite ; les identifiants de portlets et les adresses d'applications sont ceux du portail, communs aux étudiants.
+
+| Fait | Statut |
+|---|---|
+| `layout.json` connecté : clés `authenticated`, `fragmentAdmin`, `hostname`, `layout`, `locale`, `user` ; `layout` : `favoriteGroups`, `favorites`, `globals`, `navigation`, `regions` | **[vu]** |
+| Un seul onglet, « Mes services numériques », avec deux dossiers : « Mes favoris » et « Tous les services » | **[vu]** |
+| Une application mise en favori n'est plus que dans « Mes favoris » : elle sort de « Tous les services » | **[vu]** (5 favoris, absents de l'autre dossier) |
+| `globals.hasFavorites` vaut `"false"` alors que le dossier « Mes favoris » en contient | **[vu]** |
+| 31 portlets, tous des lanceurs : `portletName: "app-launcher"`, `typeID: "2"`, `parameters.target: "_blank"`, `parameters.stopImmediately: "true"` | **[vu]** |
+| Aucun portlet ne porte son adresse dans ses paramètres : `url` vaut `/api/v4-3/portlet/<fname>.html`, et `parameters` n'a ni `url` ni `launchUrl` | **[vu]** |
+| `iconUrl` est la même icône par défaut pour tous (`/media/skins/icons/mobile/default.png`) ; l'icône propre est dans le style du fragment (`/media/icons/<fname>.png`) | **[vu]** |
+| Clés d'un portlet : `ID`, `_objectType`, `chanID`, `deleteAllowed`, `description`, `fname`, `fragment`, `iconUrl`, `lifecycleState`, `locale`, `moveAllowed`, `name`, `parameters`, `portletMode`, `portletName`, `precedence`, `timeout`, `title`, `typeID`, `url`, `webAppName`, `windowState` | **[vu]** |
+| Fragment `GET /api/v4-3/portlet/<fname>.html` : une trentaine de lignes vides, un `<style>` pour l'icône, puis un seul lien dont les attributs commencent à la ligne suivante (`<a` + retour à la ligne, `id="Pluto_…"`, `class="portlet-link"`, `href`, `rel`, `target="_blank"`, `aria-label`, `title`) | **[vu]** |
+| Les 31 fragments donnent une adresse absolue hors du portail, sur 31 hôtes (dont le CAS et l'IdP Shibboleth pour deux d'entre eux) | **[vu]** |
+| Les caractères accentués du fragment sont illisibles lus en UTF-8 : l'encodage réel n'a pas été relevé | **[vu]**, encodage **[inconnu]** |
+| Une session portail s'ouvre avec le seul TGC, sans cookie du portail (`<CAS>/login?service=<portail>/Login`) | **[vu]** |
+| `userinfo` : tonAPI en lit l'identifiant, le nom affiché, le prénom, le nom et l'e-mail | **[vu]** |
+| Liste complète par tonAPI : 2 à 3 s la première fois (session ouverte, 31 fragments lus), puis les liens viennent du cache commun | **[vu]** |
+
+tonAPI lisait `<a ` suivi d'une espace : aucun lien de fragment n'était trouvé à Rennes, et chaque application gardait la page du portail `/p/<fname>`. Corrigé le même jour (`fragment_link`, `crates/tonapi-providers/src/uportal/parse.rs`) ; les 31 adresses sont alors celles que le premier `<a href>` du fragment donne.
