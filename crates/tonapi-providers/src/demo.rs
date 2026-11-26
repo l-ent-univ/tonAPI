@@ -340,6 +340,8 @@ pub(crate) fn absences(now: DateTime<Utc>) -> AbsenceReport {
                 end: e1,
                 justified: true,
                 module: Some("Développement web".into()),
+                module_id: None,
+                teacher: None,
             },
             Absence {
                 id: "demo-a2".into(),
@@ -347,12 +349,19 @@ pub(crate) fn absences(now: DateTime<Utc>) -> AbsenceReport {
                 end: e2,
                 justified: false,
                 module: Some("Projet tutoré (SAÉ 3.01)".into()),
+                module_id: None,
+                teacher: None,
             },
         ],
         totals: AbsenceTotals {
             justified: 1,
             unjustified: 1,
         },
+        lates: Vec::new(),
+        visible: None,
+        unit: None,
+        unit_totals: None,
+        notice: None,
     }
 }
 

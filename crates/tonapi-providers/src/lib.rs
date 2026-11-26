@@ -492,6 +492,19 @@ pub async fn grades_and_absences(
     Result<Fetched<GradeReport>, Problem>,
     Result<Fetched<AbsenceReport>, Problem>,
 ) {
+    grades_and_absences_of(ctx, None).await
+}
+
+/// Notes et absences du semestre demandé (comme [`grades_of`]) ; sans semestre, du semestre
+/// courant. Les absences d'un semestre choisi ne se lisent qu'avec ses notes, dans la même
+/// réponse de la passerelle ScoDoc : un autre fournisseur répond `not_implemented` pour elles.
+pub async fn grades_and_absences_of(
+    ctx: &mut Context<'_>,
+    semester: Option<&str>,
+) -> (
+    Result<Fetched<GradeReport>, Problem>,
+    Result<Fetched<AbsenceReport>, Problem>,
+) {
     let services = ctx.services();
     if let (
         Some(GradesService::ScodocGateway(grades_config)),
@@ -499,14 +512,19 @@ pub async fn grades_and_absences(
     ) = (&services.grades, &services.absences)
         && grades_config == absences_config
     {
-        let (g, a) = scodoc::fetch_both(ctx, grades_config).await;
+        let (g, a) = scodoc::fetch_both(ctx, grades_config, semester).await;
         return (
             g.map(|data| fetched(data, "scodoc-gateway")),
             a.map(|data| fetched(data, "scodoc-gateway")),
         );
     }
-    let g = grades(ctx).await;
-    let a = absences(ctx).await;
+    let g = grades_of(ctx, semester).await;
+    let a = if semester.is_some() {
+        Err(Problem::new(ErrorCode::NotImplemented)
+            .detail("absences d'un semestre choisi : pas disponibles avec ce fournisseur"))
+    } else {
+        absences(ctx).await
+    };
     (g, a)
 }
 

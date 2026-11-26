@@ -253,6 +253,7 @@ fn semestre_complet_identite_promotion_rangs_et_jury() {
     assert_eq!(semester.average, grade(12.1));
     assert_eq!(semester.stats, stats(6.0, 11.5, 16.8));
     assert_eq!(semester.rank.as_deref(), Some("12/84"));
+    assert_eq!(semester.ranked, Some(84));
     assert_eq!(
         (semester.ects, semester.ects_earned),
         (Some(30.0), Some(5.0))
@@ -410,6 +411,8 @@ fn ce_que_l_etablissement_masque_n_est_pas_rendu() {
     let semester = &report.semesters[0];
     assert_eq!(semester.rank, None);
     assert!(semester.group_ranks.is_empty());
+    // L'effectif classé reste : la passerelle le donne même quand le rang est masqué.
+    assert_eq!(semester.ranked, Some(84));
     assert_eq!((semester.ects, semester.ects_earned), (None, None));
     let unit = &semester.units[0];
     assert_eq!(unit.rank, None);
@@ -688,6 +691,78 @@ fn absences_du_semestre() {
     );
     assert_eq!(report.totals.justified, 1);
     assert_eq!(report.totals.unjustified, 2);
+
+    // La matière telle que le logiciel la désigne, et l'enseignant qui a relevé l'absence.
+    assert_eq!(report.absences[0].module_id.as_deref(), Some("5101"));
+    assert_eq!(report.absences[0].teacher.as_deref(), Some("M. Exemple"));
+    assert_eq!(report.absences[1].module_id.as_deref(), Some("9999"));
+
+    // Le retard est à part : il ne compte pas dans les totaux.
+    let lates: Vec<_> = report
+        .lates
+        .iter()
+        .map(|late| (late.id.as_str(), late.start.to_rfc3339()))
+        .collect();
+    assert_eq!(lates, [("79016", "2026-10-05T10:15:00+02:00".to_owned())]);
+
+    // Totaux de l'établissement, dans l'unité qu'il a choisie.
+    assert_eq!(report.unit.as_deref(), Some("demi"));
+    let totals = report.unit_totals.unwrap();
+    assert_eq!(totals.justified.get("demi"), Some(&1.0));
+    assert_eq!(totals.unjustified.get("demi"), Some(&2.0));
+}
+
+#[test]
+fn absences_ce_que_l_etablissement_en_dit() {
+    let read = |change: &dyn Fn(&mut Value)| {
+        let mut data = fixture(FULL);
+        change(&mut data);
+        parse_absences(&data, Paris).unwrap()
+    };
+    // Montrées, avec l'unité et le message de l'établissement rendu en texte.
+    let shown = read(&|data| {
+        data["config"]["message_rapport_absences"] =
+            json!("<p>Justifier sous <b>48&nbsp;heures</b>.</p><p>Au secr&eacute;tariat.</p>");
+    });
+    assert_eq!(shown.visible, Some(true));
+    assert_eq!(shown.unit.as_deref(), Some("demi"));
+    assert_eq!(
+        shown.notice.as_deref(),
+        Some("Justifier sous 48 heures.\nAu secrétariat.")
+    );
+    assert_eq!(shown.unit_totals, None);
+
+    // Coupées, ou réservées à d'autres départements.
+    assert_eq!(
+        read(&|d| d["config"]["afficher_absences"] = json!(false)).visible,
+        Some(false)
+    );
+    assert_eq!(
+        read(&|d| d["config"]["liste_dep_publi_absences"] = json!("AUTRE")).visible,
+        Some(false)
+    );
+    assert_eq!(
+        read(&|d| d["config"]["liste_dep_publi_absences"] = json!("AUTRE,DEMO")).visible,
+        Some(true)
+    );
+
+    // Sans `config` (relevé d'un autre semestre) : rien n'est dit, mais les totaux par unité
+    // de la passerelle sont rendus tels quels.
+    let other = read(&|data| {
+        data["config"] = Value::Null;
+        data["totauxAbsences"] = json!({ "absent": {
+            "heure": 4.5, "demi": 3,
+            "justifie": { "heure": "1.5", "demi": 1 },
+            "non_justifie": { "heure": 3, "demi": 2, "illisible": "x" },
+        } });
+    });
+    assert_eq!(
+        (other.visible, other.unit.as_deref(), other.notice),
+        (None, None, None)
+    );
+    let totals = other.unit_totals.unwrap();
+    assert_eq!(totals.justified.get("heure"), Some(&1.5));
+    assert_eq!(totals.unjustified.len(), 2);
 }
 
 #[test]

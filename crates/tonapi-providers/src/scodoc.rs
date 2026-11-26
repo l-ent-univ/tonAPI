@@ -42,9 +42,11 @@ use crate::{Context, Download};
 
 mod parse;
 
+#[cfg(test)]
+use parse::parse_grades;
 use parse::{
     Reply, classify_reply, hidden_distribution, is_published, owns_evaluation, parse_absences,
-    parse_distribution, parse_grades, parse_notice, parse_report, student_id, transcript_type,
+    parse_distribution, parse_notice, parse_report, student_id, transcript_type,
 };
 
 const PROVIDER: &str = "scodoc-gateway";
@@ -421,18 +423,8 @@ pub(crate) async fn fetch_grades(
     semester: Option<&str>,
 ) -> Result<GradeReport, Problem> {
     let tz = university_tz(ctx)?;
-    let Some(semester) = semester else {
-        return parse_grades(&fetch_data(ctx, config).await?, tz);
-    };
-    let semester = scodoc_id(semester, "de semestre")?;
-    let query = Query {
-        action: "relevéEtudiant",
-        params: &[("semestre", semester)],
-    };
-    let mut gateway = Gateway::open(ctx, config)?;
-    let result = gateway.data(&query).await;
-    gateway.close(ctx);
-    parse_report(&result?, tz, Some(semester))
+    let data = semester_data(ctx, config, semester).await?;
+    parse_report(&data, tz, semester.map(str::trim))
 }
 
 /// Message du département affiché au-dessus de ses relevés.
@@ -568,18 +560,43 @@ pub(crate) async fn fetch_absences(
 
 /// Notes et absences d'une seule lecture de la passerelle : `data.php` les donne ensemble, et une
 /// session PHP traite ses requêtes l'une après l'autre.
+///
+/// `semester` : le semestre voulu (`relevéEtudiant`) ; sans lui, le semestre courant.
 pub(crate) async fn fetch_both(
     ctx: &mut Context<'_>,
     config: &ScoDocGateway,
+    semester: Option<&str>,
 ) -> (Result<GradeReport, Problem>, Result<AbsenceReport, Problem>) {
     let data = match university_tz(ctx) {
-        Ok(tz) => fetch_data(ctx, config).await.map(|data| (data, tz)),
+        Ok(tz) => semester_data(ctx, config, semester)
+            .await
+            .map(|data| (data, tz)),
         Err(problem) => Err(problem),
     };
     match data {
-        Ok((data, tz)) => (parse_grades(&data, tz), parse_absences(&data, tz)),
+        Ok((data, tz)) => (parse_report(&data, tz, semester), parse_absences(&data, tz)),
         Err(problem) => (Err(problem.clone()), Err(problem)),
     }
+}
+
+/// Réponse de `dataPremièreConnexion`, ou de `relevéEtudiant` pour un semestre demandé.
+async fn semester_data(
+    ctx: &mut Context<'_>,
+    config: &ScoDocGateway,
+    semester: Option<&str>,
+) -> Result<Value, Problem> {
+    let Some(semester) = semester else {
+        return fetch_data(ctx, config).await;
+    };
+    let semester = scodoc_id(semester, "de semestre")?;
+    let query = Query {
+        action: "relevéEtudiant",
+        params: &[("semestre", semester)],
+    };
+    let mut gateway = Gateway::open(ctx, config)?;
+    let result = gateway.data(&query).await;
+    gateway.close(ctx);
+    result
 }
 
 /// Connexion à une passerelle derrière un CAS propre à la composante (`sign-in = own-cas`).

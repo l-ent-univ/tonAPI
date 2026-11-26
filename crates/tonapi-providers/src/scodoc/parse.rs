@@ -8,10 +8,10 @@ use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
 use chrono_tz::Tz;
 use serde_json::Value;
 use tonapi_core::{
-    Absence, AbsenceReport, AbsenceTotals, DistributionUnavailable, ErrorCode, Evaluation,
-    EvaluationKind, Grade, GradeDistribution, GradeNotice, GradeReport, GradeStats, GroupRank,
-    JuryDecision, ModuleGrades, Problem, SemesterGrades, SemesterRef, StudentGroup, UnitGrade,
-    UnitModule,
+    Absence, AbsenceReport, AbsenceTotals, AbsenceUnitTotals, DistributionUnavailable, ErrorCode,
+    Evaluation, EvaluationKind, Grade, GradeDistribution, GradeNotice, GradeReport, GradeStats,
+    GroupRank, JuryDecision, ModuleGrades, Problem, SemesterGrades, SemesterRef, StudentGroup,
+    UnitGrade, UnitModule,
 };
 
 use super::{PROVIDER, bad};
@@ -531,6 +531,7 @@ fn available(listed: &[Value]) -> Vec<SemesterRef> {
 
 /// Relevé du semestre courant. Le bulletin n'est lu que dans la clé `relevé` (avec accent) ;
 /// les données personnelles de `relevé.etudiant` ne sont jamais copiées.
+#[cfg(test)]
 pub(super) fn parse_grades(data: &Value, tz: Tz) -> Result<GradeReport, Problem> {
     parse_report(data, tz, None)
 }
@@ -628,6 +629,9 @@ pub(super) fn parse_report(
             notice: message(report.get("message")),
             updated_at: instant(report.get("date"), tz),
             stats: stats(semester.and_then(|s| s.get("notes"))),
+            ranked: ranks
+                .and_then(|r| small_number(r.get("total")))
+                .filter(|total| *total > 0),
             group_ranks: if show_ranks {
                 group_ranks(ranks.and_then(|r| r.get("groupes")), &groups)
             } else {
@@ -805,9 +809,23 @@ fn module_titles(data: &Value) -> HashMap<String, String> {
     titles
 }
 
-/// Absences du semestre courant. Seules les entrées `absent` comptent : les retards et les présences
-/// du même détail sont ignorés. Les totaux sont recomptés sur ces entrées, car `totauxAbsences` ne
-/// contient que la métrique choisie par l'IUT.
+/// Totaux d'une famille (`justifie`, `non_justifie`) de `totauxAbsences.absent`, par unité.
+fn unit_counts(value: Option<&Value>) -> BTreeMap<String, f64> {
+    entries(value, "totauxAbsences")
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(unit, count)| Some((unit.clone(), lossy_f64(count)?)))
+        .collect()
+}
+
+/// Absences d'une réponse de `dataPremièreConnexion` ou de `relevéEtudiant`.
+///
+/// - `absences` : les entrées `absent`, et `totals` recompté sur elles. Les retards sont dans
+///   `lates` ; les présences du même détail sont ignorées.
+/// - `unit_totals` : les totaux que la passerelle calcule elle-même (`totauxAbsences.absent`),
+///   par unité ; `unit` est celle que l'IUT a choisie (`config.metrique_absences`).
+/// - `visible`, `unit` et `notice` viennent de `config`, qui n'accompagne que
+///   `dataPremièreConnexion` : absents sinon.
 pub(super) fn parse_absences(data: &Value, tz: Tz) -> Result<AbsenceReport, Problem> {
     if !matches!(
         data.get("absences"),
@@ -817,6 +835,7 @@ pub(super) fn parse_absences(data: &Value, tz: Tz) -> Result<AbsenceReport, Prob
     }
     let titles = module_titles(data);
     let mut absences = Vec::new();
+    let mut lates = Vec::new();
     for (day_key, list) in entries(data.get("absences"), "absences")? {
         let day = NaiveDate::parse_from_str(day_key, "%Y-%m-%d")
             .map_err(|_| bad("absences : jour illisible"))?;
@@ -825,9 +844,12 @@ pub(super) fn parse_absences(data: &Value, tz: Tz) -> Result<AbsenceReport, Prob
                 .get("statut")
                 .and_then(Value::as_str)
                 .ok_or_else(|| bad("absence sans statut"))?;
-            if !status.trim().eq_ignore_ascii_case("absent") {
-                continue;
-            }
+            let status = status.trim().to_ascii_lowercase();
+            let list = match status.as_str() {
+                "absent" => &mut absences,
+                "retard" => &mut lates,
+                _ => continue,
+            };
             let from = entry
                 .get("debut")
                 .and_then(lossy_f64)
@@ -839,19 +861,22 @@ pub(super) fn parse_absences(data: &Value, tz: Tz) -> Result<AbsenceReport, Prob
             let last_day = text(entry.get("dateFin"))
                 .and_then(|d| NaiveDate::parse_from_str(d.get(..10)?, "%Y-%m-%d").ok())
                 .unwrap_or(day);
-            absences.push(Absence {
+            let module_id = id_string(entry.get("matiereComplet"));
+            list.push(Absence {
                 // Sans `data_absences_scodoc`, la passerelle n'envoie pas d'identifiant.
                 id: id_string(entry.get("idAbs"))
                     .unwrap_or_else(|| format!("{day_key}-{from}-{to}")),
                 start: at(day, from, tz)?,
                 end: at(last_day, to, tz)?,
                 justified: flag(entry.get("justifie")),
-                module: id_string(entry.get("matiereComplet"))
-                    .and_then(|id| titles.get(&id).cloned()),
+                module: module_id.as_ref().and_then(|id| titles.get(id).cloned()),
+                module_id,
+                teacher: text(entry.get("enseignant")),
             });
         }
     }
     absences.sort_by_key(|a| a.start);
+    lates.sort_by_key(|a| a.start);
     let count = |justified: bool| {
         let n = absences.iter().filter(|a| a.justified == justified).count();
         u32::try_from(n).unwrap_or(u32::MAX)
@@ -860,5 +885,29 @@ pub(super) fn parse_absences(data: &Value, tz: Tz) -> Result<AbsenceReport, Prob
         justified: count(true),
         unjustified: count(false),
     };
-    Ok(AbsenceReport { absences, totals })
+    let absent = data.get("totauxAbsences").and_then(|t| t.get("absent"));
+    let unit_totals = absent
+        .map(|absent| AbsenceUnitTotals {
+            justified: unit_counts(absent.get("justifie")),
+            unjustified: unit_counts(absent.get("non_justifie")),
+        })
+        .filter(|totals| *totals != AbsenceUnitTotals::default());
+    // Les réglages de la passerelle ne viennent qu'avec `dataPremièreConnexion`.
+    let config = data.get("config").filter(|config| config.is_object());
+    let department = data.get("relevé").and_then(department);
+    Ok(AbsenceReport {
+        absences,
+        totals,
+        lates,
+        visible: config.map(|config| {
+            flag(config.get("afficher_absences"))
+                && department_listed(
+                    config.get("liste_dep_publi_absences"),
+                    department.as_deref(),
+                )
+        }),
+        unit: config.and_then(|config| text(config.get("metrique_absences"))),
+        unit_totals,
+        notice: config.and_then(|config| message(config.get("message_rapport_absences"))),
+    })
 }

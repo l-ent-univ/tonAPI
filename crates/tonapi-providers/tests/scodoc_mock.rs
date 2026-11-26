@@ -10,7 +10,7 @@ use tonapi_core::DistributionUnavailable;
 use tonapi_core::ErrorCode;
 use tonapi_providers::{
     Context, absences, grade_distribution, grade_notice, grade_transcript, grades,
-    grades_and_absences, grades_of, service_login,
+    grades_and_absences, grades_and_absences_of, grades_of, service_login,
 };
 use tonapi_session::{SessionData, StoredCookie};
 
@@ -527,4 +527,28 @@ async fn sans_tgc_rien_de_tout_cela_n_est_servi() {
     assert_eq!(state.ticket_validations, 0);
     assert_eq!(state.password_posts, 0);
     assert!(state.pdf_queries.is_empty());
+}
+
+#[tokio::test]
+async fn notes_et_absences_d_un_autre_semestre_d_une_seule_lecture() {
+    let server = full_server().await;
+    let university = university(&server, &university_cas());
+    let mut session = session(vec![cookie("TGC", support::TGC)]);
+    let mut ctx = context(&university, &mut session);
+
+    let (notes, report) = grades_and_absences_of(&mut ctx, Some("901")).await;
+    assert_eq!(notes.unwrap().data.semesters[0].id, "901");
+    let report = report.unwrap().data;
+    // Les réglages de la passerelle ne viennent pas avec ce relevé.
+    assert_eq!((report.visible, report.unit), (None, None));
+    assert!(report.absences.is_empty());
+    assert_eq!(server.state().data_actions, ["relevéEtudiant:901"]);
+
+    // Sans semestre : la première connexion, comme `grades_and_absences`.
+    let (notes, report) = grades_and_absences_of(&mut ctx, None).await;
+    assert_eq!(notes.unwrap().data.available.len(), 3);
+    assert_eq!(report.unwrap().data.visible, Some(true));
+    let state = server.state();
+    assert_eq!(state.data_actions.len(), 2);
+    assert_eq!(state.data_actions[1], "dataPremièreConnexion");
 }

@@ -168,6 +168,18 @@ répondent `not_implemented` (501).
 Dans un semestre, `transcript` et `distributions` disent si ces deux routes ont une réponse à
 donner ; ils ne sont connus qu'avec le relevé du semestre courant.
 
+`ranked` est le nombre d'étudiants classés dans le semestre : il peut être connu alors que
+l'établissement masque le rang.
+
+## Absences
+
+`GET /v1/absences` renvoie les absences (`absences`, et `totals` compté sur elles) et, à part, les
+retards (`lates`). Chaque entrée porte la matière (`module`, `moduleId`) et l'enseignant qui l'a
+relevée quand le logiciel les donne. `unitTotals` reprend les totaux calculés par l'établissement,
+par unité ; `unit` est celle qu'il a choisie, `visible` dit s'il montre les absences à l'étudiant
+et `notice` son message (délai de justification…). Ces trois derniers ne sont connus qu'avec le
+semestre courant.
+
 ## Durée de garde d'une réponse
 
 Chaque réponse de données porte `meta.cacheSecs` : le nombre de secondes pendant lesquelles le

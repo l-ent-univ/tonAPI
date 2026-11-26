@@ -164,6 +164,9 @@ pub struct SemesterGrades {
     pub updated_at: Option<DateTime<FixedOffset>>,
     /// Moyennes générales de la promotion.
     pub stats: Option<GradeStats>,
+    /// Nombre d'étudiants classés dans le semestre, quand le logiciel le donne : il peut être connu
+    /// alors que l'établissement masque le rang lui-même.
+    pub ranked: Option<u32>,
     /// Rang dans chacun des groupes de l'étudiant.
     pub group_ranks: Vec<GroupRank>,
     /// Groupes de l'étudiant dans ce semestre (TD, TP, parcours…).
@@ -303,6 +306,17 @@ pub struct Evaluation {
 pub struct AbsenceReport {
     pub absences: Vec<Absence>,
     pub totals: AbsenceTotals,
+    /// Retards, à part des absences : ils ne comptent pas dans `totals`.
+    pub lates: Vec<Absence>,
+    /// L'établissement montre ses absences à l'étudiant. Absent : inconnu.
+    pub visible: Option<bool>,
+    /// Unité dans laquelle l'établissement compte les absences (ScoDoc : `heure`, `demi`,
+    /// `journee` ou `compte`). Absent : inconnue.
+    pub unit: Option<String>,
+    /// Totaux calculés par l'établissement, par unité.
+    pub unit_totals: Option<AbsenceUnitTotals>,
+    /// Message de l'établissement sur les absences (délai de justification…), en texte brut.
+    pub notice: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -314,6 +328,19 @@ pub struct Absence {
     pub justified: bool,
     /// Matière ou ressource concernée.
     pub module: Option<String>,
+    /// Identifiant de cette matière dans le logiciel (`ModuleGrades::id`), ou son libellé quand
+    /// le logiciel ne donne que lui.
+    pub module_id: Option<String>,
+    /// Enseignant qui a relevé l'absence, tel que fourni (souvent une adresse).
+    pub teacher: Option<String>,
+}
+
+/// Totaux d'absences de l'établissement, pour chaque unité qu'il fournit (clé : l'unité).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AbsenceUnitTotals {
+    pub justified: BTreeMap<String, f64>,
+    pub unjustified: BTreeMap<String, f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
