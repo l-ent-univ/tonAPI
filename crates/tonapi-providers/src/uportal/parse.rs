@@ -206,6 +206,7 @@ impl Collected {
             existing.description = existing.description.take().or(app.description);
             existing.icon_url = existing.icon_url.take().or(app.icon_url);
             existing.category = existing.category.take().or(app.category);
+            existing.favorite |= app.favorite;
         } else {
             self.index.insert(app.id.clone(), self.apps.len());
             self.apps.push(app);
@@ -275,6 +276,7 @@ fn prolongation_app(portlet: &Value, category: Option<&str>, base: &Url) -> Opti
         url: url.into(),
         icon_url: icon.map(Into::into),
         category: category.map(str::to_owned),
+        favorite: false,
     })
 }
 
@@ -349,7 +351,8 @@ fn complete_display_name(profile: &mut Profile) {
 // uPortal 5
 
 /// Applications de `api/v4-3/dlm/layout.json` : les portlets des onglets (et de leurs dossiers),
-/// sans doublon. La section « Favoris » est lue en dernier pour ne pas passer devant le reste.
+/// sans doublon. La section « Favoris » est lue en dernier pour ne pas passer devant le reste ;
+/// ce qui s'y trouve est marqué `favorite`, où que l'application soit listée par ailleurs.
 ///
 /// Le lien de lancement est, dans l'ordre : un paramètre du portlet (`alternativeMaximizedLink`,
 /// `launchUrl`, `url`), sinon la page du portail `<portail>/p/<fname>`. Le vrai lien de beaucoup de
@@ -412,7 +415,8 @@ impl Walk<'_> {
             if is_portlet {
                 // Dans « Favoris », le dossier n'est pas une catégorie : on garde l'onglet.
                 let category = if favorite { tab } else { section.or(tab) };
-                if let Some(app) = uportal5_app(node, category, self.base) {
+                if let Some(mut app) = uportal5_app(node, category, self.base) {
+                    app.favorite = favorite;
                     if favorite {
                         self.favorites.push(app);
                     } else {
@@ -463,6 +467,7 @@ fn uportal5_app(node: &Value, category: Option<&str>, base: &Url) -> Option<App>
             .and_then(|raw| resolve(base, raw))
             .map(Into::into),
         category: category.map(str::to_owned),
+        favorite: false,
     })
 }
 

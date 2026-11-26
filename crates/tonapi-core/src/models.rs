@@ -456,6 +456,9 @@ pub struct App {
     pub url: String,
     pub icon_url: Option<String>,
     pub category: Option<String>,
+    /// L'étudiant l'a mise en favori sur le portail. `false` quand le portail ne le dit pas.
+    #[serde(default)]
+    pub favorite: bool,
 }
 
 /// Profil de l'étudiant connecté.

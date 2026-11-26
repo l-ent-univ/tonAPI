@@ -269,6 +269,7 @@ pub(crate) fn parse_tiles(value: &Value, base: &Url) -> Result<Vec<App>, Problem
             url: url.into(),
             icon_url,
             category,
+            favorite: false,
         });
     }
     Ok(apps)

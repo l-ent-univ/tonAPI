@@ -305,6 +305,9 @@ fn layout_v5_un_doublon_complete_le_premier() {
         Some("https://services.exemple.test/images/icons/courrier.svg")
     );
     assert_eq!(courrier.url, "https://courrier.exemple.test/");
+    // Favori sur le portail, bien que listé d'abord ailleurs ; les autres ne le sont pas.
+    assert!(courrier.favorite);
+    assert!(!app(&apps, "webapp-planning").favorite);
 }
 
 #[test]
@@ -324,6 +327,7 @@ fn layout_v5_favori_seul_garde_l_onglet_comme_categorie() {
     let apps = parse_uportal5_layout(body, &base5()).unwrap();
     assert_eq!(apps.len(), 1);
     assert_eq!(apps[0].category.as_deref(), Some("Services"));
+    assert!(apps[0].favorite);
 }
 
 #[test]

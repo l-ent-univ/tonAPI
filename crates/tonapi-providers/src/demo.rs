@@ -527,6 +527,7 @@ pub(crate) fn apps() -> Vec<App> {
         url: format!("https://www.example.org/{id}"),
         icon_url: None,
         category: Some(category.to_owned()),
+        favorite: false,
     };
     vec![
         app("moodle", "Moodle", "Pédagogie"),
