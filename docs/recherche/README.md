@@ -10,6 +10,8 @@ observés. Pour l'état actuel, lire [../reference/fournisseurs.md](../reference
 | [montpellier/](montpellier/README.md) | 13 oct. 2026, compléments jusqu'au 28 oct. | clients `lent-ios`, `tafac-ios`, `iCalFormater`, sessions de navigateur avec le compte du titulaire |
 | [rennes/](rennes/README.md) | 14 oct. 2026 | code du client `tafac`, configurations de `lent-ios`, requêtes publiques sans identifiants ; aucun compte réel |
 | [detection-groupe.md](detection-groupe.md) | 14 oct. 2026 | code de `tafac`, documents ci-dessus |
+| [rennes-2.md](rennes-2.md) | 26 nov. 2026 | code, tests et notes du client `tafac` ; aucun compte, aucune requête |
+| [sorbonne-nouvelle.md](sorbonne-nouvelle.md) | 26 nov. 2026 | code et tests du client `tafac` ; aucun compte, aucune requête |
 | [ecosysteme.md](ecosysteme.md) | 27 oct. 2026 | sources publiques citées dans le fichier |
 
 Les marques de confiance propres à chaque document (`[confirmé]`, `[code]`, `[incertain]`…) gardent
@@ -33,9 +35,11 @@ leur sens d'origine.
 | Certificat de scolarité par MonDossierWeb (Rennes, [ent.md §7](rennes/ent.md)) | `mon-dossier-web`, faux serveurs seulement |
 | Photo de l'étudiant par la passerelle ScoDoc (Rennes, [scodoc.md](rennes/scodoc.md)) | `student_picture` (bibliothèque), faux serveurs seulement |
 | Rattachement à une composante | règles `[[affiliation.rules]]` ; signaux fournis seulement par `tiles-portal` (composante d'inscription, adresse) |
+| Portail Drupal et TEMPO de Rennes 2 | portail `drupal`, fournisseur `tempo` ; faux serveurs seulement |
+| iSorbonne (Sorbonne Nouvelle) | portail `isorbonne` ; faux serveurs seulement |
 
 Non implémenté : le profil lu dans Mon Dossier Web (Montpellier), webmail Partage
-derrière SAML (Rennes), détection du groupe ScoDoc vers ADE de
+derrière SAML (Rennes, Rennes 2), planning ADE 6.12 de la Sorbonne Nouvelle, détection du groupe ScoDoc vers ADE de
 [detection-groupe.md](detection-groupe.md), API ScoDoc 9 REST, HyperPlanning, Celcat.
 
 Fournisseurs écrits sans dossier de recherche ici : `ade-myplanning`, `bluemind` et

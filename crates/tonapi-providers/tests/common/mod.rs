@@ -5,9 +5,12 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use std::sync::{Arc, Mutex};
+
 use axum::Router;
 use axum::body::Body;
-use axum::http::{HeaderMap, Response, StatusCode, Uri, header};
+use axum::extract::State;
+use axum::http::{HeaderMap, Method, Response, StatusCode, Uri, header};
 use chrono::{DateTime, Utc};
 use tokio::net::TcpListener;
 use tonapi_config::{ResolvedUniversity, UniversityFile};
@@ -105,5 +108,126 @@ pub fn context<'a>(
             https_only: false,
             user_agent: None,
         },
+    }
+}
+
+// Faux CAS Apereo
+
+/// Identifiants que le faux CAS accepte.
+pub const CAS_USER: &str = "camille.demo";
+pub const CAS_PASSWORD: &str = "mot-de-passe-de-test";
+/// Ticket de service que le faux CAS rend.
+pub const CAS_TICKET: &str = "ST-1-test";
+
+/// Ce que le faux CAS a reçu.
+#[derive(Default)]
+pub struct CasLog {
+    /// Services demandés à `login`, dans l'ordre.
+    pub services: Vec<String>,
+    /// Formulaires de connexion affichés.
+    pub forms: u32,
+    /// Mots de passe postés.
+    pub password_posts: u32,
+}
+
+/// Faux CAS Apereo sous `/cas/` : avec le cookie `TGC=ok`, `login` renvoie vers le service avec
+/// [`CAS_TICKET`] ; sinon il affiche son formulaire, qui accepte [`CAS_USER`] et
+/// [`CAS_PASSWORD`] et pose le TGC.
+#[derive(Clone, Default)]
+pub struct Cas {
+    pub log: Arc<Mutex<CasLog>>,
+}
+
+const CAS_FORM: &str = r#"<html><body><form method="post" id="fm1" action="login">
+    <input name="username"><input type="password" name="password">
+    <input type="hidden" name="execution" value="e1s1"></form></body></html>"#;
+const CAS_REFUSED: &str = r#"<html><body><div class="banner banner-danger"><span>Identifiants refusés.</span></div>
+    <form method="post" id="fm1" action="login">
+    <input name="username"><input type="password" name="password">
+    <input type="hidden" name="execution" value="e1s2"></form></body></html>"#;
+
+fn page(status: StatusCode, body: &str) -> Response<Body> {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(Body::from(body.to_owned()))
+        .unwrap()
+}
+
+async fn cas_handler(
+    State(cas): State<Cas>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: String,
+) -> Response<Body> {
+    if uri.path() != "/cas/login" {
+        return page(StatusCode::OK, "<html><body>Déconnexion</body></html>");
+    }
+    let service = query(&uri, "service");
+    let mut log = cas.log.lock().unwrap();
+    if let Some(service) = &service {
+        log.services.push(service.clone());
+    }
+    let back = |tgc: bool| match &service {
+        Some(service) => {
+            let separator = if service.contains('?') { '&' } else { '?' };
+            let mut response = redirect(&format!("{service}{separator}ticket={CAS_TICKET}"));
+            if tgc {
+                response
+                    .headers_mut()
+                    .insert(header::SET_COOKIE, "TGC=ok; Path=/cas".parse().unwrap());
+            }
+            response
+        }
+        None => page(
+            StatusCode::OK,
+            "<html><body>Connexion réussie</body></html>",
+        ),
+    };
+    if method == Method::POST {
+        log.password_posts += 1;
+        let field = |name: &str| {
+            url::form_urlencoded::parse(body.as_bytes())
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.into_owned())
+                .unwrap_or_default()
+        };
+        return if field("username") == CAS_USER && field("password") == CAS_PASSWORD {
+            back(true)
+        } else {
+            page(StatusCode::UNAUTHORIZED, CAS_REFUSED)
+        };
+    }
+    if has_cookie(&headers, "TGC=ok") {
+        return back(false);
+    }
+    log.forms += 1;
+    page(StatusCode::OK, CAS_FORM)
+}
+
+/// Sert le faux CAS sur l'écouteur donné. Son adresse, sous le nom `localhost`, est
+/// [`cas_base`] : un autre hôte que les faux services, comme un vrai CAS.
+pub fn spawn_cas(listener: TcpListener, cas: &Cas) {
+    spawn(
+        listener,
+        Router::new().fallback(cas_handler).with_state(cas.clone()),
+    );
+}
+
+/// `http://localhost:<port>/cas/` pour un écouteur de `http://127.0.0.1:<port>`.
+pub fn cas_base(listener_base: &str) -> String {
+    format!("{}/cas/", listener_base.replace("127.0.0.1", "localhost"))
+}
+
+/// TGC que le faux CAS reconnaît, tel qu'une connexion le laisse dans la session.
+pub fn tgc() -> StoredCookie {
+    StoredCookie {
+        domain: "localhost".to_owned(),
+        path: "/cas".to_owned(),
+        name: "TGC".to_owned(),
+        value: "ok".to_owned(),
+        host_only: true,
+        expires: None,
     }
 }

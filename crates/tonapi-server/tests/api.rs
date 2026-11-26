@@ -224,7 +224,35 @@ async fn universites_et_composantes() {
         .iter()
         .filter_map(|u| u["id"].as_str())
         .collect();
-    assert_eq!(ids, ["demo", "umontpellier", "univ-montp3", "univ-rennes"]);
+    assert_eq!(
+        ids,
+        [
+            "demo",
+            "umontpellier",
+            "univ-montp3",
+            "univ-rennes",
+            "univ-rennes-2",
+            "univ-sorbonne-nouvelle"
+        ]
+    );
+
+    // Rennes 2 et la Sorbonne Nouvelle : annoncées, avec leur portail et leurs fournisseurs.
+    for (id, portal, timetable) in [
+        ("univ-rennes-2", "drupal", Some("tempo")),
+        ("univ-sorbonne-nouvelle", "isorbonne", None),
+    ] {
+        let r = call(&app, "GET", &format!("/v1/universities/{id}"), None, None).await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert_eq!(r.body["status"], "planned");
+        assert_eq!(r.body["portal"], portal);
+        let service = r.body["services"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["service"] == "timetable")
+            .unwrap();
+        assert_eq!(service["provider"].as_str(), timetable, "{id}");
+    }
 
     let r = call(&app, "GET", "/v1/universities/umontpellier", None, None).await;
     assert_eq!(r.status, StatusCode::OK);

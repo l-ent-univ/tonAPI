@@ -10,12 +10,16 @@ mod bluemind;
 mod cache;
 mod common;
 mod demo;
+mod drupal;
 mod etudiants_api;
+mod html;
+mod isorbonne;
 mod mon_dossier_web;
 mod moodle;
 mod net;
 mod scodoc;
 mod sso;
+mod tempo;
 mod tiles_portal;
 mod uportal;
 mod zimbra;
@@ -275,10 +279,15 @@ pub async fn profile(ctx: &mut Context<'_>) -> Result<Fetched<Profile>, Problem>
     match &services.profile {
         Some(ProfileService::Demo) => Ok(fetched(demo::profile(&ctx.session.username), "demo")),
         Some(ProfileService::Portal { record }) => {
-            let (mut profile, provider) = if tiles(ctx) {
-                (tiles_portal::fetch_profile(ctx).await?, "tiles-portal")
-            } else {
-                (uportal::fetch_profile(ctx).await?, "portal")
+            let (mut profile, provider) = match &ctx.university.university.portal {
+                PortalConfig::TilesPortal { .. } => {
+                    (tiles_portal::fetch_profile(ctx).await?, "tiles-portal")
+                }
+                PortalConfig::Drupal { .. } => (drupal::fetch_profile(ctx).await?, "drupal"),
+                PortalConfig::Isorbonne { .. } => {
+                    (isorbonne::fetch_profile(ctx).await?, "isorbonne")
+                }
+                _ => (uportal::fetch_profile(ctx).await?, "portal"),
             };
             // Le dossier complète le profil ; s'il est indisponible, le profil du portail reste.
             if let Some(StudentRecord::EtudiantsApi { base_url }) = record
@@ -329,6 +338,7 @@ pub async fn timetable_of(
         Some(TimetableService::AdeMyplanning { .. }) if !resources.is_empty() => {
             Err(by_resource("ade-myplanning"))
         }
+        Some(TimetableService::Tempo { .. }) if !resources.is_empty() => Err(by_resource("tempo")),
         Some(TimetableService::Demo) => Ok(fetched(demo::timetable(from, to), "demo")),
         Some(TimetableService::AdeIcalLink {
             link_page,
@@ -352,6 +362,10 @@ pub async fn timetable_of(
             let courses =
                 ade::myplanning::fetch_timetable(ctx, base_url, *project_id, from, to).await?;
             Ok(fetched(courses, "ade-myplanning"))
+        }
+        Some(TimetableService::Tempo { base_url, .. }) => {
+            let courses = tempo::fetch_timetable(ctx, base_url, from, to).await?;
+            Ok(fetched(courses, "tempo"))
         }
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
             Err(absent(&services, ServiceKind::Timetable))
@@ -378,6 +392,7 @@ pub async fn timetable_groups(
             ade::myplanning::fetch_groups(ctx, base_url, *project_id).await?,
             "ade-myplanning",
         )),
+        Some(TimetableService::Tempo { .. }) => Err(tempo::groups_unsupported()),
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
             Err(absent(&services, ServiceKind::Timetable))
         }
@@ -666,11 +681,17 @@ pub async fn apps(ctx: &mut Context<'_>) -> Result<Fetched<Vec<App>>, Problem> {
     let services = ctx.services();
     match &services.apps {
         Some(AppsService::Demo) => Ok(fetched(demo::apps(), "demo")),
-        Some(AppsService::Portal) if tiles(ctx) => Ok(fetched(
-            tiles_portal::fetch_apps(ctx).await?,
-            "tiles-portal",
-        )),
-        Some(AppsService::Portal) => Ok(fetched(uportal::fetch_apps(ctx).await?, "portal")),
+        Some(AppsService::Portal) => match &ctx.university.university.portal {
+            PortalConfig::TilesPortal { .. } => Ok(fetched(
+                tiles_portal::fetch_apps(ctx).await?,
+                "tiles-portal",
+            )),
+            PortalConfig::Drupal { .. } => Ok(fetched(drupal::fetch_apps(ctx).await?, "drupal")),
+            PortalConfig::Isorbonne { .. } => {
+                Ok(fetched(isorbonne::fetch_apps(ctx).await?, "isorbonne"))
+            }
+            _ => Ok(fetched(uportal::fetch_apps(ctx).await?, "portal")),
+        },
         Some(AppsService::None) | None => Err(absent(&services, ServiceKind::Apps)),
     }
 }

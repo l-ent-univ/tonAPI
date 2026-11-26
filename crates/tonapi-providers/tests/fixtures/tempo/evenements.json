@@ -1,0 +1,62 @@
+[
+  {
+    "id": 9910,
+    "start": "2026-11-04 14:00",
+    "end": "2026-11-04 16:00",
+    "str_start": "14:00",
+    "str_end": "16:00",
+    "title": "Th&eacute;&acirc;tre &amp; danse <b>CC</b>",
+    "description": "L2 ARTS TD3",
+    "location": "Salle A<br>Salle B &#39;2&#39;",
+    "people": ["M&#233;nard A.", "Le&nbsp;Demo B."],
+    "color": "FFAA00",
+    "url": "https://pix.exemple.test/planning",
+    "url_label": "VOTRE PLANNING :",
+    "info": "Cours <strong>annulé</strong>"
+  },
+  {
+    "id": 9909,
+    "start": "2026-11-02 10:45",
+    "end": "2026-11-02 12:45",
+    "str_start": "10:45",
+    "str_end": "12:45",
+    "title": "UEF 2 - Histoire des médias - CM1",
+    "description": "L2 INFO-COM CM1 - G 1 2 3",
+    "location": "B204 Bâtiment B\nCampus de test",
+    "people": ["Martin C.", ""],
+    "color": "62a5ff",
+    "url": "",
+    "url_label": "",
+    "info": ""
+  },
+  {
+    "id": 9909,
+    "start": "2026-11-02 10:45",
+    "end": "2026-11-02 12:45",
+    "title": "UEF 2 - Histoire des médias - CM1 (doublon)",
+    "people": [],
+    "location": ""
+  },
+  {
+    "id": "9911",
+    "start": "2026-11-11",
+    "end": "2026-11-11",
+    "title": "Férié",
+    "people": [],
+    "location": ""
+  },
+  {
+    "id": 9912,
+    "start": "2026-11-09 08:00",
+    "end": "2026-11-09 10:00",
+    "title": "",
+    "people": [],
+    "location": ""
+  },
+  {
+    "id": 9913,
+    "start": "",
+    "end": "",
+    "title": "Sans horaire"
+  }
+]

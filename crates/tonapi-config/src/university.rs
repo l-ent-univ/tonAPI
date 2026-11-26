@@ -172,9 +172,51 @@ pub enum PortalConfig {
         #[serde(rename = "base-url")]
         base_url: Url,
     },
+    /// Portail Drupal derrière le CAS de l'université (module `cas` de Drupal) : sa racine renvoie
+    /// au CAS tant que l'étudiant n'y a pas de session. Ni layout ni API : le nom vient de la
+    /// page `user`, les applications d'une page de catalogue. Lu dans le code de Tafac
+    /// (Rennes 2), jamais essayé par tonAPI avec un compte.
+    Drupal {
+        /// Racine du portail (ex. `https://etudiants.exemple.fr/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+        /// Champ Drupal qui porte « Prénom Nom » sur la page `user` (sa classe
+        /// `field--name-<champ>`, ex. `field-nomprenom`). Sans lui, le profil n'a pas de nom.
+        #[serde(
+            rename = "name-field",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        name_field: Option<String>,
+        /// Page qui liste les outils. Sans elle, le portail ne donne pas d'applications.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalogue: Option<DrupalCatalogue>,
+    },
+    /// iSorbonne, portail JSF de la Sorbonne Nouvelle : une seule page (`secure/index.xhtml`)
+    /// porte le nom de l'étudiant et les tuiles des applications, et renvoie au CAS sans
+    /// session. Lu dans le code de Tafac, jamais essayé par tonAPI avec un compte.
+    Isorbonne {
+        /// Racine de l'application (ex. `https://isorbonne.exemple.fr/ENT/`).
+        #[serde(rename = "base-url")]
+        base_url: Url,
+    },
     /// Pas de portail exploitable.
     #[default]
     None,
+}
+
+/// Catalogue des outils d'un portail Drupal : une vue (module Views) qui range les outils par
+/// rubrique, un titre `<h3>` par rubrique.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct DrupalCatalogue {
+    /// Chemin de la page, relatif à la racine du portail (ex. `tous-outils`).
+    pub path: String,
+    /// Nom machine de la vue : son bloc porte la classe `view-id-<vue>` (ex. `outils`).
+    pub view: String,
+    /// Début du chemin Drupal d'un outil, lu dans son attribut `about` (ex. `/outil/`). Ce qui
+    /// suit est l'identifiant de l'outil.
+    pub item_path: String,
 }
 
 /// Réglages TLS.

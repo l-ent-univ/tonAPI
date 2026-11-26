@@ -314,7 +314,7 @@ function routeOf(providerId) {
 }
 // `portal` désigne le portail de l'université : son logiciel est dans le détail (`portal`).
 function providerFor(status, detail) {
-  if (status.provider === "portal" && detail?.portal === "tiles-portal") return "tiles-portal";
+  if (status.provider === "portal" && ["tiles-portal", "drupal", "isorbonne"].includes(detail?.portal)) return detail.portal;
   return status.provider;
 }
 
@@ -901,7 +901,7 @@ function pageCoverage() {
 function pageProviders(params) {
   const focus = params.get("id");
   const filter = params.get("service") || "";
-  const ids = focus === "portal" ? ["portal", "tiles-portal"] : focus ? [focus] : [];
+  const ids = focus === "portal" ? ["portal", "tiles-portal", "drupal", "isorbonne"] : focus ? [focus] : [];
   const shown = FOURNISSEURS.filter((f) => !filter || f.services.includes(filter));
   const filters = el("div", { class: "filters", role: "group", "aria-label": "Filtrer par service" },
     el("button", { type: "button", id: "flt-all", "aria-pressed": String(!filter), onclick: () => { location.hash = "#/fournisseurs"; }, text: "Tous" }),

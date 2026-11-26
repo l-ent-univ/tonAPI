@@ -160,6 +160,69 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Réglages d'un portail Drupal : des noms de classe et des chemins du portail, jamais une
+    /// adresse ni du HTML.
+    fn portal(&mut self, portal: &PortalConfig) {
+        let PortalConfig::Drupal {
+            name_field,
+            catalogue,
+            ..
+        } = portal
+        else {
+            return;
+        };
+        let name = |text: &str| {
+            !text.is_empty()
+                && text
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        };
+        let path = |text: &str| {
+            !text.is_empty()
+                && !text.contains("..")
+                && !text.contains("//")
+                && text
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c))
+        };
+        if let Some(field) = name_field
+            && !name(field)
+        {
+            self.push(
+                Some("portal.name-field"),
+                Some(field),
+                format!("`{field}` : un nom de champ Drupal (lettres, chiffres, `-`, `_`)"),
+            );
+        }
+        let Some(catalogue) = catalogue else {
+            return;
+        };
+        if !name(&catalogue.view) {
+            self.push(
+                Some("portal.catalogue.view"),
+                Some(&catalogue.view),
+                "nom machine d'une vue Drupal attendu (lettres, chiffres, `-`, `_`)",
+            );
+        }
+        if !path(&catalogue.path) || catalogue.path.starts_with('/') {
+            self.push(
+                Some("portal.catalogue.path"),
+                Some(&catalogue.path),
+                "chemin relatif à la racine du portail attendu, sans `..` (ex. `tous-outils`)",
+            );
+        }
+        if !path(&catalogue.item_path)
+            || !catalogue.item_path.starts_with('/')
+            || !catalogue.item_path.ends_with('/')
+        {
+            self.push(
+                Some("portal.catalogue.item-path"),
+                Some(&catalogue.item_path),
+                "début de chemin attendu, entre deux barres (ex. `/outil/`)",
+            );
+        }
+    }
+
     fn portal_services(&mut self, services: &Services, portal: &PortalConfig) {
         if *portal != PortalConfig::None {
             return;
@@ -266,6 +329,7 @@ pub(crate) fn check_university(
         university.tls.as_ref(),
         file.parent().unwrap_or(Path::new(".")),
     );
+    c.portal(&university.portal);
     c.portal_services(&university.services, &university.portal);
     // `kind = "demo"` accepte `demo`/`demo` sans CAS : réservé à l'université de démonstration.
     if matches!(university.sso, Sso::Demo) && university.id != "demo" {

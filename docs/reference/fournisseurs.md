@@ -1,7 +1,7 @@
 # Fournisseurs
 
 Un fournisseur traduit un logiciel universitaire (ADE, ScoDoc, Moodle…) vers les modèles communs
-de tonAPI. Treize fournisseurs distants sont branchés dans le dispatch, plus `demo`. Un essai réel
+de tonAPI. Seize fournisseurs distants sont branchés dans le dispatch, plus `demo`. Un essai réel
 ne vaut que pour l'établissement où il a eu lieu, même si le logiciel est le même ailleurs.
 `mon-dossier-web` est branché mais n'a jamais été essayé par tonAPI avec un vrai compte.
 
@@ -60,6 +60,12 @@ une analyse tolérante et un test, pas par un nouveau fournisseur.
 | `ade-myplanning` | appels GWT-RPC de MyPlanning pour les ressources de l'étudiant, puis `anonymous_cal.jsp` | Paul-Valéry, 27/10/2026, groupes compris [vu] | types GWT d'ADE 6.x ; groupes limités à ceux de l'étudiant ; `resources` répond `not_implemented` |
 | `ade-portal-rest` | API REST du portail ADE (`sso/accessToken`, `ssologin`, projets) ; ressources demandées (`resources`), sinon la sélection personnelle, sinon celles qu'ADE attribue ; `color` et `activityId` de chaque séance | IUT de Lannion, 15/11/2026, groupes compris [vu] ; Université de Rennes, 25/11/2026 : ressources demandées (les siennes et celles d'autres formations), `color` en `R,V,B` et `activityId` sur chaque séance [vu] | format d'une sélection personnelle non vide [inconnu] ; la liste des groupes rend tout l'arbre de l'université ; salle ou enseignant demandés en `resources` jamais essayés |
 
+### Emploi du temps (autres logiciels)
+
+| Fournisseur | Parcours | Essai réel | Limites |
+|---|---|---|---|
+| `tempo` | TEMPO (Rennes 2) : `api/events?start=…&end=…` en JSON ; sans session (401), le CAS avec le service `<tempo>/auth`, puis une seule relecture | aucun : porté du code de Tafac (`tempoApi.js`), faux serveurs seulement [code] | emploi du temps du compte seulement : `/v1/timetable/groups` et `resources` répondent `not_implemented` ; le lien d'une séance n'est pas rendu ; journée entière rendue de minuit à minuit |
+
 ### Notes et absences
 
 | Fournisseur | Parcours | Essai réel | Limites |
@@ -96,6 +102,8 @@ une analyse tolérante et un test, pas par un nouveau fournisseur.
 | `tiles-portal` | client CAS du portail, `api/cas-attributes`, `api/tiles` | Université de Montpellier (compte de l'IUT de Béziers), 27/10/2026 : profil, applications, détection de la composante [vu] | logiciel non identifié ; seul portail qui fournit des signaux de composante |
 | `uportal5` | `layout.json`, lien de chaque portlet dans son fragment, profil par `userinfo` ou `session.json` et `people` | Paul-Valéry, 27/10/2026, sans `userinfo` [vu] | uPortal 5 de Rennes jamais essayé ; portlets techniques présents dans la liste |
 | `uportal4-prolongation` | `layout.jsp` (JSONP) | aucun : faux serveurs seulement ; l'ENT de Montpellier a changé depuis la recherche | |
+| `drupal` | pages d'un portail Drupal derrière le CAS : classe `user-logged-in` du `<body>`, nom sur `user`, outils sur la page de `[portal.catalogue]` | aucun : porté du code de Tafac pour Rennes 2 (`server/portalSession.js`), faux serveurs seulement [code] | ni identifiant ni e-mail dans le profil ; champ du nom, vue et chemin des outils propres au site, donnés par la configuration |
+| `isorbonne` | page d'accueil d'iSorbonne (`secure/index.xhtml`) : lien de déconnexion pour le nom, tuiles pour les applications | aucun : porté du code de Tafac pour la Sorbonne Nouvelle, faux serveurs seulement [code] | ni identifiant ni e-mail dans le profil ; portail propre à une université |
 
 Le profil peut être complété par l'application de scolarité
 (`record = { kind = "etudiants-api", … }`) : numéro étudiant et formation, vus à Paul-Valéry le

@@ -332,6 +332,30 @@
         }
       ]
     },
+    "DrupalCatalogue": {
+      "additionalProperties": false,
+      "description": "Catalogue des outils d'un portail Drupal : une vue (module Views) qui range les outils par\nrubrique, un titre `<h3>` par rubrique.",
+      "properties": {
+        "item-path": {
+          "description": "Début du chemin Drupal d'un outil, lu dans son attribut `about` (ex. `/outil/`). Ce qui\nsuit est l'identifiant de l'outil.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Chemin de la page, relatif à la racine du portail (ex. `tous-outils`).",
+          "type": "string"
+        },
+        "view": {
+          "description": "Nom machine de la vue : son bloc porte la classe `view-id-<vue>` (ex. `outils`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "view",
+        "item-path"
+      ],
+      "type": "object"
+    },
     "ExamsService": {
       "description": "Calendrier des examens.",
       "oneOf": [
@@ -890,6 +914,64 @@
         },
         {
           "additionalProperties": false,
+          "description": "Portail Drupal derrière le CAS de l'université (module `cas` de Drupal) : sa racine renvoie\nau CAS tant que l'étudiant n'y a pas de session. Ni layout ni API : le nom vient de la\npage `user`, les applications d'une page de catalogue. Lu dans le code de Tafac\n(Rennes 2), jamais essayé par tonAPI avec un compte.",
+          "properties": {
+            "base-url": {
+              "description": "Racine du portail (ex. `https://etudiants.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "catalogue": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DrupalCatalogue"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Page qui liste les outils. Sans elle, le portail ne donne pas d'applications."
+            },
+            "kind": {
+              "const": "drupal",
+              "type": "string"
+            },
+            "name-field": {
+              "description": "Champ Drupal qui porte « Prénom Nom » sur la page `user` (sa classe\n`field--name-<champ>`, ex. `field-nomprenom`). Sans lui, le profil n'a pas de nom.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "iSorbonne, portail JSF de la Sorbonne Nouvelle : une seule page (`secure/index.xhtml`)\nporte le nom de l'étudiant et les tuiles des applications, et renvoie au CAS sans\nsession. Lu dans le code de Tafac, jamais essayé par tonAPI avec un compte.",
+          "properties": {
+            "base-url": {
+              "description": "Racine de l'application (ex. `https://isorbonne.exemple.fr/ENT/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "kind": {
+              "const": "isorbonne",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "Pas de portail exploitable.",
           "properties": {
             "kind": {
@@ -1385,6 +1467,29 @@
             },
             "provider": {
               "const": "ade-myplanning",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "base-url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "TEMPO (Rennes 2) : l'emploi du temps de l'étudiant, `api/events?start=…&end=…` en JSON\nderrière le CAS (`auth` reçoit le ticket). Lu dans le code de Tafac.",
+          "properties": {
+            "base-url": {
+              "description": "Racine de TEMPO (ex. `https://tempo.exemple.fr/`).",
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "$ref": "#/$defs/ServiceOptions"
+            },
+            "provider": {
+              "const": "tempo",
               "type": "string"
             }
           },
