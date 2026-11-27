@@ -161,21 +161,25 @@ fn wanted(university: &ResolvedUniversity, source: SignalSource) -> bool {
 
 /// Signaux de rattachement : attributs du portail à tuiles, et chemin des groupes de l'étudiant
 /// dans le portail ADE quand une règle `ade-group-path` existe. Une source en échec n'empêche pas
-/// l'autre.
-async fn signals(ctx: &mut Context<'_>) -> Vec<Signal> {
+/// l'autre ; le problème de la première en échec est rendu avec ce que les autres ont donné.
+async fn signals(ctx: &mut Context<'_>) -> (Vec<Signal>, Option<Problem>) {
     let mut out = Vec::new();
-    if tiles(ctx)
-        && let Ok(found) = tiles_portal::fetch_signals(ctx).await
-    {
-        out.extend(found);
+    let mut failed = None;
+    if tiles(ctx) {
+        match tiles_portal::fetch_signals(ctx).await {
+            Ok(found) => out.extend(found),
+            Err(problem) => failed = failed.or(Some(problem)),
+        }
     }
     if wanted(ctx.university, SignalSource::AdeGroupPath)
         && let Some(TimetableService::AdePortalRest { base_url, .. }) = ctx.services().timetable
-        && let Ok(found) = ade::portal_rest::fetch_signals(ctx, &base_url).await
     {
-        out.extend(found);
+        match ade::portal_rest::fetch_signals(ctx, &base_url).await {
+            Ok(found) => out.extend(found),
+            Err(problem) => failed = failed.or(Some(problem)),
+        }
     }
-    out
+    (out, failed)
 }
 
 /// Composante dont les règles obtiennent le meilleur score, s'il est unique et non nul. La
@@ -222,18 +226,37 @@ pub fn detect_establishment(
 /// les services d'une composante (notes d'un IUT) ne sont jamais atteints. La détection interroge
 /// l'université (portail, arbre ADE) : elle peut prendre plusieurs secondes et n'est pas à refaire
 /// à chaque requête. Les cookies et jetons reçus pendant la détection sont dans la session rendue.
+/// Pour savoir si la composante par défaut vient d'un échec, voir [`look_for_establishment`].
 pub async fn with_detected_establishment(
+    university: &ResolvedUniversity,
+    session: SessionData,
+    now: DateTime<Utc>,
+    net: NetSettings,
+) -> SessionData {
+    look_for_establishment(university, session, now, net)
+        .await
+        .0
+}
+
+/// Comme [`with_detected_establishment`], et dit en plus pourquoi aucune composante n'a été
+/// trouvée quand une source n'a pas répondu (portail ou ADE injoignable, TGC refusé :
+/// `session_expired`). `Ok(())` : la composante rendue est la bonne, trouvée, choisie, ou celle
+/// par défaut parce que les sources ont répondu sans correspondance. Sur `Err`, la session rendue
+/// garde la composante par défaut pour cette fois : un client qui garde la composante ne garde pas
+/// celle-là, et cherche de nouveau plus tard. Les cookies et jetons reçus sont dans la session
+/// rendue dans les deux cas.
+pub async fn look_for_establishment(
     university: &ResolvedUniversity,
     mut session: SessionData,
     now: DateTime<Utc>,
     net: NetSettings,
-) -> SessionData {
+) -> (SessionData, Result<(), Problem>) {
     let chosen = session
         .establishment
         .as_ref()
         .is_some_and(|e| e.source == EstablishmentSource::Student);
     if chosen || university.establishments.is_empty() {
-        return session;
+        return (session, Ok(()));
     }
     let mut ctx = Context {
         university,
@@ -241,11 +264,16 @@ pub async fn with_detected_establishment(
         now,
         net,
     };
-    let signals = signals(&mut ctx).await;
-    if let Some(pick) = detect_establishment(university, &signals) {
+    let (signals, failed) = signals(&mut ctx).await;
+    let found = detect_establishment(university, &signals);
+    let outcome = match (&found, failed) {
+        (None, Some(problem)) => Err(problem),
+        _ => Ok(()),
+    };
+    if let Some(pick) = found {
         ctx.session.establishment = Some(pick);
     }
-    session
+    (session, outcome)
 }
 
 /// Composante choisie par l'étudiant, sinon celle par défaut de l'université.

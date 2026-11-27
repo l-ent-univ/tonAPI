@@ -18,8 +18,8 @@ use serde_json::json;
 use tonapi_config::ResolvedUniversity;
 use tonapi_core::{ErrorCode, EstablishmentSource, ResourceKind};
 use tonapi_providers::{
-    Context, NetSettings, ResourceQuery, timetable, timetable_groups, timetable_of,
-    timetable_resources, timetable_tree, with_detected_establishment,
+    Context, NetSettings, ResourceQuery, look_for_establishment, timetable, timetable_groups,
+    timetable_of, timetable_resources, timetable_tree, with_detected_establishment,
 };
 use tonapi_session::{EstablishmentPick, SessionData};
 use url::Url;
@@ -813,6 +813,42 @@ async fn composante_detectee_pour_une_session_batie_par_le_client() {
     // Ce que la détection a reçu d'ADE reste dans la session rendue.
     assert!(session.tokens.contains_key(&token_key(&base)));
     assert_eq!(mock.lock().unwrap().ssologin_calls, 1);
+}
+
+#[tokio::test]
+async fn composante_trouvee_dite_trouvee() {
+    let (_mock, base) = start("14962").await;
+    let university = university_with_establishment(&base);
+    let net = NetSettings {
+        https_only: false,
+        user_agent: None,
+    };
+
+    let (session, outcome) = look_for_establishment(&university, session(), Utc::now(), net).await;
+
+    assert!(outcome.is_ok());
+    assert_eq!(session.establishment.unwrap().id, "iut-demo");
+}
+
+#[tokio::test]
+async fn ade_injoignable_composante_par_defaut_et_pourquoi() {
+    // Un port où rien n'écoute : ADE ne répond pas.
+    let university = university_with_establishment("http://127.0.0.1:9");
+    let net = NetSettings {
+        https_only: false,
+        user_agent: None,
+    };
+
+    let session = session();
+    let before = session.establishment.clone();
+    let (session, outcome) = look_for_establishment(&university, session, Utc::now(), net).await;
+
+    // La composante reste celle d'avant, et l'échec est dit : le client cherchera de nouveau.
+    assert_eq!(session.establishment, before);
+    assert_eq!(outcome.unwrap_err().code, ErrorCode::ServiceUnavailable);
+    // Sans le dire, comme avant.
+    let quiet = with_detected_establishment(&university, session.clone(), Utc::now(), net).await;
+    assert_eq!(quiet.establishment, before);
 }
 
 #[tokio::test]
