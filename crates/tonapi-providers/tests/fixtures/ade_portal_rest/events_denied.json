@@ -1,0 +1,69 @@
+{
+  "data": [],
+  "error": {
+    "code": 1805,
+    "message": "You don't have the right to use any given resources."
+  },
+  "settings": [
+    {
+      "field": "portal.settings.calendarEventsRessourcesFields",
+      "detail": [
+        {
+          "category": "course",
+          "fields": [
+            "NAME",
+            "EVENT_TIME"
+          ]
+        },
+        {
+          "category": "classroom",
+          "fields": [
+            "NAME"
+          ]
+        },
+        {
+          "category": "instructor",
+          "fields": [
+            "NAME"
+          ]
+        },
+        {
+          "category": "trainee",
+          "fields": [
+            "NAME"
+          ]
+        }
+      ]
+    },
+    {
+      "field": "portal.settings.eventDetailRessourcesFields",
+      "detail": [
+        {
+          "category": "course",
+          "fields": [
+            "WEB_ACTIVITY",
+            "INFO_EVENT"
+          ]
+        },
+        {
+          "category": "trainee",
+          "fields": [
+            "NAME"
+          ]
+        },
+        {
+          "category": "instructor",
+          "fields": [
+            "NAME"
+          ]
+        },
+        {
+          "category": "classroom",
+          "fields": [
+            "NAME"
+          ]
+        }
+      ]
+    }
+  ]
+}

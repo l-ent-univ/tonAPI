@@ -5,6 +5,7 @@
       "projectId": 1,
       "accessToken": "jeton-api-synthetique",
       "refreshToken": "00000000-0000-4000-8000-000000000001",
+      "profile": "etudiant",
       "resources": [],
       "jsonAvailableCategories": { "nbCategories": 8 }
     }

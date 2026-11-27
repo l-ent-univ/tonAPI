@@ -1,13 +1,22 @@
 use super::parse::{MAX_DEPTH, parse_clock, parse_offset, parse_requested};
 use super::*;
+use crate::resource_tree::resources;
 use chrono_tz::Europe::Paris;
 use serde_json::json;
 
 const EVENTS: &str = include_str!("../../../tests/fixtures/ade_portal_rest/events.json");
+const EVENTS_PORTAL: &str =
+    include_str!("../../../tests/fixtures/ade_portal_rest/events_portal.json");
 const EVENTS_DST: &str = include_str!("../../../tests/fixtures/ade_portal_rest/events_dst.json");
 const TREE: &str = include_str!("../../../tests/fixtures/ade_portal_rest/resourcestree.json");
 const SSOLOGIN: &str = include_str!("../../../tests/fixtures/ade_portal_rest/ssologin.json");
 const SELECTION: &str = include_str!("../../../tests/fixtures/ade_portal_rest/selection.json");
+
+/// Groupes d'étudiants d'une réponse `resourcestree`, ceux de `selected` marqués.
+fn parse_groups(tree: &Value, selected: &[i64]) -> Result<Vec<TimetableGroup>, Problem> {
+    let selected: HashSet<String> = selected.iter().map(i64::to_string).collect();
+    Ok(resource_tree::groups(&parse_tree(tree)?, &selected))
+}
 
 fn json_of(raw: &str) -> Value {
     serde_json::from_str(raw).expect("fixture JSON")
@@ -229,9 +238,48 @@ fn decalages_acceptes() {
 #[test]
 fn filtre_d_evenements_mois_d_abord() {
     assert_eq!(
-        events_filter(14961, day(2026, 9, 2), day(2026, 9, 3)),
+        events_filter(&[14961], day(2026, 9, 2), day(2026, 9, 3)),
         "resources;14961/startdate;09022026/enddate;09032026/level;=8/field;Nom;CODEZ_RESOURCE;OWNER;"
     );
+    // Plusieurs ressources dans la même requête, séparées par `;`.
+    assert!(
+        events_filter(&[14961, 800, 900], day(2026, 9, 2), day(2026, 9, 3))
+            .starts_with("resources;14961;800;900/startdate;")
+    );
+}
+
+/// Réponse à la forme vue sur le portail de Rennes le 27/11/2026 : un bloc par ressource
+/// demandée, décalage en `+01:00`, participants avec leur catégorie.
+#[test]
+fn evenements_a_la_forme_du_portail() {
+    let courses = parse_events(
+        &json_of(EVENTS_PORTAL),
+        Paris,
+        day(2026, 11, 23),
+        day(2026, 11, 29),
+    )
+    .unwrap();
+    // La séance commune au groupe et à la salle n'est rendue qu'une fois.
+    let ids: Vec<_> = courses.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["880001", "880002", "880003"]);
+    let first = &courses[0];
+    assert_eq!(first.title, "R3.02 Développement web TP");
+    assert_eq!(first.start.to_rfc3339(), "2026-11-24T09:00:00+01:00");
+    assert_eq!(first.end.to_rfc3339(), "2026-11-24T10:00:00+01:00");
+    assert_eq!(first.groups, ["TP 1"]);
+    assert_eq!(first.teachers, ["DUPONT Camille"]);
+    assert_eq!(first.rooms, ["B01 - Salle 12 (012) [30P]"]);
+    assert_eq!(first.color.as_deref(), Some("120,140,160"));
+    assert_eq!(first.activity_id.as_deref(), Some("42001"));
+    // La matière (`category5` à Rennes) n'est ni un groupe, ni une salle, ni un enseignant.
+    assert!(courses.iter().all(|c| {
+        [&c.groups, &c.rooms, &c.teachers]
+            .iter()
+            .all(|names| names.iter().all(|name| !name.starts_with("R30")))
+    }));
+    // Une séance sans enseignant, une autre sans groupe.
+    assert!(courses[1].teachers.is_empty());
+    assert!(courses[2].groups.is_empty());
 }
 
 #[test]
@@ -244,10 +292,13 @@ fn ssologin_cas_normal_et_projet() {
         tokens.refresh.as_deref(),
         Some("00000000-0000-4000-8000-000000000001")
     );
+    assert_eq!(tokens.profile.as_deref(), Some("etudiant"));
     // Forme `data.authData.authData`.
     let nested = json!({"data": {"authData": {"authData": {"projectId": 3, "accessToken": "a"}}}});
     let tokens = parse_ssologin(&nested).unwrap();
     assert_eq!((tokens.project, tokens.refresh), (3, None));
+    // Sans profil : vide, pas absent, pour ne pas rouvrir la session à chaque lecture de l'arbre.
+    assert_eq!(tokens.profile.as_deref(), Some(""));
 }
 
 #[test]
@@ -365,6 +416,88 @@ fn groupes_de_l_arbre() {
 }
 
 #[test]
+fn arbre_des_trois_categories() {
+    let tree = parse_tree(&json_of(TREE)).unwrap();
+    // Les catégories ne sont pas des nœuds : le premier niveau est celui de leurs dossiers.
+    let top: Vec<_> = tree
+        .iter()
+        .map(|n| (n.id.as_str(), n.name.as_str(), n.kind, n.folder))
+        .collect();
+    assert_eq!(
+        top,
+        [
+            ("100", "Département Démo", ResourceKind::Group, true),
+            ("200", "Département Démo", ResourceKind::Teacher, true),
+            ("300", "00-Campus Démo", ResourceKind::Room, true),
+        ]
+    );
+    // `branch` puis `leaf`, dans cet ordre ; une feuille n'est pas un dossier.
+    let level = &tree[0].children[0];
+    let children: Vec<_> = level
+        .children
+        .iter()
+        .map(|n| (n.id.as_str(), n.folder))
+        .collect();
+    assert_eq!(children, [("111", true), ("14970", false)]);
+    let room = &tree[2].children[0].children[0];
+    assert_eq!(
+        (room.id.as_str(), room.kind, room.folder),
+        ("800", ResourceKind::Room, false)
+    );
+    assert!(room.children.is_empty());
+}
+
+#[test]
+fn ressources_de_l_arbre_par_nature_et_par_nom() {
+    let tree = parse_tree(&json_of(TREE)).unwrap();
+    let all = resources(&tree, &ResourceQuery::default());
+    let ids: Vec<_> = all.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(ids, ["14961", "14962", "14970", "900", "901", "800", "801"]);
+    let rooms = resources(
+        &tree,
+        &ResourceQuery {
+            kinds: vec![ResourceKind::Room],
+            search: Some("amphitheatre".to_owned()),
+            limit: None,
+        },
+    );
+    assert_eq!(rooms.len(), 1);
+    assert_eq!(rooms[0].id, "801");
+    assert_eq!(
+        rooms[0].path,
+        [
+            "00-Campus Démo",
+            "Bâtiment 01",
+            "B01 - Amphithéâtre A (001) [120P]"
+        ]
+    );
+}
+
+#[test]
+fn categories_d_ade() {
+    let tree = |category: &str| json!({"data": {"category": [{"category": category, "leaf": [{"id": 1, "name": "x"}]}]}});
+    for (category, kind) in [
+        ("trainee", ResourceKind::Group),
+        ("students", ResourceKind::Group),
+        ("Instructor", ResourceKind::Teacher),
+        ("teacher", ResourceKind::Teacher),
+        ("classroom", ResourceKind::Room),
+        ("resource", ResourceKind::Other),
+        ("category5", ResourceKind::Other),
+    ] {
+        assert_eq!(
+            parse_tree(&tree(category)).unwrap()[0].kind,
+            kind,
+            "{category}"
+        );
+    }
+    // Un nœud sans catégorie : nature inconnue, et pas un groupe d'étudiants.
+    let bare = json!({"data": [{"id": 1, "name": "x"}]});
+    assert_eq!(parse_tree(&bare).unwrap()[0].kind, ResourceKind::Other);
+    assert!(parse_groups(&bare, &[]).unwrap().is_empty());
+}
+
+#[test]
 fn signaux_de_rattachement_des_groupes_de_l_etudiant() {
     let groups = parse_groups(&json_of(TREE), &[14962]).unwrap();
     let signals = group_signals(&groups);
@@ -400,6 +533,11 @@ fn noeud_au_nom_vide_ignore() {
             ("21", "TD 2".to_owned())
         ]
     );
+    // Dans l'arbre, ce que contient le dossier sans nom remonte au niveau de ce dossier.
+    let nodes = parse_tree(&tree).unwrap();
+    let top: Vec<_> = nodes.iter().map(|n| n.id.as_str()).collect();
+    assert_eq!(top, ["10", "21"]);
+    assert_eq!(nodes[0].children.len(), 1);
 }
 
 #[test]

@@ -1,17 +1,23 @@
-//! Réponse de `api/events` de TEMPO, sans réseau. Repris de l'analyse de Tafac (`tempoApi.js`),
-//! dont les tests portent la forme des événements ; aucune réponse réelle n'a été lue par tonAPI.
+//! Réponses de TEMPO, sans réseau : les séances de `api/events` et `api/room/<salle>`, et l'arbre
+//! des salles de la page `rooms`. L'analyse des séances est reprise de Tafac (`tempoApi.js`) ; les
+//! formes ont été revues sur le service lui-même ([vu] 27/11/2026, `docs/recherche/rennes-2.md`).
 
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
 use chrono_tz::Tz;
 use serde_json::Value;
-use tonapi_core::{Course, Problem};
+use std::collections::HashMap;
+
+use tonapi_core::{Course, CourseLink, Problem, ResourceKind, ResourceNode};
 
 use super::PROVIDER;
 use crate::common::{html_to_text, id_string, resolve_local};
+use crate::html::{inner, tags, text};
 use crate::net::upstream;
 
 /// Titre d'une séance que TEMPO envoie sans titre.
 const UNTITLED: &str = "Cours";
+/// Au-delà, ce n'est pas l'adresse d'une page.
+const MAX_LINK_LENGTH: usize = 2048;
 
 /// Séances de la réponse qui chevauchent `from..=to` (jours locaux), sans doublon, triées par
 /// début.
@@ -42,11 +48,150 @@ pub(crate) fn parse_events(
         return Ok(Vec::new());
     };
     courses.retain(|course| course.end > start && course.start < end);
-    // Tri stable : de deux événements de même identifiant, le premier reçu reste.
+    Ok(merge(courses))
+}
+
+/// Séances triées par début, sans doublon. Tri stable : de deux séances de même identifiant, la
+/// première reçue reste.
+pub(crate) fn merge(mut courses: Vec<Course>) -> Vec<Course> {
     courses.sort_by(|a, b| a.start.cmp(&b.start).then_with(|| a.end.cmp(&b.end)));
     let mut seen = std::collections::HashSet::new();
     courses.retain(|course| seen.insert(course.id.clone()));
-    Ok(courses)
+    courses
+}
+
+/// Classe des en-têtes de l'arbre des salles (dossiers et salles).
+const TREE_HEADER: &str = "tempo-tree-header";
+/// Classe du bouton d'une salle, dans son en-tête.
+const ROOM_BUTTON: &str = "tempo-room-btn";
+/// Nœuds lus au plus dans la page des salles ([vu] 27/11/2026 : 642, dont 524 salles).
+const MAX_ROOM_NODES: usize = 50_000;
+/// Profondeur maximale de l'arbre des salles ([vu] : 6 niveaux).
+const MAX_ROOM_DEPTH: usize = 32;
+
+/// La page est-elle celle des salles ? Son conteneur porte la classe `tempo-rooms`, qu'il y ait
+/// des salles ou non.
+pub(crate) fn is_rooms_page(page: &str) -> bool {
+    page.contains("tempo-rooms")
+}
+
+/// Nœud de la page des salles avant assemblage : son en-tête, celui de son parent, et lui-même.
+struct Listed {
+    heading: String,
+    parent: Option<String>,
+    node: ResourceNode,
+}
+
+/// Arbre des salles de la page `rooms`.
+///
+/// Chaque dossier et chaque salle a un en-tête `<h3 class="… tempo-tree-header" id="heading-N"
+/// parentid="#heading-P">`, dans l'ordre de l'arbre, le parent avant ses enfants. L'en-tête d'un
+/// dossier contient un bouton qui porte son nom ; celui d'une salle, un élément de classe
+/// `tempo-room-btn` avec `value` (le numéro à passer à `api/room/`) et `ade-name`.
+///
+/// Les numéros des en-têtes et ceux des salles ne viennent pas de la même suite : l'identifiant
+/// d'un dossier est préfixé (`dossier-N`), celui d'une salle est son numéro.
+pub(crate) fn parse_rooms(page: &str) -> Result<Vec<ResourceNode>, Problem> {
+    let mut listed: Vec<Listed> = Vec::new();
+    for header in tags(page, "h3")
+        .into_iter()
+        .filter(|tag| tag.has_class(TREE_HEADER))
+    {
+        if listed.len() >= MAX_ROOM_NODES {
+            return Err(upstream(PROVIDER, "arbre des salles trop grand"));
+        }
+        let heading = header
+            .attr("id")
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| upstream(PROVIDER, "en-tête de l'arbre des salles sans `id`"))?;
+        let parent = header
+            .attr("parentid")
+            .map(|id| id.trim_start_matches('#').to_owned())
+            .filter(|id| !id.is_empty());
+        let content = inner(page, &header, "h3")
+            .ok_or_else(|| upstream(PROVIDER, "en-tête de l'arbre des salles sans fin"))?;
+        let room = tags(content, "div")
+            .into_iter()
+            .chain(tags(content, "button"))
+            .find(|tag| tag.has_class(ROOM_BUTTON));
+        let (id, name, folder) = if let Some(button) = room {
+            let number = button
+                .attr("value")
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+                .ok_or_else(|| upstream(PROVIDER, "salle sans numéro dans l'arbre"))?;
+            let name = button
+                .attr("ade-name")
+                .map(|name| text(&name))
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| text(content));
+            (number, name, false)
+        } else {
+            let number = heading.trim_start_matches("heading-");
+            (format!("dossier-{number}"), text(content), true)
+        };
+        // Un nœud sans nom n'est pas affichable ; ce qu'il range remonte au premier niveau.
+        if name.is_empty() {
+            continue;
+        }
+        listed.push(Listed {
+            heading,
+            parent,
+            node: ResourceNode {
+                id,
+                name,
+                kind: ResourceKind::Room,
+                folder,
+                children: Vec::new(),
+                selected: false,
+            },
+        });
+    }
+    assemble(listed)
+}
+
+/// Range chaque nœud sous son parent. Un parent n'est reconnu que s'il a été lu avant : un nœud
+/// dont le parent manque est mis au premier niveau, et aucune boucle n'est possible.
+fn assemble(listed: Vec<Listed>) -> Result<Vec<ResourceNode>, Problem> {
+    let mut index: HashMap<String, usize> = HashMap::with_capacity(listed.len());
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); listed.len()];
+    let mut roots = Vec::new();
+    for (position, item) in listed.iter().enumerate() {
+        match item.parent.as_ref().and_then(|parent| index.get(parent)) {
+            Some(&parent) => {
+                if let Some(siblings) = children.get_mut(parent) {
+                    siblings.push(position);
+                }
+            }
+            None => roots.push(position),
+        }
+        index.insert(item.heading.clone(), position);
+    }
+    let mut nodes: Vec<Option<ResourceNode>> =
+        listed.into_iter().map(|item| Some(item.node)).collect();
+    roots
+        .into_iter()
+        .map(|root| take(root, &children, &mut nodes, 0))
+        .collect()
+}
+
+fn take(
+    position: usize,
+    children: &[Vec<usize>],
+    nodes: &mut [Option<ResourceNode>],
+    depth: usize,
+) -> Result<ResourceNode, Problem> {
+    if depth > MAX_ROOM_DEPTH {
+        return Err(upstream(PROVIDER, "arbre des salles trop profond"));
+    }
+    let mut node = nodes
+        .get_mut(position)
+        .and_then(Option::take)
+        .ok_or_else(|| upstream(PROVIDER, "arbre des salles incohérent"))?;
+    for &child in children.get(position).map_or(&[][..], Vec::as_slice) {
+        node.children.push(take(child, children, nodes, depth + 1)?);
+    }
+    Ok(node)
 }
 
 fn midnight(tz: Tz, day: NaiveDate) -> Option<DateTime<FixedOffset>> {
@@ -106,6 +251,30 @@ fn course(event: &Value, tz: Tz) -> Option<Course> {
         description: field("info"),
         color,
         activity_id: None,
+        link: link(event),
+    })
+}
+
+/// Lien joint à la séance (`url`, `url_label`) : seulement une adresse en `http` ou `https`, qui
+/// tienne en une adresse. Le libellé perd le deux-points qui le termine (`VOTRE PLANNING :`).
+fn link(event: &Value) -> Option<CourseLink> {
+    let url = event.get("url").and_then(Value::as_str)?.trim();
+    let web = ["http://", "https://"].iter().any(|scheme| {
+        url.get(..scheme.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(scheme))
+    });
+    if !web || url.len() > MAX_LINK_LENGTH || url.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let label = event
+        .get("url_label")
+        .and_then(Value::as_str)
+        .map(html_to_text)
+        .map(|label| label.trim_end_matches(':').trim_end().to_owned())
+        .filter(|label| !label.is_empty());
+    Some(CourseLink {
+        url: url.to_owned(),
+        label,
     })
 }
 
@@ -155,6 +324,8 @@ mod tests {
     use tonapi_core::ErrorCode;
 
     const EVENTS: &str = include_str!("../../tests/fixtures/tempo/evenements.json");
+    const ROOMS: &str = include_str!("../../tests/fixtures/tempo/salles.html");
+    const ROOM: &str = include_str!("../../tests/fixtures/tempo/salle.json");
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
@@ -172,6 +343,93 @@ mod tests {
         let courses = parse(&json!([event]), day(2020, 1, 1), day(2030, 1, 1));
         assert_eq!(courses.len(), 1);
         courses.into_iter().next().unwrap()
+    }
+
+    /// Page à la forme vue le 27/11/2026 : dossiers et salles en accordéon, chacun avec son
+    /// en-tête et celui de son parent.
+    #[test]
+    fn arbre_des_salles() {
+        assert!(is_rooms_page(ROOMS));
+        let tree = parse_rooms(ROOMS).unwrap();
+        let top: Vec<_> = tree
+            .iter()
+            .map(|n| (n.id.as_str(), n.name.as_str(), n.folder))
+            .collect();
+        assert_eq!(
+            top,
+            [
+                ("dossier-9001", "01 - AMPHITHEATRES (2)", true),
+                ("dossier-9010", "02 - SALLES DE COURS (2)", true),
+            ]
+        );
+        // Une salle : son numéro pour `api/room/`, son nom d'ADE, entités décodées.
+        let amphi = &tree[0].children[0];
+        assert_eq!(
+            (amphi.id.as_str(), amphi.name.as_str(), amphi.folder),
+            ("6", "A1 Amphi (Démo) - 133 pl.", false)
+        );
+        assert!(amphi.children.is_empty());
+        assert!(tree.iter().all(|n| n.kind == ResourceKind::Room));
+        // Un dossier dans un dossier ; la salle 9001 n'est pas confondue avec le dossier 9001.
+        let ufr = &tree[1].children[0];
+        assert_eq!((ufr.name.as_str(), ufr.folder), ("01 - UFR DÉMO (2)", true));
+        let rooms: Vec<_> = ufr.children.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(rooms, ["2204", "9001"]);
+    }
+
+    #[test]
+    fn arbre_des_salles_incomplet() {
+        let header = |attrs: &str, content: &str| {
+            format!(
+                r#"<div class="tempo-rooms"><h3 class="tempo-tree-header" {attrs}>{content}</h3></div>"#
+            )
+        };
+        let room = |attrs: &str| format!(r#"<div class="tempo-room-btn" {attrs}>Salle</div>"#);
+        // Sans salle : un arbre vide, pas une erreur.
+        assert!(
+            parse_rooms(r#"<div class="tempo-rooms"></div>"#)
+                .unwrap()
+                .is_empty()
+        );
+        // Une salle sans numéro, ou un en-tête sans `id` : le format a changé.
+        for page in [
+            header(r#"id="heading-1""#, &room(r#"ade-name="Salle""#)),
+            header(r#"id="heading-1""#, &room(r#"value="abc""#)),
+            header("", "<button>Dossier</button>"),
+        ] {
+            let error = parse_rooms(&page).unwrap_err();
+            assert_eq!(error.code, ErrorCode::UpstreamChanged);
+        }
+        // Sans `ade-name`, le nom est le texte du bouton ; un parent inconnu : premier niveau.
+        let page = header(
+            r##"id="heading-2" parentid="#heading-404""##,
+            &room(r#"value="12""#),
+        );
+        let tree = parse_rooms(&page).unwrap();
+        assert_eq!(
+            (tree[0].id.as_str(), tree[0].name.as_str()),
+            ("12", "Salle")
+        );
+        assert!(!is_rooms_page("<html>Tempo - Mon emploi du temps</html>"));
+    }
+
+    #[test]
+    fn seances_d_une_salle_et_fusion() {
+        let room = parse(
+            &serde_json::from_str(ROOM).unwrap(),
+            day(2026, 11, 2),
+            day(2026, 11, 8),
+        );
+        let ids: Vec<&str> = room.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["9910", "9920"]);
+        // Toutes les salles de la séance, une par ligne ; les groupes en un seul texte.
+        assert_eq!(room[1].rooms.len(), 2);
+        assert_eq!(room[1].groups, ["Licence 3 Démo, Mineure L3, S5"]);
+        assert_eq!(room[1].teachers, ["Exemple D.", "Demo C."]);
+        // Deux salles demandées : la séance commune n'est rendue qu'une fois, dans l'ordre.
+        let both = merge([fixture(day(2026, 11, 2), day(2026, 11, 8)), room].concat());
+        let ids: Vec<&str> = both.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["9909", "9910", "9920"]);
     }
 
     #[test]
@@ -205,6 +463,39 @@ mod tests {
         assert_eq!(course.groups, ["L2 ARTS TD3"]);
         assert_eq!(course.description.as_deref(), Some("Cours annulé"));
         assert_eq!(course.color.as_deref(), Some("FFAA00"));
+        // Le lien joint à la séance, son libellé sans le deux-points final.
+        let link = course.link.as_ref().unwrap();
+        assert_eq!(link.url, "https://pix.exemple.test/planning");
+        assert_eq!(link.label.as_deref(), Some("VOTRE PLANNING"));
+    }
+
+    #[test]
+    fn lien_d_une_seance() {
+        let with = |url: Value, label: Value| {
+            one(&json!({"id": 1, "start": "2026-11-02 10:00", "url": url, "url_label": label})).link
+        };
+        // Sans adresse, ou avec autre chose qu'une adresse du web : pas de lien.
+        for url in [
+            json!(""),
+            json!(null),
+            json!(7),
+            json!("javascript:alert(1)"),
+            json!("/planning"),
+            json!("https://exemple.test/a b"),
+            json!(format!("https://exemple.test/{}", "a".repeat(2048))),
+        ] {
+            assert_eq!(with(url.clone(), json!("Lien")), None, "{url}");
+        }
+        // Le libellé est facultatif ; l'adresse est rendue telle quelle.
+        let link = with(json!(" HTTPS://exemple.test/x?a=1&b=2 "), json!(" : ")).unwrap();
+        assert_eq!(link.url, "HTTPS://exemple.test/x?a=1&b=2");
+        assert_eq!(link.label, None);
+        let link = with(
+            json!("http://exemple.test/"),
+            json!("Visio <b>du cours</b>"),
+        )
+        .unwrap();
+        assert_eq!(link.label.as_deref(), Some("Visio du cours"));
     }
 
     #[test]

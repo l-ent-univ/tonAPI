@@ -42,6 +42,18 @@ pub struct Course {
     pub color: Option<String>,
     /// Activité à laquelle la séance appartient, si le logiciel la nomme (ADE : `activityId`).
     pub activity_id: Option<String>,
+    /// Lien que l'établissement joint à la séance (planning détaillé, visioconférence…).
+    pub link: Option<CourseLink>,
+}
+
+/// Lien joint à une séance.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CourseLink {
+    /// Adresse en `http` ou `https`.
+    pub url: String,
+    /// Ce que le lien ouvre, tel que l'établissement le nomme.
+    pub label: Option<String>,
 }
 
 /// Groupe d'emploi du temps sélectionnable.
@@ -53,6 +65,51 @@ pub struct TimetableGroup {
     /// Chemin dans l'arbre des groupes (ex. `IUT Lannion › BUT MMI › MMI A2`).
     pub path: Vec<String>,
     /// Groupe actuellement suivi par l'étudiant.
+    pub selected: bool,
+}
+
+/// Nature d'une ressource d'emploi du temps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResourceKind {
+    /// Groupe d'étudiants (formation, TD, TP…).
+    Group,
+    Teacher,
+    Room,
+    /// Ressource que le logiciel range ailleurs (matériel, catégorie propre à l'établissement).
+    Other,
+}
+
+/// Ressource dont l'emploi du temps peut être demandé (`GET /v1/timetable?resources=`) : groupe,
+/// enseignant ou salle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TimetableResource {
+    pub id: String,
+    pub name: String,
+    pub kind: ResourceKind,
+    /// Chemin dans l'arbre des ressources, son propre nom en dernier, comme
+    /// `TimetableGroup::path` (ex. `Campus de démonstration › Bâtiment A › Amphi 1`).
+    pub path: Vec<String>,
+}
+
+/// Nœud de l'arbre des ressources d'emploi du temps : un dossier et ce qu'il contient, ou une
+/// ressource.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceNode {
+    pub id: String,
+    pub name: String,
+    pub kind: ResourceKind,
+    /// Dossier : il range des ressources et n'a pas d'emploi du temps à lui. Seul un nœud qui
+    /// n'en est pas un se passe à `resources`.
+    pub folder: bool,
+    /// Contenu d'un dossier, dans l'ordre du logiciel.
+    #[schema(no_recursion)]
+    pub children: Vec<ResourceNode>,
+    /// Groupe que suit l'étudiant, comme `TimetableGroup::selected`. Absent : non suivi (le
+    /// champ n'est écrit que vrai, l'arbre d'une université comptant des milliers de nœuds).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub selected: bool,
 }
 
