@@ -32,7 +32,9 @@ use std::time::{Duration, Instant};
 use reqwest::Method;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Value, json};
-use tonapi_http::{Browser, BrowserOptions, CookieJar, HttpError, RequestBody, Streamed, forms};
+use tonapi_http::{
+    BodySent, Browser, BrowserOptions, CookieJar, HeadWait, HttpError, RequestBody, Streamed, forms,
+};
 use tonapi_session::StoredCookie;
 use url::Url;
 
@@ -805,7 +807,13 @@ impl Webmail {
             .browser()
             .map_err(|e| PartError::Network(network_words(&e)))?;
         let sent = browser
-            .send_streamed(Method::GET, url, headers, None, REQUEST_TIMEOUT)
+            .send_streamed(
+                Method::GET,
+                url,
+                headers,
+                None,
+                HeadWait::FromNow(REQUEST_TIMEOUT),
+            )
             .await;
         self.keep(browser);
         let streamed = sent.map_err(|e| PartError::Network(network_words(&e)))?;
@@ -819,9 +827,15 @@ impl Webmail {
     /// Un fichier envoyé au servlet de Zimbra (`/service/upload?fmt=raw,extended`), au fil de
     /// l'eau, comme le client web de Zimbra l'envoie. `content_type` et `disposition` sont déjà
     /// nettoyés par l'appelant. → statut et texte de la réponse (64 Kio au plus).
+    ///
+    /// Le servlet ne répond qu'après avoir lu tout le fichier : avec `sent` (un corps envoyé au
+    /// rythme de l'étudiant, que l'appelant signale parti en entier), les 15 secondes comptent du
+    /// dernier octet ; sans (un corps déjà entier), dès l'envoi. Pendant l'envoi, l'appelant borne
+    /// l'attente entre deux morceaux.
     pub async fn upload(
         &self,
         body: RequestBody,
+        sent: Option<BodySent>,
         length: u64,
         content_type: &str,
         disposition: &str,
@@ -855,7 +869,16 @@ impl Webmail {
             .browser()
             .map_err(|e| PartError::Network(network_words(&e)))?;
         let sent = browser
-            .send_streamed(Method::POST, url, headers, Some(body), REQUEST_TIMEOUT)
+            .send_streamed(
+                Method::POST,
+                url,
+                headers,
+                Some(body),
+                match sent {
+                    Some(sent) => HeadWait::AfterBody(sent, REQUEST_TIMEOUT),
+                    None => HeadWait::FromNow(REQUEST_TIMEOUT),
+                },
+            )
             .await;
         self.keep(browser);
         let streamed = sent.map_err(|e| PartError::Network(network_words(&e)))?;

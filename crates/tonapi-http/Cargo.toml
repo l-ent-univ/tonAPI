@@ -16,7 +16,7 @@ scraper = "0.27.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { version = "1.53.3", features = ["sync", "time"] }
+tokio = { version = "1.53.3", features = ["sync", "time", "macros"] }
 tonapi-config.workspace = true
 tonapi-metrics.workspace = true
 tonapi-session.workspace = true
@@ -29,4 +29,5 @@ workspace = true
 [dev-dependencies]
 axum = "0.8.9"
 flate2 = "1.1.10"
+futures-util = "0.3.34"
 tokio = { version = "1.53.3", features = ["full", "macros"] }

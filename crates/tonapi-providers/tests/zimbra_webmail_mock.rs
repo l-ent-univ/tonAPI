@@ -274,6 +274,7 @@ async fn piece_jointe_et_envoi_au_fil_de_l_eau() {
     let (status, text) = webmail
         .upload(
             tonapi_http::RequestBody::from(b"%PDF-".to_vec()),
+            None,
             5,
             "application/pdf",
             "attachment; filename=\"x.pdf\"",
