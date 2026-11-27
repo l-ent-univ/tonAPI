@@ -14,6 +14,7 @@ mod drupal;
 mod etudiants_api;
 mod html;
 mod isorbonne;
+pub mod mail;
 mod mon_dossier_web;
 mod moodle;
 mod net;
@@ -23,7 +24,7 @@ mod sso;
 mod tempo;
 mod tiles_portal;
 mod uportal;
-mod zimbra;
+pub mod zimbra;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use tonapi_config::{

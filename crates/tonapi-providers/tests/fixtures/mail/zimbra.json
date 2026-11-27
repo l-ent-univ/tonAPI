@@ -1,0 +1,864 @@
+{
+ "messages": [
+  {
+   "input": {
+    "id": "257",
+    "su": "Objet",
+    "d": 1761649200000,
+    "f": "ua",
+    "e": [
+     {
+      "t": "f",
+      "a": "prof@univ.fr",
+      "p": "Prof"
+     },
+     {
+      "t": "t",
+      "a": "moi@univ.fr"
+     },
+     {
+      "t": "c",
+      "a": "autre@univ.fr",
+      "p": "Autre"
+     }
+    ],
+    "mp": [
+     {
+      "part": "TEXT",
+      "ct": "multipart/mixed",
+      "mp": [
+       {
+        "part": "1",
+        "ct": "multipart/related",
+        "mp": [
+         {
+          "part": "1.1",
+          "ct": "text/html",
+          "body": true,
+          "content": "<p>Salut <img src=\"cid:logo@x\"></p>"
+         },
+         {
+          "part": "1.2",
+          "ct": "image/png",
+          "ci": "<logo@x>",
+          "s": 1200
+         }
+        ]
+       },
+       {
+        "part": "2",
+        "ct": "application/pdf",
+        "cd": "attachment",
+        "filename": "Sujet.pdf",
+        "s": 50000
+       },
+       {
+        "part": "3",
+        "ct": "image/jpeg",
+        "ci": "<unused@x>",
+        "filename": "photo.jpg",
+        "s": 9000
+       }
+      ]
+     }
+    ]
+   },
+   "id": "257",
+   "output": {
+    "id": "257",
+    "subject": "Objet",
+    "from": {
+     "name": "Prof",
+     "email": "prof@univ.fr"
+    },
+    "replyTo": null,
+    "to": [
+     {
+      "name": "moi@univ.fr",
+      "email": "moi@univ.fr"
+     }
+    ],
+    "cc": [
+     {
+      "name": "Autre",
+      "email": "autre@univ.fr"
+     }
+    ],
+    "receivedAt": "2025-10-28T11:00:00.000Z",
+    "unread": true,
+    "flagged": false,
+    "format": "html",
+    "html": "<p>Salut <img src=\"/__ent_auth/mail/part?id=257&amp;part=1.2\" /></p>",
+    "remoteImages": 0,
+    "truncated": false,
+    "attachments": [
+     {
+      "part": "2",
+      "name": "Sujet.pdf",
+      "type": "application/pdf",
+      "size": 50000,
+      "href": "/__ent_auth/mail/part?id=257&part=2&download=1"
+     },
+     {
+      "part": "3",
+      "name": "photo.jpg",
+      "type": "image/jpeg",
+      "size": 9000,
+      "href": "/__ent_auth/mail/part?id=257&part=3&download=1"
+     }
+    ]
+   }
+  },
+  {
+   "input": {
+    "id": "9",
+    "mp": [
+     {
+      "part": "TEXT",
+      "ct": "multipart/alternative",
+      "mp": [
+       {
+        "part": "1",
+        "ct": "text/plain",
+        "body": true,
+        "content": "Bonjour https://x.fr.",
+        "truncated": true
+       },
+       {
+        "part": "2",
+        "ct": "text/html"
+       }
+      ]
+     }
+    ]
+   },
+   "id": "9",
+   "output": {
+    "id": "9",
+    "subject": "",
+    "from": null,
+    "replyTo": null,
+    "to": [],
+    "cc": [],
+    "receivedAt": null,
+    "unread": false,
+    "flagged": false,
+    "format": "text",
+    "html": "<div class=\"tafac-mail-text\">Bonjour <a href=\"https://x.fr\" target=\"_blank\" rel=\"noopener noreferrer\">https://x.fr</a>.</div>",
+    "remoteImages": 0,
+    "truncated": true,
+    "attachments": []
+   }
+  },
+  {
+   "input": {
+    "id": "12",
+    "su": "Rapport",
+    "e": [
+     {
+      "t": "f",
+      "a": "boss@example.fr",
+      "p": "Direction‮ rf.elpmaxe@ssob"
+     },
+     {
+      "t": "r",
+      "d": "Rép",
+      "a": "r@x.fr"
+     }
+    ],
+    "mp": [
+     {
+      "part": "1",
+      "ct": "multipart/mixed",
+      "mp": [
+       {
+        "part": "1.1",
+        "ct": "text/plain",
+        "body": true,
+        "content": "Bonjour"
+       },
+       {
+        "part": "1.2",
+        "ct": "application/octet-stream",
+        "cd": "attachment",
+        "filename": "rapport‮fdp.exe",
+        "s": 10
+       },
+       {
+        "part": "1.3",
+        "ct": "application/pdf",
+        "cd": "attachment",
+        "filename": "Famille 👨‍👩‍👧.pdf",
+        "s": 10
+       }
+      ]
+     }
+    ]
+   },
+   "id": "12",
+   "output": {
+    "id": "12",
+    "subject": "Rapport",
+    "from": {
+     "name": "Direction rf.elpmaxe@ssob",
+     "email": "boss@example.fr"
+    },
+    "replyTo": {
+     "name": "Rép",
+     "email": "r@x.fr"
+    },
+    "to": [],
+    "cc": [],
+    "receivedAt": null,
+    "unread": false,
+    "flagged": false,
+    "format": "text",
+    "html": "<div class=\"tafac-mail-text\">Bonjour</div>",
+    "remoteImages": 0,
+    "truncated": false,
+    "attachments": [
+     {
+      "part": "1.2",
+      "name": "rapportfdp.exe",
+      "type": "application/octet-stream",
+      "size": 10,
+      "href": "/__ent_auth/mail/part?id=12&part=1.2&download=1"
+     },
+     {
+      "part": "1.3",
+      "name": "Famille 👨‍👩‍👧.pdf",
+      "type": "application/pdf",
+      "size": 10,
+      "href": "/__ent_auth/mail/part?id=12&part=1.3&download=1"
+     }
+    ]
+   }
+  },
+  {
+   "input": {
+    "mp": [
+     {
+      "part": "1",
+      "ct": "multipart/mixed",
+      "mp": [
+       {
+        "part": "1.1",
+        "ct": "TEXT/HTML",
+        "body": 1,
+        "content": "<p>a</p>"
+       },
+       {
+        "part": "1.2",
+        "ct": "text/html",
+        "body": true,
+        "content": "<b>b</b><img src=\"cid:svg@x\"><img src=\"cid:%3Cpic@x%3E\">"
+       },
+       {
+        "part": "1.3",
+        "ct": "image/svg+xml",
+        "ci": "svg@x",
+        "s": "12"
+       },
+       {
+        "part": "1.4",
+        "ct": "image/gif",
+        "ci": "pic@x",
+        "s": "x"
+       },
+       {
+        "part": "x",
+        "ct": "application/pdf",
+        "filename": "bad"
+       },
+       {
+        "part": "1.5",
+        "ct": "message/rfc822"
+       },
+       {
+        "part": "1.6",
+        "ct": "text/calendar",
+        "cd": "attachment"
+       },
+       {
+        "part": "1.7",
+        "ct": "",
+        "cd": "attachment"
+       },
+       null,
+       "x"
+      ]
+     }
+    ],
+    "d": "nope",
+    "f": "f"
+   },
+   "id": "44",
+   "output": {
+    "id": "44",
+    "subject": "",
+    "from": null,
+    "replyTo": null,
+    "to": [],
+    "cc": [],
+    "receivedAt": null,
+    "unread": false,
+    "flagged": true,
+    "format": "html",
+    "html": "<p>a</p><hr class=\"tafac-mail-part-break\"><b>b</b>",
+    "remoteImages": 0,
+    "truncated": false,
+    "attachments": [
+     {
+      "part": "1.3",
+      "name": "Pièce jointe",
+      "type": "image/svg+xml",
+      "size": 12,
+      "href": "/__ent_auth/mail/part?id=44&part=1.3&download=1"
+     },
+     {
+      "part": "1.4",
+      "name": "Pièce jointe",
+      "type": "image/gif",
+      "size": null,
+      "href": "/__ent_auth/mail/part?id=44&part=1.4&download=1"
+     },
+     {
+      "part": "1.5",
+      "name": "Message joint.eml",
+      "type": "message/rfc822",
+      "size": null,
+      "href": "/__ent_auth/mail/part?id=44&part=1.5&download=1"
+     },
+     {
+      "part": "1.6",
+      "name": "Invitation.ics",
+      "type": "text/calendar",
+      "size": null,
+      "href": "/__ent_auth/mail/part?id=44&part=1.6&download=1"
+     },
+     {
+      "part": "1.7",
+      "name": "Pièce jointe",
+      "type": null,
+      "size": null,
+      "href": "/__ent_auth/mail/part?id=44&part=1.7&download=1"
+     }
+    ]
+   }
+  }
+ ],
+ "drafts": [
+  {
+   "input": {
+    "id": "400",
+    "l": "6",
+    "su": "Brouillon\r\n",
+    "idnt": "persona-2",
+    "origid": "257",
+    "rt": "w",
+    "e": [
+     {
+      "t": "f",
+      "a": "me@univ.fr"
+     },
+     {
+      "t": "t",
+      "a": "leo@univ.fr",
+      "p": "Léo"
+     },
+     {
+      "t": "t",
+      "a": "LEO@univ.fr"
+     },
+     {
+      "t": "c",
+      "a": "not an address"
+     },
+     {
+      "t": "b",
+      "a": "b@univ.fr"
+     }
+    ],
+    "mp": [
+     {
+      "ct": "multipart/alternative",
+      "mp": [
+       {
+        "ct": "text/plain",
+        "body": true,
+        "content": "texte"
+       },
+       {
+        "ct": "text/html",
+        "body": true,
+        "content": "<html><body><div style=\"font-family:x\"><p style=\"margin:0\">Salut <script>x</script></p><div data-mail-signature></div></div></body></html>"
+       }
+      ]
+     }
+    ]
+   },
+   "identities": [
+    "persona-2"
+   ],
+   "output": {
+    "id": "400",
+    "to": [
+     {
+      "name": "Léo",
+      "email": "leo@univ.fr"
+     }
+    ],
+    "cc": [],
+    "bcc": [
+     {
+      "name": "",
+      "email": "b@univ.fr"
+     }
+    ],
+    "subject": "Brouillon",
+    "html": "<p>Salut </p><div data-mail-signature></div>",
+    "attachments": [],
+    "inlineImages": [],
+    "droppedImages": 0,
+    "identityId": "persona-2",
+    "origin": {
+     "kind": "forward",
+     "messageId": "257"
+    }
+   }
+  },
+  {
+   "input": {
+    "id": "1",
+    "mp": [
+     {
+      "ct": "text/plain",
+      "body": true,
+      "content": "ligne <b>\n\nfin"
+     }
+    ]
+   },
+   "identities": [],
+   "output": {
+    "id": "1",
+    "to": [],
+    "cc": [],
+    "bcc": [],
+    "subject": "",
+    "html": "<p>ligne &lt;b&gt;</p><p></p><p>fin</p>",
+    "attachments": [],
+    "inlineImages": [],
+    "droppedImages": 0,
+    "identityId": null,
+    "origin": null
+   }
+  },
+  {
+   "input": {
+    "id": "400",
+    "l": "6",
+    "origid": 300,
+    "rt": "r",
+    "mp": [
+     {
+      "ct": "multipart/mixed",
+      "mp": [
+       {
+        "ct": "multipart/alternative",
+        "part": "1",
+        "mp": [
+         {
+          "ct": "text/plain",
+          "part": "1.1",
+          "body": true,
+          "content": "x"
+         },
+         {
+          "ct": "multipart/related",
+          "part": "1.2",
+          "mp": [
+           {
+            "ct": "text/html",
+            "part": "1.2.1",
+            "body": true,
+            "content": "<div><p>x</p><img src=\"cid:tafac-img-0123abcd-4567-89ab@tafac.fr\" width=\"520\" height=\"300\" alt=\"Note\"><img src=\"cid:tafac-img-fedcba98-7654-3210@tafac.fr\"><img src=\"https://x.example/y.png\"></div>"
+           },
+           {
+            "ct": "image/png",
+            "part": "1.2.2",
+            "ci": "<TAFAC-IMG-0123ABCD-4567-89AB@TAFAC.FR>",
+            "filename": "note.png",
+            "s": 80000
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "ct": "application/pdf",
+        "part": "2",
+        "filename": "a.pdf",
+        "s": 10
+       },
+       {
+        "ct": "IMAGE/PNG",
+        "part": "3",
+        "filename": "../b.png",
+        "s": "20"
+       },
+       {
+        "ct": "image/png",
+        "part": "4",
+        "ci": "<tafac-img-0123abcd-4567-89ab@tafac.fr>"
+       }
+      ]
+     }
+    ]
+   },
+   "identities": [],
+   "output": {
+    "id": "400",
+    "to": [],
+    "cc": [],
+    "bcc": [],
+    "subject": "",
+    "html": "<p>x</p><img data-inline-cid=\"tafac-img-0123abcd-4567-89ab@tafac.fr\" alt=\"Note\" width=\"520\" height=\"300\" />",
+    "attachments": [
+     {
+      "part": "2",
+      "name": "a.pdf",
+      "size": 10,
+      "contentType": "application/pdf"
+     },
+     {
+      "part": "3",
+      "name": "b.png",
+      "size": 20,
+      "contentType": "image/png"
+     }
+    ],
+    "inlineImages": [
+     {
+      "cid": "tafac-img-0123abcd-4567-89ab@tafac.fr",
+      "part": "1.2.2",
+      "name": "note.png",
+      "size": 80000,
+      "contentType": "image/png",
+      "width": 520,
+      "height": 300
+     }
+    ],
+    "droppedImages": 1,
+    "identityId": null,
+    "origin": {
+     "kind": "reply",
+     "messageId": "300"
+    }
+   }
+  }
+ ],
+ "dispositions": [
+  {
+   "contentType": "image/png",
+   "filename": "logo.png",
+   "download": false,
+   "output": {
+    "contentType": "image/png",
+    "disposition": "inline; filename=\"logo.png\"; filename*=UTF-8''logo.png"
+   }
+  },
+  {
+   "contentType": "image/svg+xml",
+   "filename": "a.svg",
+   "download": false,
+   "output": {
+    "contentType": "image/svg+xml",
+    "disposition": "attachment; filename=\"a.svg\"; filename*=UTF-8''a.svg"
+   }
+  },
+  {
+   "contentType": "text/html; charset=utf-8",
+   "filename": "page.html",
+   "download": false,
+   "output": {
+    "contentType": "text/html",
+    "disposition": "attachment; filename=\"page.html\"; filename*=UTF-8''page.html"
+   }
+  },
+  {
+   "contentType": "image/png",
+   "filename": "logo.png",
+   "download": true,
+   "output": {
+    "contentType": "image/png",
+    "disposition": "attachment; filename=\"logo.png\"; filename*=UTF-8''logo.png"
+   }
+  },
+  {
+   "contentType": "bad type",
+   "filename": "Évaluation \"finale\"\r\n.pdf",
+   "download": false,
+   "output": {
+    "contentType": "application/octet-stream",
+    "disposition": "attachment; filename=\"E_valuation _finale___.pdf\"; filename*=UTF-8''%C3%89valuation%20_finale___.pdf"
+   }
+  },
+  {
+   "contentType": "application/pdf",
+   "filename": "a‮fdp.exe\r\nX: y",
+   "download": true,
+   "output": {
+    "contentType": "application/pdf",
+    "disposition": "attachment; filename=\"afdp.exe__X: y\"; filename*=UTF-8''afdp.exe__X%3A%20y"
+   }
+  },
+  {
+   "contentType": "IMAGE/JPEG; x=y",
+   "filename": "",
+   "download": false,
+   "output": {
+    "contentType": "image/jpeg",
+    "disposition": "inline; filename=\"piece-jointe\"; filename*=UTF-8''piece-jointe"
+   }
+  },
+  {
+   "contentType": null,
+   "filename": null,
+   "download": false,
+   "output": {
+    "contentType": "application/octet-stream",
+    "disposition": "attachment; filename=\"piece-jointe\"; filename*=UTF-8''piece-jointe"
+   }
+  },
+  {
+   "contentType": "application/vnd.ms-excel",
+   "filename": "Notes (S1) – 2026*.xlsx",
+   "download": false,
+   "output": {
+    "contentType": "application/vnd.ms-excel",
+    "disposition": "attachment; filename=\"Notes (S1) _ 2026*.xlsx\"; filename*=UTF-8''Notes%20%28S1%29%20%E2%80%93%202026%2A.xlsx"
+   }
+  }
+ ],
+ "filenames": [
+  {
+   "header": "attachment; filename=\"a b.pdf\"",
+   "output": "a b.pdf"
+  },
+  {
+   "header": "attachment; filename*=UTF-8''%C3%A9t%C3%A9.pdf",
+   "output": "été.pdf"
+  },
+  {
+   "header": "inline; filename=x.png",
+   "output": "x.png"
+  },
+  {
+   "header": "attachment; filename*=iso-8859-1'fr'%E9t%E9.pdf; filename=\"x\"",
+   "output": "été.pdf"
+  },
+  {
+   "header": "attachment; filename*=UTF-8''%E9; filename=\"repli.pdf\"",
+   "output": "repli.pdf"
+  },
+  {
+   "header": "attachment; FILENAME = \"maj.pdf\"",
+   "output": "maj.pdf"
+  },
+  {
+   "header": "attachment",
+   "output": null
+  },
+  {
+   "header": "attachment; filename=",
+   "output": null
+  },
+  {
+   "header": "x; filename=a;filename=\"b\"",
+   "output": "b"
+  }
+ ],
+ "copies": [
+  {
+   "input": [
+    {
+     "id": "10",
+     "folder": "5",
+     "messageIdHeader": "<a@x>",
+     "from": {
+      "email": "me@u.fr"
+     },
+     "subject": "Test",
+     "receivedAt": "2026-10-28T17:27:00.000Z"
+    },
+    {
+     "id": "11",
+     "folder": "2",
+     "messageIdHeader": "<a@x>",
+     "from": {
+      "email": "me@u.fr"
+     },
+     "subject": "Test",
+     "receivedAt": "2026-10-28T17:27:01.000Z"
+    },
+    {
+     "id": "12",
+     "folder": "2",
+     "messageIdHeader": "<b@x>",
+     "from": {
+      "email": "me@u.fr"
+     },
+     "subject": "Test",
+     "receivedAt": "2026-10-28T17:27:00.000Z"
+    }
+   ],
+   "folder": "2",
+   "output": [
+    "11",
+    "12"
+   ]
+  },
+  {
+   "input": [
+    {
+     "id": "10",
+     "folder": "5",
+     "messageIdHeader": "<a@x>",
+     "from": {
+      "email": "me@u.fr"
+     },
+     "subject": "Test",
+     "receivedAt": "2026-10-28T17:27:00.000Z"
+    },
+    {
+     "id": "11",
+     "folder": "2",
+     "messageIdHeader": "<a@x>",
+     "from": {
+      "email": "me@u.fr"
+     },
+     "subject": "Test",
+     "receivedAt": "2026-10-28T17:27:01.000Z"
+    }
+   ],
+   "folder": "5",
+   "output": [
+    "10"
+   ]
+  },
+  {
+   "input": [
+    {
+     "id": "10",
+     "folder": "5",
+     "messageIdHeader": "<a@x>",
+     "from": {
+      "email": "me@u.fr"
+     },
+     "subject": "Test",
+     "receivedAt": "2026-10-28T17:27:00.000Z"
+    },
+    {
+     "id": "11",
+     "folder": "2",
+     "messageIdHeader": "<a@x>",
+     "from": {
+      "email": "me@u.fr"
+     },
+     "subject": "Test",
+     "receivedAt": "2026-10-28T17:27:01.000Z"
+    }
+   ],
+   "folder": "300",
+   "output": [
+    "11"
+   ]
+  },
+  {
+   "input": [
+    {
+     "from": {
+      "email": "Me@u.fr"
+     },
+     "subject": "Test",
+     "messageIdHeader": null,
+     "id": "20",
+     "folder": "5",
+     "receivedAt": "2026-10-28T17:27:00.200Z"
+    },
+    {
+     "from": {
+      "email": "Me@u.fr"
+     },
+     "subject": "Test",
+     "messageIdHeader": null,
+     "id": "21",
+     "folder": "2",
+     "receivedAt": "2026-10-28T17:27:00.400Z"
+    }
+   ],
+   "folder": "2",
+   "output": [
+    "21"
+   ]
+  },
+  {
+   "input": [
+    {
+     "from": {
+      "email": "Me@u.fr"
+     },
+     "subject": "Test",
+     "messageIdHeader": null,
+     "id": "21",
+     "folder": "2",
+     "receivedAt": "2026-10-28T17:27:00.400Z"
+    },
+    {
+     "from": {
+      "email": "Me@u.fr"
+     },
+     "subject": "Test",
+     "messageIdHeader": null,
+     "id": "22",
+     "folder": "2",
+     "receivedAt": "2026-10-28T17:27:00.400Z"
+    }
+   ],
+   "folder": "2",
+   "output": [
+    "21",
+    "22"
+   ]
+  },
+  {
+   "input": [
+    {
+     "from": {
+      "email": "Me@u.fr"
+     },
+     "subject": "Test",
+     "messageIdHeader": null,
+     "id": "20",
+     "folder": "5",
+     "receivedAt": "2026-10-28T17:27:00.200Z"
+    },
+    {
+     "from": {
+      "email": "Me@u.fr"
+     },
+     "subject": "Test",
+     "messageIdHeader": null,
+     "id": "21",
+     "folder": "2",
+     "receivedAt": "2026-10-28T17:28:00.000Z"
+    }
+   ],
+   "folder": "2",
+   "output": [
+    "20",
+    "21"
+   ]
+  }
+ ]
+}
