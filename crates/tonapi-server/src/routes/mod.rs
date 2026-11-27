@@ -29,6 +29,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(me::set_establishment))
         .routes(routes!(data::timetable))
         .routes(routes!(data::timetable_groups))
+        .routes(routes!(data::timetable_tree))
+        .routes(routes!(data::timetable_resources))
         .routes(routes!(data::grades))
         .routes(routes!(data::grade_notice))
         .routes(routes!(data::grade_distribution))

@@ -114,6 +114,8 @@ async fn parcours_demo_complet() {
     for path in [
         "/v1/timetable",
         "/v1/timetable/groups",
+        "/v1/timetable/tree",
+        "/v1/timetable/resources",
         "/v1/grades",
         "/v1/absences",
         "/v1/exams",
@@ -391,6 +393,87 @@ async fn emploi_du_temps_des_ressources_demandees() {
     ] {
         let r = get(query).await;
         assert_eq!(r.status, StatusCode::BAD_REQUEST, "{query}");
+        assert_eq!(r.body["code"], "invalid_request");
+    }
+}
+
+#[tokio::test]
+async fn arbre_et_recherche_des_ressources_d_emploi_du_temps() {
+    let app = server();
+    let token = login(&app, "demo", json!({})).await.body["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let get = async |path: &str| call(&app, "GET", path, Some(&token), None).await;
+
+    // L'arbre entier : un dossier de premier niveau par nature dans la démonstration.
+    let r = get("/v1/timetable/tree").await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.body["meta"]["provider"], "demo");
+    let kinds: Vec<_> = r.body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|node| node["kind"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(kinds, ["group", "teacher", "room"]);
+    // Les groupes que suit l'étudiant sont marqués ; le champ n'est écrit que vrai.
+    let promotion = &r.body["data"][0]["children"][0]["children"][0];
+    let followed: Vec<_> = promotion["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|node| node["selected"] == true)
+        .map(|node| node["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(followed, ["demo-td1", "demo-tp1a"]);
+    assert!(promotion.get("selected").is_none());
+    let rooms = get("/v1/timetable/tree?kind=room").await.body;
+    let campus = &rooms["data"][0];
+    assert_eq!(rooms["data"].as_array().unwrap().len(), 1);
+    assert_eq!(campus["folder"], true);
+    assert_eq!(campus["children"][0]["children"][0]["name"], "Amphi A");
+    assert_eq!(campus["children"][0]["children"][0]["folder"], false);
+
+    // Recherche sans casse ni accent, réduite à une nature ; le chemin finit par la ressource.
+    let r = get("/v1/timetable/resources?kind=room,teacher&q=AMPHI").await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let found = r.body["data"].as_array().unwrap();
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[0]["kind"], "room");
+    assert_eq!(
+        found[0]["path"],
+        json!(["Campus de démonstration", "Amphithéâtres", "Amphi A"])
+    );
+    let all = get("/v1/timetable/resources").await.body["data"]
+        .as_array()
+        .unwrap()
+        .len();
+    assert_eq!(all, 17);
+    let two = get("/v1/timetable/resources?limit=2").await.body;
+    assert_eq!(two["data"].as_array().unwrap().len(), 2);
+
+    // L'identifiant d'une salle donne les cours qui s'y tiennent.
+    let id = found[0]["id"].as_str().unwrap();
+    let courses = get(&format!(
+        "/v1/timetable?from=2026-10-12&to=2026-10-18&resources={id}"
+    ))
+    .await
+    .body;
+    let courses = courses["data"].as_array().unwrap();
+    assert!(!courses.is_empty());
+    assert!(courses.iter().all(|c| c["rooms"] == json!(["Amphi A"])));
+
+    for path in [
+        "/v1/timetable/tree?kind=salle",
+        "/v1/timetable/resources?kind=room;teacher",
+        "/v1/timetable/resources?limit=0",
+        "/v1/timetable/resources?limit=50001",
+        "/v1/timetable/resources?limit=beaucoup",
+        &format!("/v1/timetable/resources?q={}", "a".repeat(101)),
+    ] {
+        let r = get(path).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{path}");
         assert_eq!(r.body["code"], "invalid_request");
     }
 }
