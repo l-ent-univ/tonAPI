@@ -49,6 +49,12 @@ compte étudiant [vu, Rennes, 15/11/2026] : on choisit le fournisseur d'après l
 | une page `direct/myplanning.jsp` et des requêtes `…ServiceProxy` (GWT) | `ade-myplanning` |
 | une adresse en `/portal/` et des requêtes `RestApi/portal/…` | `ade-portal-rest` |
 
+L'arbre des ressources (`/v1/timetable/tree`, `/v1/timetable/resources`) est servi par
+`ade-portal-rest` et la démo (groupes, enseignants, salles) et par `tempo` (salles seulement) :
+les autres fournisseurs répondent `not_implemented`. Rennes 2 a un ADE sans portail ni API REST
+[vu, 27/11/2026, sans compte], que TEMPO lit pour ses étudiants : voir
+[../recherche/rennes-2.md](../recherche/rennes-2.md).
+
 Deux déploiements d'une même interface diffèrent aussi. À Rennes, la sélection personnelle peut
 être vide alors qu'ADE attribue une ressource à l'étudiant, l'arbre contient des nœuds au nom
 vide et compte 6 928 groupes [vu, 15/11/2026]. Ces écarts se corrigent dans le fournisseur, par
@@ -58,13 +64,13 @@ une analyse tolérante et un test, pas par un nouveau fournisseur.
 |---|---|---|---|
 | `ade-ical-link` | page authentifiée qui contient le lien `direct_cal.jsp` (prose à Montpellier), puis flux iCal | Université de Montpellier (compte de l'IUT de Béziers), 27/10/2026 [vu] | `/v1/timetable/groups` et `resources` répondent `not_implemented` : le flux ne contient que les séances de l'étudiant |
 | `ade-myplanning` | appels GWT-RPC de MyPlanning pour les ressources de l'étudiant, puis `anonymous_cal.jsp` | Paul-Valéry, 27/10/2026, groupes compris [vu] | types GWT d'ADE 6.x ; groupes limités à ceux de l'étudiant ; `resources` répond `not_implemented` |
-| `ade-portal-rest` | API REST du portail ADE (`sso/accessToken`, `ssologin`, projets) ; ressources demandées (`resources`), sinon la sélection personnelle, sinon celles qu'ADE attribue ; `color` et `activityId` de chaque séance | IUT de Lannion, 15/11/2026, groupes compris [vu] ; Université de Rennes, 25/11/2026 : ressources demandées (les siennes et celles d'autres formations), `color` en `R,V,B` et `activityId` sur chaque séance [vu] | format d'une sélection personnelle non vide [inconnu] ; la liste des groupes rend tout l'arbre de l'université ; salle ou enseignant demandés en `resources` jamais essayés |
+| `ade-portal-rest` | API REST du portail ADE (`sso/accessToken`, `ssologin`, projets) ; ressources demandées (`resources`), sinon la sélection personnelle, sinon celles qu'ADE attribue, toutes dans une requête ; `color` et `activityId` de chaque séance ; arbre des ressources (`resourcestree`) : groupes, enseignants et salles, en arbre (`/v1/timetable/tree`) ou en liste avec recherche (`/v1/timetable/resources`) | IUT de Lannion, 15/11/2026, groupes compris [vu] ; Université de Rennes, 25/11/2026 : ressources demandées, `color` et `activityId` [vu] ; IUT de Lannion, 27/11/2026 : arbre (9 298 nœuds de groupes, 8 313 d'enseignants, 2 436 de salles), recherche, emploi du temps d'une salle, d'un enseignant et des deux à la fois, `not_found` pour une ressource inconnue [vu] | format d'une sélection personnelle non vide [inconnu] ; l'arbre (3 Mo) est gardé une demi-heure en mémoire par portail, projet et profil ADE : deux comptes du même profil sont supposés lire le même arbre [déduit] ; la matière d'une séance et l'identifiant de ses participants ne sont pas rendus |
 
 ### Emploi du temps (autres logiciels)
 
 | Fournisseur | Parcours | Essai réel | Limites |
 |---|---|---|---|
-| `tempo` | TEMPO (Rennes 2) : `api/events?start=…&end=…` en JSON ; sans session (401), le CAS avec le service `<tempo>/auth`, puis une seule relecture | aucun : porté du code de Tafac (`tempoApi.js`), faux serveurs seulement [code] | emploi du temps du compte seulement : `/v1/timetable/groups` et `resources` répondent `not_implemented` ; le lien d'une séance n'est pas rendu ; journée entière rendue de minuit à minuit |
+| `tempo` | TEMPO (Rennes 2) : `api/events?start=…&end=…` en JSON pour les séances de l'étudiant ; la page `rooms` pour l'arbre des salles (`/v1/timetable/tree`, `/v1/timetable/resources`) ; `api/room/<salle>` pour l'emploi du temps d'une salle demandée en `resources`, une requête par salle ; le lien joint à une séance (`link`) ; sans session (401, ou page qui renvoie au CAS), le CAS avec le service `<tempo>/auth`, puis une seule relecture | Rennes 2, 27/11/2026 : semaine de l'étudiant, 118 dossiers et 524 salles, recherche, emploi du temps d'une et de deux salles [vu] | pas de groupes : `/v1/timetable/groups` répond `not_implemented`, et seule une salle se demande en `resources` ; l'arbre des salles est lu dans une page HTML (546 Ko), relue à chaque demande ; journée entière rendue de minuit à minuit, jamais vue ; compte d'un autre campus jamais essayé |
 
 ### Notes et absences
 

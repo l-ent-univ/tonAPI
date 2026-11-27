@@ -6,6 +6,10 @@ Rédigée le 14 oct. 2026 à partir de **deux sources** :
 - le **code source** du client open source `tafac`, surtout `planningPortalApi.js` et son test ; références `fichier:ligne` ;
 - une **sonde directe** de l'ADE de Rennes du 2026-10-14 (sonde publique sans identifiants + une session avec un vrai compte étudiant, aucune valeur recopiée), consignée dans [../emploi-du-temps.md §11](../emploi-du-temps.md).
 
+> Les sections 1 à 10 datent du 14/10/2026 et reposent en partie sur le code de `tafac`, écrit pour
+> une interface plus ancienne d'ADE. La [section 11](#11-relevé-du-27112026-sur-le-portail) est un
+> relevé du 27/11/2026 sur le portail lui-même : elle fait foi là où elle les contredit.
+
 Marquage des faits :
 - **[confirmé]** = observé en direct le 2026-10-14 (emploi-du-temps.md §11) ;
 - **[code]** = lu tel quel dans `tafac` (avec `fichier:ligne`) ;
@@ -397,3 +401,120 @@ Format de dates iCal supposé `YYYY-MM-DD` (convention ADE 6) — à distinguer 
 - `server/entAuthApp.js` — routes `/__ent_auth/planning` et `/__ent_auth/ade/*` (aiguillage `USE_PLANNING_PORTAL_REST`, l.148, 2318, 3636-4115)
 - `universities/univ-rennes/server.js` — `planning.api = 'portal-rest'`, origines (l.18, 59-63)
 - Contexte général : [../emploi-du-temps.md](../emploi-du-temps.md) (§3 code, §11 observations live)
+
+---
+
+## 11. Relevé du 27/11/2026 sur le portail
+
+[vu] 27/11/2026, compte étudiant de l'IUT de Lannion, sur `planning.univ-rennes.fr/portal/` : les
+réponses de l'API et le code du front (`main.<hash>.js`), qui montre les appels qu'il fait. Aucune
+valeur du compte n'est recopiée ; les exemples sont inventés, à la forme vue.
+
+### 11.1 Ouverture de session
+
+- `POST sso/accessToken` rend un jeton dès que le CAS a ouvert la session du portail ;
+  `ssologin` répond ensuite `data.protocol = "CAS"`, `data.projectId = 0` et
+  `data.authData.projectId = 1`.
+- `authData.resources` contient **une ressource** pour ce compte (son groupe de TP), et
+  `projectsResources` la même sous le projet 1. C'est un objet d'une quarantaine de champs, dont
+  `id`, `name`, `category` (`trainee`), `fatherId`, `fatherName`, `path` (noms des dossiers
+  séparés par des points), `color`, `isGroup`, `nbEventsPlaced`.
+- `user/properties/name/PortalResourcesAllSelection` répond `{"data":""}` : la sélection
+  personnelle est vide, l'agenda vient de la ressource attribuée. Le format d'une sélection non
+  vide reste [inconnu].
+- `authData.profile` vaut `etudiant` ; `jsonAvailableCategories.categories` liste
+  `type.students`, `type.teacher`, `type.classroom`, `type.resource` et `type.Category5` à `8`.
+
+### 11.2 Arbre des ressources
+
+`GET resourcestree` rend tout l'arbre de l'université en une réponse : 2,97 Mo, en moins d'une
+demi-seconde.
+
+```json
+{ "data": { "category": [
+  { "category": "trainee", "branch": [
+    { "id": 100, "name": "Département Démo", "branch": [
+      { "id": 111, "name": "Groupe TD 1", "leaf": [ { "id": 1011, "name": "TP 1" } ] } ] } ] },
+  { "category": "instructor", "branch": [ … ] },
+  { "category": "classroom", "branch": [ … ] }
+] } }
+```
+
+- Trois catégories, dans cet ordre : `trainee`, `instructor`, `classroom`. Une catégorie n'a que
+  `category` et `branch` : ni `id` ni `name`.
+- Un nœud n'a que `id` (entier positif), `name` et, s'il range quelque chose, `branch` (dossiers)
+  et `leaf` (ressources). Pas de couleur, pas de `fields`, pas de `children`.
+- 20 057 nœuds : 9 307 sous les étudiants (6 926 ressources), 8 314 sous les enseignants (7 732),
+  2 436 sous les salles (1 917). Profondeur : jusqu'à 9 niveaux chez les étudiants.
+- 10 ressources ont un `name` vide (9 chez les étudiants, 1 chez les enseignants) ; aucun dossier.
+- Un identifiant n'apparaît qu'une fois dans tout l'arbre.
+- Premier niveau : les composantes pour les étudiants et les enseignants (`IUT Lannion`,
+  `ISTIC`, `Santé`…), les campus pour les salles (`19-Lannion IUT - …`, `Sites extérieurs`…).
+  Une salle se nomme `B01 - Salle de réunion (110-111)`, sous campus › bâtiment › type de salle.
+- Le front connaît aussi `POST getresourcestreeportalsearch` (arbre filtré par capacité, site…)
+  et `GET resources/<filtre>` (ex. `resources/groups;<id>/?level=2&leaves=true`, qui rend
+  `{id, name, editable, editTF}`) : non utilisés par tonAPI, l'arbre entier suffit.
+
+### 11.3 Événements
+
+`GET resourcesEventsPortal/resources;<id>;<id>/startdate;MMJJAAAA/enddate;MMJJAAAA/level;=8/field;Nom;CODEZ_RESOURCE;OWNER;`
+
+- **Plusieurs ressources dans une requête** : `data` porte un bloc `{id, events}` par ressource
+  demandée, et la même séance revient dans chaque bloc. Le front fait ainsi (`resources;` suivi de
+  tous les identifiants affichés) ; la section 4.1 disait l'inverse.
+- Un groupe, **une salle ou un enseignant** se demandent de la même façon, par leur identifiant
+  de l'arbre.
+- **Un dossier** (un `branch` de l'arbre) demandé seul rend `data: []`, sans erreur.
+- **Une ressource inconnue** : HTTP **403** et
+  `{"data": [], "error": {"code": 1805, "message": "You don't have the right to use any given resources."}}`.
+  Demandée avec une ressource connue, elle est ignorée et la réponse est un 200.
+- Sans `level;=8` ni `field;…`, la réponse est la même, octet pour octet.
+- Une semaine pèse environ 40 Ko pour un groupe ; une année universitaire entière (207 séances),
+  540 Ko en 0,4 s.
+- À côté de `data`, `settings` est un tableau de deux réglages du portail (champs montrés par
+  catégorie), pas un objet.
+
+Une séance, à la forme vue :
+
+```json
+{
+  "id": 880001, "activityId": 42001, "name": "R3.02 Développement web TP",
+  "date": "24/11/2026", "startHour": "09:00+01:00", "endHour": "10:00+01:00",
+  "color": "120,140,160", "canUpdateEvent": false, "note": " ",
+  "fields": { "NAME": "R3.02 Développement web TP", "EVENT_TIME": "09h00 - 10h00" },
+  "eventParticipants": [
+    { "category": "trainee", "id": 1011, "name": "TP 1", "fields": { "NAME": "TP 1", "OWNER": "…" } },
+    { "category": "instructor", "id": 900, "name": "DUPONT Camille", "fields": { … } },
+    { "category": "category5", "id": 5001, "name": "R302 Développement web", "fields": { … } },
+    { "category": "classroom", "id": 800, "name": "B01 - Salle 12 (012) [30P]", "fields": { … } }
+  ],
+  "week": 17, "day": 1, "slot": 8, "absoluteSlot": 7001, "duration": 4, "session": 2,
+  "creation": "01/09/2026 09:00", "lastUpdate": "02/09/2026 10:30"
+}
+```
+
+- Le décalage horaire s'écrit `+01:00` (avec les deux-points).
+- Catégories des participants vues : `trainee`, `instructor`, `classroom` et `category5`, qui est
+  à Rennes **la matière** (un module de la formation). Chaque participant porte l'`id` de sa
+  ressource dans l'arbre. `category1`, `2`, `3` et `8`, que lit le code de `tafac`, n'ont pas été
+  vues.
+- Aucun champ ne donne le type de séance (CM, TD, TP) : il est écrit dans le nom.
+- `events/eventid;<id>/?level=8&field=OWNER` rend le détail d'une séance, sans rien de plus pour
+  un étudiant.
+
+### 11.4 Calendrier du projet
+
+`GET calendar/` (124 Ko) : `data.days` (7 jours, avec leur nom), `data.slots` (créneaux de
+15 minutes, `first`, `last`, `granularity`) et `data.weeks` (53 semaines visibles, chacune avec
+sa date de début et son nom). tonAPI ne le lit pas : les événements portent leur date.
+
+### 11.5 Ce que tonAPI en fait
+
+| Route | Appel du portail |
+|---|---|
+| `/v1/timetable` | `resourcesEventsPortal`, une requête pour toutes les ressources |
+| `/v1/timetable/tree`, `/v1/timetable/resources`, `/v1/timetable/groups` | `resourcestree`, gardé une demi-heure par profil ADE (`authData.profile`) |
+
+Un 403 d'ADE devient `not_found`. Les participants de catégorie `category5` ne sont pas rendus,
+ni l'`id` des participants : pistes pour plus tard (ouvrir l'emploi du temps d'une salle depuis
+une séance sans passer par son nom).
