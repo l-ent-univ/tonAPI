@@ -43,6 +43,16 @@ impl CookieJar {
             .any(|c| c.name == name && domain_matches(c, host))
     }
 
+    /// Valeur du cookie `name` posé pour `host`, s'il y en a un encore valable à `now`.
+    #[must_use]
+    pub fn value(&self, host: &str, name: &str, now: i64) -> Option<&str> {
+        self.cookies
+            .iter()
+            .filter(|c| c.expires.is_none_or(|e| e > now))
+            .find(|c| c.name == name && domain_matches(c, host))
+            .map(|c| c.value.as_str())
+    }
+
     /// Vrai si au moins un cookie est posé pour `host`.
     #[must_use]
     pub fn has_cookies_for(&self, host: &str) -> bool {

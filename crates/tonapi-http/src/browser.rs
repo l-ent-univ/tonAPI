@@ -112,6 +112,12 @@ const HOST_WAIT: Duration = Duration::from_secs(10);
 /// places des requêtes ordinaires du même hôte.
 const LONG_POLLS_PER_HOST: usize = 16;
 
+/// Réponses lues et requêtes envoyées au fil de l'eau (pièces jointes de la messagerie)
+/// simultanées vers un même hôte. Elles peuvent durer, au rythme de l'étudiant : comptées à
+/// part, elles ne prennent jamais les places des requêtes ordinaires (W5 de la revue : 32 pièces
+/// lues lentement bloquaient sinon la messagerie de tous).
+const STREAMED_PER_HOST: usize = 16;
+
 /// Au-delà de ce nombre d'hôtes suivis, ceux qui n'ont plus de requête en cours sont oubliés.
 const MAX_HOSTS: usize = 10_000;
 
@@ -119,12 +125,14 @@ type HostMap = HashMap<String, Arc<tokio::sync::Semaphore>>;
 
 static HOSTS: LazyLock<Mutex<HostMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 static LONG_POLLS: LazyLock<Mutex<HostMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static STREAMS: LazyLock<Mutex<HostMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// File de places d'une requête.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Lane {
     Normal,
     LongPoll,
+    Streamed,
 }
 
 impl Lane {
@@ -132,6 +140,7 @@ impl Lane {
         match self {
             Lane::Normal => PER_HOST,
             Lane::LongPoll => LONG_POLLS_PER_HOST,
+            Lane::Streamed => STREAMED_PER_HOST,
         }
     }
 
@@ -139,6 +148,7 @@ impl Lane {
         match self {
             Lane::Normal => &HOSTS,
             Lane::LongPoll => &LONG_POLLS,
+            Lane::Streamed => &STREAMS,
         }
     }
 
@@ -147,6 +157,7 @@ impl Lane {
         match self {
             Lane::Normal => "normal",
             Lane::LongPoll => "long_poll",
+            Lane::Streamed => "streamed",
         }
     }
 }
@@ -406,6 +417,77 @@ impl Browser {
         Ok((status, headers, bytes))
     }
 
+    /// Une requête dont la réponse se lit au fil de l'eau ([`Streamed::chunk`]), sans suivre les
+    /// redirections : une pièce jointe, jamais gardée entière en mémoire. `body` part lui aussi au
+    /// fil de l'eau (un fichier envoyé). `head` borne l'attente des en-têtes ([`HeadWait`]) ; la
+    /// lecture du corps n'a pas de délai total, à l'appelant de borner l'attente entre deux
+    /// morceaux. Les cookies reçus sont enregistrés. La place de l'hôte, prise dans une file à part
+    /// des requêtes ordinaires, est tenue jusqu'à l'abandon de la réponse.
+    pub async fn send_streamed(
+        &mut self,
+        method: Method,
+        url: Url,
+        headers: HeaderMap,
+        body: Option<reqwest::Body>,
+        head: HeadWait,
+    ) -> Result<Streamed, HttpError> {
+        let url = self.secure(url)?;
+        let permit = host_permit(&url, Lane::Streamed).await?;
+        // Le délai du client (total) remplacé : seul celui des en-têtes compte ici.
+        let mut request = self
+            .client
+            .request(method, url.clone())
+            .headers(headers)
+            .timeout(STREAMED_CEILING);
+        if let Some(agent) = &self.user_agent {
+            request = request.header(header::USER_AGENT, agent.clone());
+        }
+        if let Some(cookie) = self.jar.header_for(&url, Self::now()) {
+            request = request.header(header::COOKIE, cookie);
+        }
+        if let Some(body) = body {
+            request = request.body(body);
+        }
+        let exchange = Exchange {
+            host: host_label(&url),
+            started: Instant::now(),
+            outcome: "error",
+        };
+        let timed_out = || HttpError::Network("délai dépassé".to_owned());
+        let response = match head {
+            HeadWait::FromNow(wait) => tokio::time::timeout(wait, request.send())
+                .await
+                .map_err(|_| timed_out())??,
+            HeadWait::AfterBody(sent, wait) => {
+                let sending = request.send();
+                tokio::pin!(sending);
+                tokio::select! {
+                    answered = &mut sending => answered?,
+                    () = async {
+                        sent.wait().await;
+                        tokio::time::sleep(wait).await;
+                    } => return Err(timed_out()),
+                }
+            }
+        };
+        let status = response.status();
+        let headers = response.headers().clone();
+        for value in headers.get_all(header::SET_COOKIE) {
+            if let Ok(value) = value.to_str() {
+                self.jar.store(&url, value, Self::now());
+            }
+        }
+        let mut exchange = exchange;
+        exchange.outcome = tonapi_metrics::status_class(status.as_u16());
+        Ok(Streamed {
+            status,
+            headers,
+            response,
+            _permit: permit,
+            _exchange: exchange,
+        })
+    }
+
     /// `GET` en suivant les redirections.
     pub async fn get(&mut self, url: Url) -> Result<Page, HttpError> {
         self.navigate(Method::GET, url, None, None).await
@@ -499,6 +581,76 @@ impl Browser {
             url = next;
         }
         Err(HttpError::TooManyRedirects)
+    }
+}
+
+/// L'attente des en-têtes d'une requête au fil de l'eau ([`Browser::send_streamed`]).
+pub enum HeadWait {
+    /// Comptée dès l'envoi : une lecture, ou un corps déjà entier.
+    FromNow(Duration),
+    /// Comptée une fois le corps parti en entier ([`BodySent::done`]) : un fichier envoyé au
+    /// rythme de l'étudiant, que le service ne lit qu'avant de répondre. Pendant l'envoi, à
+    /// l'appelant de borner l'attente entre deux morceaux.
+    AfterBody(BodySent, Duration),
+}
+
+/// Le signal « le corps de la requête est parti en entier », donné par qui le produit.
+#[derive(Clone, Default)]
+pub struct BodySent(Arc<tokio::sync::Notify>);
+
+impl BodySent {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Le dernier octet est parti (ou le corps s'est arrêté).
+    pub fn done(&self) {
+        self.0.notify_one();
+    }
+
+    async fn wait(&self) {
+        self.0.notified().await;
+    }
+}
+
+/// Plafond d'une requête au fil de l'eau : l'appelant borne l'attente entre deux morceaux, ceci
+/// n'est qu'un garde-fou contre une réponse sans fin.
+const STREAMED_CEILING: Duration = Duration::from_secs(60 * 60);
+
+/// Réponse lue au fil de l'eau ([`Browser::send_streamed`]).
+pub struct Streamed {
+    pub status: StatusCode,
+    pub headers: HeaderMap,
+    response: reqwest::Response,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+    _exchange: Exchange,
+}
+
+impl Streamed {
+    /// Longueur annoncée du corps tel qu'il sera lu : absente quand le corps est décompressé en
+    /// route (la longueur annoncée serait celle du corps compressé).
+    #[must_use]
+    pub fn content_length(&self) -> Option<u64> {
+        self.response.content_length()
+    }
+
+    /// Morceau suivant du corps ; `None` à la fin.
+    pub async fn chunk(&mut self) -> Result<Option<bytes::Bytes>, HttpError> {
+        Ok(self.response.chunk().await?)
+    }
+
+    /// Le corps entier, `max` octets au plus (le reste est abandonné).
+    pub async fn text_up_to(mut self, max: usize) -> Result<String, HttpError> {
+        let mut bytes = Vec::new();
+        while let Some(chunk) = self.chunk().await? {
+            let room = max.saturating_sub(bytes.len());
+            bytes.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            if bytes.len() >= max {
+                break;
+            }
+        }
+        Ok(into_text(bytes))
     }
 }
 
@@ -614,8 +766,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        Browser, BrowserOptions, HostMap, HttpError, LONG_POLLS_PER_HOST, Lane, MAX_BODY,
-        MAX_HOSTS, PER_HOST, describe, forget_idle_hosts, host_permit,
+        BodySent, Browser, BrowserOptions, HeadWait, HostMap, HttpError, LONG_POLLS_PER_HOST, Lane,
+        MAX_BODY, MAX_HOSTS, PER_HOST, STREAMED_PER_HOST, describe, forget_idle_hosts, host_permit,
     };
     use crate::cookies::CookieJar;
 
@@ -801,6 +953,126 @@ mod tests {
         assert!(
             extra.is_err(),
             "la file des longues interrogations est bornée"
+        );
+    }
+
+    /// Les pièces jointes lues lentement prenaient les places ordinaires de l'hôte du webmail :
+    /// 32 suffisaient à bloquer la messagerie de tous. Elles ont leur propre file.
+    #[tokio::test]
+    async fn les_transferts_au_fil_de_l_eau_ont_leur_file() {
+        let url = Url::parse("https://webmail-file.exemple.test/service/home/~/").unwrap();
+        let mut held = Vec::new();
+        for _ in 0..STREAMED_PER_HOST {
+            held.push(host_permit(&url, Lane::Streamed).await.unwrap());
+        }
+        let normal =
+            tokio::time::timeout(Duration::from_millis(100), host_permit(&url, Lane::Normal)).await;
+        assert!(matches!(normal, Ok(Ok(_))));
+        let extra = tokio::time::timeout(
+            Duration::from_millis(100),
+            host_permit(&url, Lane::Streamed),
+        )
+        .await;
+        assert!(extra.is_err(), "la file des transferts est bornée");
+    }
+
+    /// Faux servlet d'envoi : lit tout le corps (`length` octets) avant de répondre.
+    async fn upload_servlet(length: usize) -> Url {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = Url::parse(&format!("http://{}/upload", listener.local_addr().unwrap())).unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut seen = Vec::new();
+                    let mut buffer = [0_u8; 1024];
+                    let body_start = loop {
+                        let read = stream.read(&mut buffer).await.unwrap_or(0);
+                        if read == 0 {
+                            return;
+                        }
+                        seen.extend_from_slice(&buffer[..read]);
+                        if let Some(at) = seen.windows(4).position(|w| w == b"\r\n\r\n") {
+                            break at + 4;
+                        }
+                    };
+                    let mut body = seen.len() - body_start;
+                    while body < length {
+                        let read = stream.read(&mut buffer).await.unwrap_or(0);
+                        if read == 0 {
+                            return;
+                        }
+                        body += read;
+                    }
+                    let _ = stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok",
+                        )
+                        .await;
+                });
+            }
+        });
+        url
+    }
+
+    /// Un fichier envoyé en trois morceaux, à 400 ms d'écart.
+    async fn slow_upload(
+        url: Url,
+        head: HeadWait,
+        sent: Option<BodySent>,
+    ) -> Result<u16, HttpError> {
+        use futures_util::StreamExt;
+        let chunks = futures_util::stream::iter(0..3).then(move |index| {
+            let sent = sent.clone();
+            async move {
+                if index > 0 {
+                    tokio::time::sleep(Duration::from_millis(400)).await;
+                }
+                if index == 2
+                    && let Some(sent) = &sent
+                {
+                    sent.done();
+                }
+                Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"abcd"))
+            }
+        });
+        let options = BrowserOptions {
+            https_only: false,
+            ..BrowserOptions::default()
+        };
+        let mut browser = Browser::new(&options, CookieJar::default())?;
+        let mut headers = HeaderMap::new();
+        headers.insert(reqwest::header::CONTENT_LENGTH, "12".parse().unwrap());
+        let streamed = browser
+            .send_streamed(
+                Method::POST,
+                url,
+                headers,
+                Some(reqwest::Body::wrap_stream(chunks)),
+                head,
+            )
+            .await?;
+        Ok(streamed.status.as_u16())
+    }
+
+    /// Le servlet ne répond qu'une fois le fichier lu : compter l'attente des en-têtes dès
+    /// l'envoi faisait échouer tout envoi plus long qu'elle. Comptée du dernier octet, un envoi
+    /// lent aboutit.
+    #[tokio::test]
+    async fn l_attente_d_un_envoi_compte_du_dernier_octet() {
+        let url = upload_servlet(12).await;
+        let wait = Duration::from_millis(500);
+        let sent = BodySent::new();
+        let after = slow_upload(
+            url.clone(),
+            HeadWait::AfterBody(sent.clone(), wait),
+            Some(sent),
+        )
+        .await;
+        assert_eq!(after.unwrap(), 200);
+        let from_now = slow_upload(url, HeadWait::FromNow(wait), None).await;
+        assert!(
+            matches!(from_now, Err(HttpError::Network(_))),
+            "{from_now:?}"
         );
     }
 

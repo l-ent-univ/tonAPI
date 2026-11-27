@@ -13,6 +13,18 @@
 //! - Un webmail derrière une fédération SAML (formulaire `SAMLResponse`) n'est pas pris en charge :
 //!   `not_implemented`.
 
+pub mod autocomplete;
+pub mod compose;
+pub mod folders;
+pub mod identities;
+pub mod listing;
+pub mod message;
+pub mod prefs;
+pub mod search;
+pub mod signatures;
+pub mod upload;
+pub mod webmail;
+
 use chrono::{DateTime, TimeZone};
 use chrono_tz::Tz;
 use reqwest::Method;

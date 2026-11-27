@@ -20,6 +20,13 @@ tonapi-http.workspace = true
 tonapi-session.workspace = true
 tracing = "0.1.44"
 url.workspace = true
+# Messagerie (`src/mail`) : catégories Unicode (`\p{L}`, `\p{Cn}`…) et NFC/NFKD, comme le
+# JavaScript de Tafac dont les règles sont reprises.
+unicode-general-category = "1.1.0"
+unicode-normalization = "0.1.26"
+percent-encoding = "2.3.2"
+# Délais de la connexion au webmail et de la lecture d'un envoi (`zimbra/webmail.rs`).
+tokio = { version = "1.54.1", features = ["time"] }
 
 [lints]
 workspace = true
