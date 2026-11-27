@@ -1,9 +1,28 @@
-# tonAPI
+<p align="center">
+  <img src="docs/assets/logo.png" alt="tonAPI" width="420">
+</p>
 
-API qui donne à un étudiant une vue unifiée de ses propres données universitaires (emploi du
-temps, notes, absences, examens, devoirs, mail, applications de l'ENT, documents), quel que soit
-le logiciel de son université. Chaque établissement est décrit par un fichier TOML dans
-[`universities/`](universities/).
+<p align="center"><strong>Tous les services d'une université, dans une seule API.</strong></p>
+
+Un étudiant passe d'un site à l'autre : l'ENT pour ses applications, ADE ou TEMPO pour son emploi
+du temps, ScoDoc pour ses notes, Moodle pour ses devoirs, le webmail pour ses mails. Chacun a sa
+connexion et son format. tonAPI s'y connecte avec le compte de l'étudiant et rend tout par les
+mêmes routes, au même format JSON, quels que soient l'université et ses logiciels.
+
+- **Une connexion** : le CAS de l'université, second facteur compris (Esup OTP), puis un jeton
+  pour toutes les routes. Le mot de passe n'entre jamais dans le jeton.
+- **Des routes communes** : `/v1/timetable`, `/v1/grades`, `/v1/absences`, `/v1/exams`,
+  `/v1/homework`, `/v1/mail/inbox`, `/v1/apps`, `/v1/documents`, `/v1/me`, et `/v1/overview`
+  pour tout à la fois. Toutes décrites en OpenAPI.
+- **Les logiciels des universités derrière** : ADE (portail REST, myplanning, lien iCal), TEMPO,
+  ScoDoc, Moodle, Zimbra, BlueMind, uPortal, Drupal, iSorbonne, MonDossierWeb… Chacun est un
+  fournisseur ; une université choisit les siens dans son fichier TOML de
+  [`universities/`](universities/).
+- **Des erreurs nettes** : `application/problem+json`, avec des codes stables (session expirée,
+  service absent de l'université, service qui ne répond pas).
+
+Universités configurées : Rennes, Rennes 2, Sorbonne Nouvelle, Montpellier, Paul-Valéry
+Montpellier 3, et une université de démonstration. [Tafac](https://tafac.fr) s'appuie sur tonAPI.
 
 ## Prérequis
 
