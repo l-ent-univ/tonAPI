@@ -419,3 +419,69 @@ fn brouillon_et_images() {
         "<p>ligne &lt;b&gt;</p><p></p><p>fin</p>"
     );
 }
+
+#[test]
+fn styles_imbriques_dans_du_contenu_etranger() {
+    // Revue du 27/11 : dans svg, `<style>` s'imbrique ; réécrire chaque niveau doublait la
+    // sortie à chaque fois (N = 25 ne finissait pas en 20 s). Le plus extérieur seul est réécrit.
+    let level = "<style>url(https://x.example/a)";
+    let html = format!("<svg>{}{}", level.repeat(30), "</style>".repeat(30));
+    let started = Instant::now();
+    let result = sanitize_mail_html(&html, &[], &mut resolve_logo);
+    assert!(
+        started.elapsed() < Duration::from_millis(200),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(result.html.len() < html.len() * 4, "{}", result.html.len());
+    assert_eq!(result.remote_images, 30);
+    // Rien ne sort du `<style>` : chaque fermeture interne est neutralisée.
+    let closings = result.html.matches("</style>").count();
+    assert_eq!(closings, 1, "{}", result.html);
+}
+
+#[test]
+fn import_retire_ne_reforme_pas_un_nom() {
+    // Revue du 27/11 : retirer `@import…;` recollait le texte de part et d'autre, après le
+    // décodage des noms échappés. `\75rl(` (lu `url(` par le navigateur) ou un nouvel `@import`
+    // ressortaient du CSS, hors de `data-remote-*`.
+    for css in [
+        "background:\\75@import;rl(/__ent_auth/launch?url=x)",
+        "p{background:\\75@import ;rl(/__ent_proxy/x)}",
+        "background:\\69@import;mage(\"/__ent_proxy/x\")",
+        "@@import ;\\69mport \"https://evil.example/x.css\";",
+        "@im@import ;port \"https://evil.example/x.css\";",
+        "@im@im@import;port;port url(https://evil.example/x.css);",
+    ] {
+        let rewritten = rewrite_css_urls(css, &mut |_| None);
+        for out in [Some(rewritten.held.as_str()), rewritten.revealed.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            let lower = out.to_lowercase();
+            assert!(!lower.contains("@import"), "{css:?} → {out:?}");
+            assert!(
+                !out.contains("\\75") && !out.contains("\\69"),
+                "{css:?} → {out:?}"
+            );
+            assert!(!lower.contains("/__ent_"), "{css:?} → {out:?}");
+        }
+    }
+    // Dans le mail entier, en attribut et en élément.
+    for html in [
+        "<p style=\"background:\\75@import;rl(/__ent_proxy/x)\">x</p>",
+        "<style>p{background:\\75@import ;rl(/__ent_proxy/x)}</style>",
+    ] {
+        let out = clean(html);
+        assert!(!out.contains("__ent_proxy"), "{html:?} → {out:?}");
+    }
+    // Un CSS ordinaire passe inchangé.
+    let ordinary = rewrite_css_urls(
+        "p{color:red;background:url(data:image/png;base64,AA)}",
+        &mut |_| None,
+    );
+    assert_eq!(
+        ordinary.held,
+        "p{color:red;background:url(\"data:image/png;base64,AA\")}"
+    );
+}

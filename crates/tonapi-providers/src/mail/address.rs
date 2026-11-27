@@ -56,12 +56,14 @@ fn is_domain_label(label: &str) -> bool {
 fn is_top_level_domain(label: &str) -> bool {
     let count = label.chars().count();
     let letters = (2..=63).contains(&count) && label.chars().all(is_letter);
-    let punycode = label.len() > 4
-        && label[..4].eq_ignore_ascii_case("xn--")
-        && (1..=59).contains(&(label.len() - 4))
-        && label[4..]
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    // Octets plutôt que tranches de texte : `abcé` n'a pas de frontière de caractère à 4.
+    let bytes = label.as_bytes();
+    let punycode = bytes.len() > 4
+        && bytes[..4].eq_ignore_ascii_case(b"xn--")
+        && (1..=59).contains(&(bytes.len() - 4))
+        && bytes[4..]
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'-');
     letters || punycode
 }
 
@@ -167,6 +169,10 @@ mod tests {
             "a+b@x.y.example.org",
             "x@exemple.xn--p1ai",
             " camille@exemple.fr ",
+            // Un domaine de premier niveau en lettres non ASCII : pas de frontière de caractère
+            // à l'octet 4, la vérification du punycode paniquait (revue du 27/11).
+            "x@univ.abcé",
+            "x@a.éaé",
         ] {
             assert!(is_valid_address(good), "{good}");
         }
@@ -183,6 +189,7 @@ mod tests {
             "<camille@exemple.fr>",
             "camille@exem\nple.fr",
             "camille@exemple.12",
+            "x@a.xn--é",
         ] {
             assert!(!is_valid_address(bad), "{bad:?}");
         }

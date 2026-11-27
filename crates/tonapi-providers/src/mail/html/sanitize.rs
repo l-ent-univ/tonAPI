@@ -755,7 +755,14 @@ impl<P: Policy> Handler for Engine<'_, '_, P> {
         if frame.skip || self_closing(&frame.name) {
             return;
         }
+        // Seul le `<style>` gardé le plus extérieur est réécrit : dans du contenu étranger
+        // (svg, math), `<style>` n'est pas du texte brut et peut s'imbriquer ; réécrire chaque
+        // niveau reprendrait le corps déjà réécrit (et sa copie `data-remote-css`) de ceux
+        // qu'il contient, et doublerait la sortie à chaque niveau. L'extérieur reprend tout le
+        // corps, balises internes comprises, une seule fois.
+        let inside_style = self.stack.iter().any(|open| open.style_body.is_some());
         if let Some(body) = frame.style_body
+            && !inside_style
             && body <= self.result.len()
         {
             let css = self.result[body..].to_owned();

@@ -568,9 +568,13 @@ pub fn rewrite_css_urls(
         Text(String),
         Remote(String),
     }
-    let normalized = drop_string_url_functions(&drop_imports(&decode_at_keywords(
-        &decode_function_names(css),
-    )));
+    let Some(normalized) = normalize_css(css) else {
+        return CssRewrite {
+            held: String::new(),
+            revealed: None,
+            remote: 0,
+        };
+    };
     let mut parts: Vec<Part> = Vec::new();
     let mut remote = 0;
     let mut text = String::with_capacity(normalized.len());
@@ -614,11 +618,63 @@ pub fn rewrite_css_urls(
             })
             .collect()
     };
+    let held = join(false);
+    let revealed = (remote > 0).then(|| join(true));
+    if has_escaped_name(&held) || revealed.as_deref().is_some_and(has_escaped_name) {
+        return CssRewrite {
+            held: String::new(),
+            revealed: None,
+            remote: 0,
+        };
+    }
     CssRewrite {
-        held: join(false),
-        revealed: (remote > 0).then(|| join(true)),
+        held,
+        revealed,
         remote,
     }
+}
+
+/// Combien de fois au plus les étapes 1 à 4 sont reprises : un CSS qui change encore après est
+/// retiré en entier.
+const NORMALIZE_ROUNDS: usize = 8;
+
+/// Étapes 1 à 4, reprises jusqu'à ce que le texte ne change plus : retirer `@import…;` ou une
+/// fonction recolle le texte de part et d'autre, ce qui peut former un nouveau nom échappé
+/// (`\75@import;rl(` devient `\75rl(`, lu `url(`) ou un nouvel `@import` (`@im@import;port`).
+/// `None` : encore changeant après `NORMALIZE_ROUNDS` tours, ou un nom échappé resté devant `(`
+/// ou après `@`.
+fn normalize_css(css: &str) -> Option<String> {
+    let mut current = css.to_owned();
+    for _ in 0..NORMALIZE_ROUNDS {
+        let next = drop_string_url_functions(&drop_imports(&decode_at_keywords(
+            &decode_function_names(&current),
+        )));
+        if next == current {
+            return (!has_escaped_name(&next)).then_some(next);
+        }
+        current = next;
+    }
+    None
+}
+
+/// Un nom écrit avec un échappement juste devant `(`, ou après `@` : ce que le navigateur
+/// décoderait en `url(`, `image(` ou `@import`.
+fn has_escaped_name(css: &str) -> bool {
+    let bytes = css.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let after_at = index > 0 && bytes[index - 1] == b'@';
+        if ident_unit(css, index) == 0 {
+            index += 1;
+            continue;
+        }
+        let (end, escaped) = ident_run(css, index);
+        if escaped && (after_at || bytes.get(end) == Some(&b'(')) {
+            return true;
+        }
+        index = end.max(index + 1);
+    }
+    false
 }
 
 /// `</style` (toutes casses) écrit `<\/style` : le CSS réécrit ne ferme pas son élément.
