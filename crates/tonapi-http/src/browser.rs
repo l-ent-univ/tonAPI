@@ -406,6 +406,62 @@ impl Browser {
         Ok((status, headers, bytes))
     }
 
+    /// Une requête dont la réponse se lit au fil de l'eau ([`Streamed::chunk`]), sans suivre les
+    /// redirections : une pièce jointe, jamais gardée entière en mémoire. `body` part lui aussi au
+    /// fil de l'eau (un fichier envoyé). `head_timeout` borne l'attente des en-têtes ; la lecture
+    /// du corps n'a pas de délai total, à l'appelant de borner l'attente entre deux morceaux. Les
+    /// cookies reçus sont enregistrés. La place de l'hôte est tenue jusqu'à l'abandon de la réponse.
+    pub async fn send_streamed(
+        &mut self,
+        method: Method,
+        url: Url,
+        headers: HeaderMap,
+        body: Option<reqwest::Body>,
+        head_timeout: Duration,
+    ) -> Result<Streamed, HttpError> {
+        let url = self.secure(url)?;
+        let permit = host_permit(&url, Lane::Normal).await?;
+        // Le délai du client (total) remplacé : seul celui des en-têtes compte ici.
+        let mut request = self
+            .client
+            .request(method, url.clone())
+            .headers(headers)
+            .timeout(STREAMED_CEILING);
+        if let Some(agent) = &self.user_agent {
+            request = request.header(header::USER_AGENT, agent.clone());
+        }
+        if let Some(cookie) = self.jar.header_for(&url, Self::now()) {
+            request = request.header(header::COOKIE, cookie);
+        }
+        if let Some(body) = body {
+            request = request.body(body);
+        }
+        let exchange = Exchange {
+            host: host_label(&url),
+            started: Instant::now(),
+            outcome: "error",
+        };
+        let response = tokio::time::timeout(head_timeout, request.send())
+            .await
+            .map_err(|_| HttpError::Network("délai dépassé".to_owned()))??;
+        let status = response.status();
+        let headers = response.headers().clone();
+        for value in headers.get_all(header::SET_COOKIE) {
+            if let Ok(value) = value.to_str() {
+                self.jar.store(&url, value, Self::now());
+            }
+        }
+        let mut exchange = exchange;
+        exchange.outcome = tonapi_metrics::status_class(status.as_u16());
+        Ok(Streamed {
+            status,
+            headers,
+            response,
+            _permit: permit,
+            _exchange: exchange,
+        })
+    }
+
     /// `GET` en suivant les redirections.
     pub async fn get(&mut self, url: Url) -> Result<Page, HttpError> {
         self.navigate(Method::GET, url, None, None).await
@@ -499,6 +555,46 @@ impl Browser {
             url = next;
         }
         Err(HttpError::TooManyRedirects)
+    }
+}
+
+/// Plafond d'une requête au fil de l'eau : l'appelant borne l'attente entre deux morceaux, ceci
+/// n'est qu'un garde-fou contre une réponse sans fin.
+const STREAMED_CEILING: Duration = Duration::from_secs(60 * 60);
+
+/// Réponse lue au fil de l'eau ([`Browser::send_streamed`]).
+pub struct Streamed {
+    pub status: StatusCode,
+    pub headers: HeaderMap,
+    response: reqwest::Response,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+    _exchange: Exchange,
+}
+
+impl Streamed {
+    /// Longueur annoncée du corps tel qu'il sera lu : absente quand le corps est décompressé en
+    /// route (la longueur annoncée serait celle du corps compressé).
+    #[must_use]
+    pub fn content_length(&self) -> Option<u64> {
+        self.response.content_length()
+    }
+
+    /// Morceau suivant du corps ; `None` à la fin.
+    pub async fn chunk(&mut self) -> Result<Option<bytes::Bytes>, HttpError> {
+        Ok(self.response.chunk().await?)
+    }
+
+    /// Le corps entier, `max` octets au plus (le reste est abandonné).
+    pub async fn text_up_to(mut self, max: usize) -> Result<String, HttpError> {
+        let mut bytes = Vec::new();
+        while let Some(chunk) = self.chunk().await? {
+            let room = max.saturating_sub(bytes.len());
+            bytes.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            if bytes.len() >= max {
+                break;
+            }
+        }
+        Ok(into_text(bytes))
     }
 }
 
