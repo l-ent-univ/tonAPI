@@ -209,14 +209,28 @@ fn quoted_or_bare(text: &str) -> &str {
     }
 }
 
+/// La longueur d'une balise `<meta` lue au plus.
+const META_TAG_MAX: usize = 4096;
+
 /// `extractHtmlRedirect` : `<meta http-equiv="refresh" content="0; url=…">`, ou une affectation
 /// de `location` en JavaScript.
 fn page_redirect(html: &str, page: &Url) -> Option<Url> {
     let mut from = 0;
     while let Some(at) = find_ci(html, "<meta", from) {
-        from = at + 1;
-        let end = html[at..].find('>').map_or(html.len(), |e| at + e);
-        let tag = &html[at..end];
+        // La balise bornée à `META_TAG_MAX` octets, et la suivante cherchée après elle : chaque
+        // octet n'est lu qu'une fois. Chercher la fin jusqu'au bout de la page pour chaque
+        // `<meta` rendait la lecture quadratique (revue du 27/11 : « <meta » répété sur 200 Kio
+        // prenait 6,7 s, que l'échéance de la connexion ne pouvait interrompre). Un `<meta` dans
+        // une balise ouverte en fait partie, comme dans le navigateur.
+        let window = &html.as_bytes()[at..html.len().min(at + META_TAG_MAX)];
+        let end = window
+            .iter()
+            .position(|b| *b == b'>')
+            .map_or(at + window.len(), |e| at + e);
+        from = end.max(at + 1);
+        let Some(tag) = html.get(at..end) else {
+            continue;
+        };
         if find_ci(tag, "refresh", 0).is_none() {
             continue;
         }
@@ -1042,6 +1056,22 @@ mod tests {
             "https://partage.univ-rennes.fr/next"
         );
         assert!(page_redirect("<p>if (location == 'x')</p>", &page).is_none());
+        // « <meta » répété sans fin de balise : lu en temps linéaire.
+        let many = "<meta".repeat(200_000);
+        let started = std::time::Instant::now();
+        assert!(page_redirect(&many, &page).is_none());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "{:?}",
+            started.elapsed()
+        );
+        // Une balise qui finit au-delà de la borne, sur un caractère de plusieurs octets : rien,
+        // sans panique.
+        let long = format!(
+            "<meta http-equiv=refresh content=\"0; url=/x{}\">",
+            "é".repeat(3000)
+        );
+        assert!(page_redirect(&long, &page).is_none());
     }
 
     #[test]
