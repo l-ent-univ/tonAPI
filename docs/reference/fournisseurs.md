@@ -97,6 +97,18 @@ une analyse tolérante et un test, pas par un nouveau fournisseur.
 | Fournisseur | Parcours | Essai réel | Limites |
 |---|---|---|---|
 | `zimbra-rest` | CAS puis préauthentification (`ZM_AUTH_TOKEN`), SOAP `SearchRequest` | Université de Montpellier (compte de l'IUT de Béziers), 27/10/2026 [vu] | webmail derrière une fédération SAML : `not_implemented` [code] ; 20 derniers messages |
+
+[code, 27/11/2026] Pour Tafac, `zimbra::webmail` ouvre aussi un webmail Zimbra derrière une fédération
+SAML (RENATER Partage à Rennes et à Rennes 2) : chaîne webmail → fournisseur de service →
+fournisseur d'identité → CAS → POST SAML, avec une copie des cookies de la session ; chaque saut et
+l'origine finale vérifiés contre une liste de domaines donnée par l'appelant (`SignInDomains`),
+vingt sauts au plus, 45 s en tout. Puis SOAP en JSON (lecture, dossiers, actions, brouillons,
+envoi, signatures, suggestions), pièces jointes et envoi de fichiers au fil de l'eau. Les règles
+communes à tout webmail (adresses, noms, objets, pièces jointes, nettoyages du HTML) sont dans
+`mail`, l'analyse des réponses de Zimbra dans `zimbra::{listing, folders, prefs, identities,
+signatures, autocomplete, upload, search, message, compose}`. Testé contre de faux serveurs
+seulement ; la route `/v1/mail/inbox` de tonAPI garde son propre parcours (pas de liste de domaines
+dans la configuration), d'où son `not_implemented` derrière SAML.
 | `bluemind` | CAS, clé de `webapp/session-infos.js`, API REST | Paul-Valéry, 27/10/2026 [vu] | boîte de réception, 20 derniers messages |
 
 ### Portail : applications, profil, composante
