@@ -21,8 +21,27 @@ mêmes routes, au même format JSON, quels que soient l'université et ses logic
 - **Des erreurs nettes** : `application/problem+json`, avec des codes stables (session expirée,
   service absent de l'université, service qui ne répond pas).
 
-Universités configurées : Rennes, Rennes 2, Sorbonne Nouvelle, Montpellier, Paul-Valéry
-Montpellier 3, et une université de démonstration. [Tafac](https://tafac.fr) s'appuie sur tonAPI.
+[Tafac](https://tafac.fr) s'appuie sur tonAPI. Les universités prises en charge sont
+[plus bas](#universités-prises-en-charge-au-27112026).
+
+## Universités prises en charge (au 27/11/2026)
+
+« Vu » : données réelles reçues avec un vrai compte étudiant de l'établissement, à cette date.
+Le détail, service par service, est dans [docs/reference/couverture.md](docs/reference/couverture.md).
+
+| Université | Statut | Vu avec un vrai compte | Configuré, jamais essayé |
+|---|---|---|---|
+| Université de Rennes, IUT de Lannion | beta | profil, emploi du temps ADE (arbre des groupes, salles et enseignants), notes et relevé ScoDoc, devoirs Moodle, applications de l'ENT (15 au 27/11) ; absences : réponse vide | documents (Mon Dossier Web) |
+| Université de Rennes, autres composantes | beta | — | profil, emploi du temps, devoirs, applications, documents |
+| Université Rennes 2 | prévue | profil, emploi du temps TEMPO (et ses 524 salles), devoirs Moodle, applications du portail (27/11) | documents |
+| Université de Montpellier, IUT de Béziers | beta | profil, emploi du temps ADE (iCal), notes et absences ScoDoc, devoirs Moodle, mail Zimbra, applications (27/10) ; documents : réponse vide | — |
+| Université de Montpellier, faculté, IUT de Sète et de Nîmes | beta, prévue | — | profil, emploi du temps, devoirs, mail, applications, documents |
+| Université Paul-Valéry Montpellier 3 | beta | profil, emploi du temps ADE MyPlanning, devoirs Moodle, mail BlueMind, applications (27/10) ; notes, examens, documents : réponses vides | — |
+| Université Sorbonne Nouvelle | prévue | — | profil et applications du portail, devoirs Moodle, documents ; emploi du temps par simple lien |
+| Démonstration (`demo`) | active | tous les services, données fictives | — |
+
+Le webmail de Rennes et de Rennes 2 passe par une fédération SAML : la route `/v1/mail/inbox` y
+répond encore `not_implemented`.
 
 ## Prérequis
 
