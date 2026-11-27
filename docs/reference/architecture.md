@@ -109,10 +109,10 @@ Le serveur ne garde pas de sessions étudiantes, mais il a un état de fonctionn
 | Requêtes en cours par compte | `limit/account.rs` | durée de la requête |
 | Places par hôte universitaire | `tonapi-http/src/browser.rs` | durée de la requête |
 | Clients HTTP et connexions réutilisées | `tonapi-http/src/browser.rs` | durée du processus |
-| Cache commun à tous les étudiants | `tonapi-providers/src/cache.rs` | signatures GWT et arbre ADE : 1 h ; liens de portlets uPortal sans paramètre : 6 h |
+| Cache commun à tous les étudiants | `tonapi-providers/src/cache.rs` | signatures GWT et arbre ADE de MyPlanning : 1 h ; arbre du portail ADE, par profil ADE : 30 min ; liens de portlets uPortal sans paramètre : 6 h |
 
-Le cache partagé ne contient que des valeurs identiques pour tous les comptes (jamais de cookie ni
-de lien personnel). Toutes ces tables sont propres à un processus : avec plusieurs instances, les
+Le cache partagé ne contient que des valeurs identiques pour tous les comptes, ou pour tous ceux
+d'un même profil ADE dans le cas de l'arbre du portail (jamais de cookie ni de lien personnel). Toutes ces tables sont propres à un processus : avec plusieurs instances, les
 limites se multiplient par leur nombre ([production.md](../exploitation/production.md), points B1 et B2).
 
 ## Pour aller plus loin

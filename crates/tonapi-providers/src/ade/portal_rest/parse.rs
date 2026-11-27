@@ -1,5 +1,5 @@
 //! Analyse pure des réponses d'ADE (API REST du portail), sans réseau : jetons, sélection de
-//! ressources, arbre de groupes et événements.
+//! ressources, arbre des ressources et événements.
 
 use std::collections::HashSet;
 
@@ -7,7 +7,7 @@ use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZon
 use chrono_tz::Tz;
 use serde_json::Value;
 use tonapi_config::{Signal, SignalSource};
-use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
+use tonapi_core::{Course, ErrorCode, Problem, ResourceKind, ResourceNode, TimetableGroup};
 
 use super::{PROVIDER, Tokens};
 use crate::common::{id_string, resolve_local, str_field};
@@ -56,6 +56,8 @@ pub(super) fn parse_ssologin(value: &Value) -> Result<Tokens, Problem> {
         refresh: str_field(auth, "refreshToken").map(str::to_owned),
         project,
         resources: Some(assigned_resources(data, auth, project)),
+        // Vide plutôt qu'absent : on sait qu'ADE n'en donne pas, inutile de redemander.
+        profile: Some(str_field(auth, "profile").unwrap_or_default().to_owned()),
     })
 }
 
@@ -150,66 +152,68 @@ fn child_nodes(node: &Value) -> Vec<&Value> {
         .collect()
 }
 
-/// Groupes listés au plus. L'arbre couvre toute l'université : celui de Rennes dépasse 5 000
-/// groupes ([vu] 15/11/2026).
-const MAX_GROUPS: usize = 50_000;
+/// Nœuds lus au plus. L'arbre couvre toute l'université : celui de Rennes compte 20 057 nœuds,
+/// dont 16 575 ressources ([vu] 27/11/2026).
+const MAX_NODES: usize = 200_000;
 
-fn walk_tree(
+/// Nature des ressources d'une catégorie de `resourcestree`. [vu] Rennes, 27/11/2026 : `trainee`,
+/// `instructor` et `classroom`. Les noms de `jsonAvailableCategories` (`students`, `teacher`) sont
+/// acceptés aussi.
+fn category_kind(category: &str) -> ResourceKind {
+    match category.to_ascii_lowercase().as_str() {
+        "trainee" | "students" => ResourceKind::Group,
+        "instructor" | "teacher" => ResourceKind::Teacher,
+        "classroom" => ResourceKind::Room,
+        _ => ResourceKind::Other,
+    }
+}
+
+/// Lit un nœud et ce qu'il contient, et l'ajoute à `out`. `budget` : nœuds qu'on accepte encore.
+fn read_node(
     node: &Value,
-    path: &mut Vec<String>,
-    selected: &HashSet<String>,
-    out: &mut Vec<TimetableGroup>,
+    kind: ResourceKind,
     depth: usize,
+    budget: &mut usize,
+    out: &mut Vec<ResourceNode>,
 ) -> Result<(), Problem> {
     if depth > MAX_DEPTH {
         return Err(upstream(PROVIDER, "arbre des ressources trop profond"));
     }
-    // Chaque groupe copie son chemin : un arbre démesuré multiplierait la mémoire.
-    if out.len() >= MAX_GROUPS {
-        return Err(upstream(PROVIDER, "arbre des ressources trop grand"));
-    }
+    *budget = budget
+        .checked_sub(1)
+        .ok_or_else(|| upstream(PROVIDER, "arbre des ressources trop grand"))?;
     let id =
         id_string(node.get("id")).ok_or_else(|| upstream(PROVIDER, "nœud de l'arbre sans `id`"))?;
-    let children = child_nodes(node);
-    let Some(name) = str_field(node, "name") else {
-        // [vu] Rennes, 15/11/2026 : l'arbre contient des nœuds dont `name` est une chaîne vide.
-        // Un tel nœud n'est pas un groupe affichable ; ses enfants gardent le chemin du parent.
-        // Un `name` absent ou d'un autre type reste un changement de format.
-        if !node.get("name").is_some_and(Value::is_string) {
-            return Err(upstream(PROVIDER, "nœud de l'arbre sans `name`"));
-        }
-        for child in children {
-            walk_tree(child, path, selected, out, depth + 1)?;
-        }
-        return Ok(());
-    };
-    path.push(name.to_owned());
-    let is_selected = selected.contains(&id);
-    // Une feuille est un groupe sélectionnable ; une branche n'apparaît que si l'étudiant l'a
-    // choisie (le comportement d'une ressource parente n'est pas confirmé).
-    if children.is_empty() || is_selected {
-        out.push(TimetableGroup {
+    let name = str_field(node, "name");
+    // Un `name` absent ou d'un autre type qu'une chaîne est un changement de format.
+    if name.is_none() && !node.get("name").is_some_and(Value::is_string) {
+        return Err(upstream(PROVIDER, "nœud de l'arbre sans `name`"));
+    }
+    let raw_children = child_nodes(node);
+    let mut children = Vec::new();
+    for child in &raw_children {
+        read_node(child, kind, depth + 1, budget, &mut children)?;
+    }
+    match name {
+        Some(name) => out.push(ResourceNode {
             id,
             name: name.to_owned(),
-            path: path.clone(),
-            selected: is_selected,
-        });
+            kind,
+            folder: !raw_children.is_empty(),
+            children,
+            selected: false,
+        }),
+        // [vu] Rennes, 15/11/2026 : l'arbre contient des nœuds dont `name` est une chaîne vide.
+        // Un tel nœud n'est pas affichable ; ce qu'il contient remonte chez son parent.
+        None => out.append(&mut children),
     }
-    for child in children {
-        walk_tree(child, path, selected, out, depth + 1)?;
-    }
-    path.pop();
     Ok(())
 }
 
-/// Catégories d'étudiants dans `resourcestree` ; les enseignants et les salles sont ignorés.
-fn is_student_category(name: &str) -> bool {
-    matches!(name.to_ascii_lowercase().as_str(), "trainee" | "students")
-}
-
-/// Groupes d'étudiants de l'arbre `resourcestree`, avec leur chemin. `selected` marque ceux que
-/// l'étudiant a choisis.
-pub(super) fn parse_groups(tree: &Value, selected: &[i64]) -> Result<Vec<TimetableGroup>, Problem> {
+/// Arbre de `resourcestree` : les nœuds de premier niveau de chaque catégorie (étudiants,
+/// enseignants, salles), chacun avec sa nature. Les catégories elles-mêmes n'ont ni identifiant ni
+/// nom ([vu] Rennes, 27/11/2026) : elles ne sont pas des nœuds.
+pub(super) fn parse_tree(tree: &Value) -> Result<Vec<ResourceNode>, Problem> {
     let data = unwrap_data(tree);
     let categories = data.get("category").unwrap_or(data);
     let items: Vec<&Value> = match categories {
@@ -217,21 +221,21 @@ pub(super) fn parse_groups(tree: &Value, selected: &[i64]) -> Result<Vec<Timetab
         Value::Object(_) => vec![categories],
         _ => return Err(upstream(PROVIDER, "arbre des ressources illisible")),
     };
-    let selected: HashSet<String> = selected.iter().map(i64::to_string).collect();
-    let mut groups = Vec::new();
+    let mut budget = MAX_NODES;
+    let mut nodes = Vec::new();
     for item in items {
         match str_field(item, "category") {
-            Some(category) if !is_student_category(category) => {}
-            Some(_) => {
+            Some(category) => {
+                let kind = category_kind(category);
                 for child in child_nodes(item) {
-                    walk_tree(child, &mut Vec::new(), &selected, &mut groups, 0)?;
+                    read_node(child, kind, 0, &mut budget, &mut nodes)?;
                 }
             }
-            // Sans catégorie : un nœud d'arbre, qu'on ne peut pas trier.
-            None => walk_tree(item, &mut Vec::new(), &selected, &mut groups, 0)?,
+            // Sans catégorie : un nœud d'arbre, dont on ne connaît pas la nature.
+            None => read_node(item, ResourceKind::Other, 0, &mut budget, &mut nodes)?,
         }
     }
-    Ok(groups)
+    Ok(nodes)
 }
 
 /// Un signal `ade-group-path` par groupe de l'étudiant : son chemin dans l'arbre, niveaux séparés
@@ -383,6 +387,7 @@ fn parse_event(event: &Value, tz: Tz) -> Result<Course, Problem> {
             .filter(|color| color.len() <= MAX_COLOR_LENGTH)
             .map(str::to_owned),
         activity_id: id_string(event.get("activityId")),
+        link: None,
     })
 }
 
@@ -412,7 +417,7 @@ fn collect_events<'a>(value: &'a Value, out: &mut Vec<&'a Value>, depth: usize) 
 
 /// Trie par début puis identifiant, et ne garde qu'une fois un événement présent sous plusieurs
 /// ressources (groupe, enseignant, salle).
-pub(super) fn normalize(mut courses: Vec<Course>) -> Vec<Course> {
+fn normalize(mut courses: Vec<Course>) -> Vec<Course> {
     courses.sort_by(|a, b| a.start.cmp(&b.start).then_with(|| a.id.cmp(&b.id)));
     let mut seen = HashSet::new();
     courses.retain(|c| seen.insert(c.id.clone()));
@@ -462,11 +467,14 @@ pub(super) fn parse_requested(resources: &[String]) -> Result<Vec<i64>, Problem>
     Ok(ids)
 }
 
-/// Filtre d'événements d'une ressource. Les dates sont en `MMJJAAAA` (mois d'abord), la fin est
-/// incluse.
-pub(super) fn events_filter(resource: i64, from: NaiveDate, to: NaiveDate) -> String {
+/// Filtre d'événements des ressources demandées. Les dates sont en `MMJJAAAA` (mois d'abord), la
+/// fin est incluse. [vu] Rennes, 27/11/2026 : plusieurs ressources dans une requête, un bloc
+/// `{id, events}` par ressource dans la réponse ; le portail fait de même.
+pub(super) fn events_filter(resources: &[i64], from: NaiveDate, to: NaiveDate) -> String {
+    let ids: Vec<String> = resources.iter().map(i64::to_string).collect();
     format!(
-        "resources;{resource}/startdate;{}/enddate;{}/level;=8/field;Nom;CODEZ_RESOURCE;OWNER;",
+        "resources;{}/startdate;{}/enddate;{}/level;=8/field;Nom;CODEZ_RESOURCE;OWNER;",
+        ids.join(";"),
         from.format("%m%d%Y"),
         to.format("%m%d%Y"),
     )

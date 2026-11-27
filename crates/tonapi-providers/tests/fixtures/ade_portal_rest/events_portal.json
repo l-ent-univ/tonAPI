@@ -1,0 +1,373 @@
+{
+  "settings": [
+    {
+      "field": "portal.settings.calendarEventsRessourcesFields",
+      "detail": [
+        {
+          "category": "course",
+          "fields": [
+            "NAME",
+            "EVENT_TIME"
+          ]
+        },
+        {
+          "category": "classroom",
+          "fields": [
+            "NAME"
+          ]
+        },
+        {
+          "category": "instructor",
+          "fields": [
+            "NAME"
+          ]
+        },
+        {
+          "category": "trainee",
+          "fields": [
+            "NAME"
+          ]
+        }
+      ]
+    },
+    {
+      "field": "portal.settings.eventDetailRessourcesFields",
+      "detail": [
+        {
+          "category": "course",
+          "fields": [
+            "WEB_ACTIVITY",
+            "INFO_EVENT"
+          ]
+        },
+        {
+          "category": "trainee",
+          "fields": [
+            "NAME"
+          ]
+        },
+        {
+          "category": "instructor",
+          "fields": [
+            "NAME"
+          ]
+        },
+        {
+          "category": "classroom",
+          "fields": [
+            "NAME"
+          ]
+        }
+      ]
+    }
+  ],
+  "data": [
+    {
+      "id": 14961,
+      "events": [
+        {
+          "absoluteSlot": 7001,
+          "activityId": 42001,
+          "additionalResources": 0,
+          "bookingType": 0,
+          "canUpdateEvent": false,
+          "color": "120,140,160",
+          "creation": "01/09/2026 09:00",
+          "date": "24/11/2026",
+          "day": 1,
+          "duration": 4,
+          "endHour": "10:00+01:00",
+          "eventParticipants": [
+            {
+              "category": "trainee",
+              "fields": {
+                "NAME": "TP 1",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 14961,
+              "name": "TP 1",
+              "nodeId": 1014961,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "instructor",
+              "fields": {
+                "NAME": "DUPONT Camille",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 900,
+              "name": "DUPONT Camille",
+              "nodeId": 1000900,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "category5",
+              "fields": {
+                "NAME": "R302 Développement web",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 5001,
+              "name": "R302 Développement web",
+              "nodeId": 1005001,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "classroom",
+              "fields": {
+                "NAME": "B01 - Salle 12 (012) [30P]",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 800,
+              "name": "B01 - Salle 12 (012) [30P]",
+              "nodeId": 1000800,
+              "nodeOrId": -1,
+              "quantity": 1
+            }
+          ],
+          "fields": {
+            "EVENT_TIME": "09h00 - 10h00",
+            "NAME": "R3.02 Développement web TP"
+          },
+          "id": 880001,
+          "isLockPosition": false,
+          "isLockResources": false,
+          "isSoftKeepResources": false,
+          "lastUpdate": "02/09/2026 10:30",
+          "name": "R3.02 Développement web TP",
+          "note": " ",
+          "repetition": 0,
+          "session": 2,
+          "slot": 8,
+          "startHour": "09:00+01:00",
+          "week": 17,
+          "workflowPendingStatus": false
+        },
+        {
+          "absoluteSlot": 7001,
+          "activityId": 42002,
+          "additionalResources": 0,
+          "bookingType": 0,
+          "canUpdateEvent": false,
+          "color": "255,204,153",
+          "creation": "01/09/2026 09:00",
+          "date": "25/11/2026",
+          "day": 1,
+          "duration": 4,
+          "endHour": "15:15+01:00",
+          "eventParticipants": [
+            {
+              "category": "trainee",
+              "fields": {
+                "NAME": "Groupe TD 1",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 111,
+              "name": "Groupe TD 1",
+              "nodeId": 1000111,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "classroom",
+              "fields": {
+                "NAME": "B01 - Amphithéâtre A (001) [120P]",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 801,
+              "name": "B01 - Amphithéâtre A (001) [120P]",
+              "nodeId": 1000801,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "category5",
+              "fields": {
+                "NAME": "R306 Référencement",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 5002,
+              "name": "R306 Référencement",
+              "nodeId": 1005002,
+              "nodeOrId": -1,
+              "quantity": 1
+            }
+          ],
+          "fields": {
+            "EVENT_TIME": "13h15 - 15h15",
+            "NAME": "R3.06 Référencement CM"
+          },
+          "id": 880002,
+          "isLockPosition": false,
+          "isLockResources": false,
+          "isSoftKeepResources": false,
+          "lastUpdate": "02/09/2026 10:30",
+          "name": "R3.06 Référencement CM",
+          "note": " ",
+          "repetition": 0,
+          "session": 2,
+          "slot": 8,
+          "startHour": "13:15+01:00",
+          "week": 17,
+          "workflowPendingStatus": false
+        }
+      ]
+    },
+    {
+      "id": 800,
+      "events": [
+        {
+          "absoluteSlot": 7001,
+          "activityId": 42001,
+          "additionalResources": 0,
+          "bookingType": 0,
+          "canUpdateEvent": false,
+          "color": "120,140,160",
+          "creation": "01/09/2026 09:00",
+          "date": "24/11/2026",
+          "day": 1,
+          "duration": 4,
+          "endHour": "10:00+01:00",
+          "eventParticipants": [
+            {
+              "category": "trainee",
+              "fields": {
+                "NAME": "TP 1",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 14961,
+              "name": "TP 1",
+              "nodeId": 1014961,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "instructor",
+              "fields": {
+                "NAME": "DUPONT Camille",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 900,
+              "name": "DUPONT Camille",
+              "nodeId": 1000900,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "category5",
+              "fields": {
+                "NAME": "R302 Développement web",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 5001,
+              "name": "R302 Développement web",
+              "nodeId": 1005001,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "classroom",
+              "fields": {
+                "NAME": "B01 - Salle 12 (012) [30P]",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 800,
+              "name": "B01 - Salle 12 (012) [30P]",
+              "nodeId": 1000800,
+              "nodeOrId": -1,
+              "quantity": 1
+            }
+          ],
+          "fields": {
+            "EVENT_TIME": "09h00 - 10h00",
+            "NAME": "R3.02 Développement web TP"
+          },
+          "id": 880001,
+          "isLockPosition": false,
+          "isLockResources": false,
+          "isSoftKeepResources": false,
+          "lastUpdate": "02/09/2026 10:30",
+          "name": "R3.02 Développement web TP",
+          "note": " ",
+          "repetition": 0,
+          "session": 2,
+          "slot": 8,
+          "startHour": "09:00+01:00",
+          "week": 17,
+          "workflowPendingStatus": false
+        },
+        {
+          "absoluteSlot": 7001,
+          "activityId": 70001,
+          "additionalResources": 0,
+          "bookingType": 0,
+          "canUpdateEvent": false,
+          "color": "200,220,240",
+          "creation": "01/09/2026 09:00",
+          "date": "26/11/2026",
+          "day": 1,
+          "duration": 4,
+          "endHour": "18:30+01:00",
+          "eventParticipants": [
+            {
+              "category": "instructor",
+              "fields": {
+                "NAME": "EXEMPLE Zoé",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 901,
+              "name": "EXEMPLE Zoé",
+              "nodeId": 1000901,
+              "nodeOrId": -1,
+              "quantity": 1
+            },
+            {
+              "category": "classroom",
+              "fields": {
+                "NAME": "B01 - Salle 12 (012) [30P]",
+                "OWNER": "demo"
+              },
+              "fromWorkflow": false,
+              "id": 800,
+              "name": "B01 - Salle 12 (012) [30P]",
+              "nodeId": 1000800,
+              "nodeOrId": -1,
+              "quantity": 1
+            }
+          ],
+          "fields": {
+            "EVENT_TIME": "17h00 - 18h30",
+            "NAME": "Réunion de département"
+          },
+          "id": 880003,
+          "isLockPosition": false,
+          "isLockResources": false,
+          "isSoftKeepResources": false,
+          "lastUpdate": "02/09/2026 10:30",
+          "name": "Réunion de département",
+          "note": " ",
+          "repetition": 0,
+          "session": 2,
+          "slot": 8,
+          "startHour": "17:00+01:00",
+          "week": 17,
+          "workflowPendingStatus": false
+        }
+      ]
+    }
+  ]
+}

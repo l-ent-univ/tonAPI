@@ -1,5 +1,6 @@
-//! Fournisseur `tempo` contre un faux TEMPO local et un faux CAS : `api/events` répond 401 en JSON
-//! tant que `auth` n'a pas reçu de ticket. Aucune requête ne quitte cet ordinateur.
+//! Fournisseur `tempo` contre un faux TEMPO local et un faux CAS : l'API répond 401 en JSON et la
+//! page des salles renvoie au CAS tant que `auth` n'a pas reçu de ticket. Aucune requête ne quitte
+//! cet ordinateur.
 
 mod common;
 
@@ -12,13 +13,18 @@ use axum::http::{HeaderMap, Response, StatusCode, Uri, header};
 use chrono::{NaiveDate, Utc};
 use serde_json::json;
 use tonapi_config::ResolvedUniversity;
-use tonapi_core::ErrorCode;
-use tonapi_providers::{Context, timetable, timetable_groups, timetable_of};
+use tonapi_core::{ErrorCode, ResourceKind};
+use tonapi_providers::{
+    Context, ResourceQuery, timetable, timetable_groups, timetable_of, timetable_resources,
+    timetable_tree,
+};
 use tonapi_session::{SessionData, StoredCookie};
 
 use common::{CAS_TICKET, Cas, has_cookie, query};
 
 const EVENTS: &str = include_str!("fixtures/tempo/evenements.json");
+const ROOMS: &str = include_str!("fixtures/tempo/salles.html");
+const ROOM: &str = include_str!("fixtures/tempo/salle.json");
 const SESSION: &str = "PHPSESSID=tempo-ok";
 
 // Faux TEMPO
@@ -27,6 +33,8 @@ const SESSION: &str = "PHPSESSID=tempo-ok";
 struct Tempo {
     /// `auth` sans ticket répond 403 au lieu de renvoyer à l'accueil.
     auth_loop: bool,
+    /// La page des salles n'existe plus : TEMPO sert son accueil à la place.
+    rooms_gone: bool,
     /// Réponse forcée de `api/events` pour un étudiant connecté.
     events: Option<(StatusCode, &'static str)>,
     /// Requêtes reçues : chemin et paramètres, dans l'ordre.
@@ -62,11 +70,21 @@ async fn tempo_handler(
         }
         "/auth" if tempo.auth_loop => reply(StatusCode::FORBIDDEN, "text/html", "Forbidden"),
         "/auth" => common::redirect("/"),
-        "/api/events" if !signed_in => reply(
+        path if path.starts_with("/api/") && !signed_in => reply(
             StatusCode::UNAUTHORIZED,
             "application/json",
             r#"{"message":"Authentication required"}"#,
         ),
+        // Une page sans session renvoie au CAS, comme le vrai TEMPO.
+        "/rooms" if !signed_in => common::redirect("/cas-de-test/login"),
+        "/rooms" if !tempo.rooms_gone => reply(StatusCode::OK, "text/html; charset=UTF-8", ROOMS),
+        // Sans le paramètre `c`, la route n'existe pas ; une salle inconnue n'a aucune séance.
+        path if path.starts_with("/api/room/") => match (query(&uri, "c"), path) {
+            (None, _) => reply(StatusCode::NOT_FOUND, "application/json", "{}"),
+            (Some(_), "/api/room/6") => reply(StatusCode::OK, "application/json", ROOM),
+            (Some(_), "/api/room/1503") => reply(StatusCode::OK, "application/json", EVENTS),
+            (Some(_), _) => reply(StatusCode::OK, "application/json", "[]"),
+        },
         "/api/events" => match tempo.events {
             Some((status, body)) => reply(status, "text/html", body),
             None => reply(StatusCode::OK, "application/json", EVENTS),
@@ -288,7 +306,7 @@ async fn page_html_meme_apres_le_cas_une_erreur_pas_une_semaine_vide() {
 }
 
 #[tokio::test]
-async fn ni_groupes_ni_ressource_choisie() {
+async fn pas_de_groupes_et_seule_une_salle_se_demande() {
     let campus = campus().await;
     let mut session = session(vec![signed_in()]);
 
@@ -296,14 +314,139 @@ async fn ni_groupes_ni_ressource_choisie() {
         .await
         .unwrap_err();
     assert_eq!(groups.code, ErrorCode::NotImplemented);
-    let chosen = timetable_of(
+    // Un identifiant qui n'est pas un numéro de salle (un dossier de l'arbre, un texte) est
+    // refusé avant toute requête, sans être recopié.
+    for asked in ["dossier-9001", "6/../events", ""] {
+        let error = timetable_of(
+            &mut context(&campus.university, &mut session),
+            day(2),
+            day(8),
+            &[asked.to_owned()],
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidRequest, "{asked}");
+        assert!(!error.to_string().contains("9001"));
+    }
+    assert!(campus.seen().is_empty());
+}
+
+#[tokio::test]
+async fn arbre_des_salles_apres_l_ouverture_de_session() {
+    let campus = campus().await;
+    let mut session = session(vec![common::tgc()]);
+
+    let fetched = timetable_tree(&mut context(&campus.university, &mut session), &[])
+        .await
+        .unwrap();
+    assert_eq!(fetched.provider, "tempo");
+    assert_eq!(fetched.data.len(), 2);
+    assert_eq!(fetched.data[0].children[0].id, "6");
+    // La page renvoie au CAS, la session s'ouvre par `auth`, la page est relue une fois.
+    assert_eq!(
+        campus.seen(),
+        [
+            "/rooms".to_owned(),
+            format!("/auth?ticket={}", common::CAS_TICKET),
+            "/auth".to_owned(),
+            "/rooms".to_owned()
+        ]
+    );
+
+    // TEMPO n'a d'arbre que pour les salles : une autre nature ne lui coûte aucune requête.
+    let teachers = timetable_tree(
+        &mut context(&campus.university, &mut session),
+        &[ResourceKind::Teacher],
+    )
+    .await
+    .unwrap();
+    assert!(teachers.data.is_empty());
+    assert_eq!(campus.seen().len(), 4);
+}
+
+#[tokio::test]
+async fn recherche_d_une_salle_puis_ses_seances() {
+    let campus = campus().await;
+    let mut session = session(vec![signed_in()]);
+
+    let found = timetable_resources(
+        &mut context(&campus.university, &mut session),
+        &ResourceQuery {
+            kinds: vec![ResourceKind::Room],
+            search: Some("amphi demo".to_owned()),
+            limit: Some(5),
+        },
+    )
+    .await
+    .unwrap()
+    .data;
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].id, "6");
+    assert_eq!(
+        found[0].path,
+        ["01 - AMPHITHEATRES (2)", "A1 Amphi (Démo) - 133 pl."]
+    );
+
+    let courses = timetable_of(
         &mut context(&campus.university, &mut session),
         day(2),
         day(8),
-        &["1234".to_owned()],
+        std::slice::from_ref(&found[0].id),
     )
     .await
-    .unwrap_err();
-    assert_eq!(chosen.code, ErrorCode::NotImplemented);
-    assert!(campus.seen().is_empty());
+    .unwrap();
+    assert_eq!(courses.provider, "tempo");
+    let ids: Vec<_> = courses.data.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["9910", "9920"]);
+    assert_eq!(
+        campus.seen().last().unwrap(),
+        "/api/room/6?start=2026-11-02&end=2026-11-08&c="
+    );
+}
+
+#[tokio::test]
+async fn plusieurs_salles_une_requete_chacune_sans_doublon() {
+    let campus = campus().await;
+    let mut session = session(vec![signed_in()]);
+    let asked = ["6", "1503", "6", "777"].map(str::to_owned);
+
+    let courses = timetable_of(
+        &mut context(&campus.university, &mut session),
+        day(2),
+        day(8),
+        &asked,
+    )
+    .await
+    .unwrap()
+    .data;
+
+    // La séance 9910 se tient dans les deux salles ; la salle inconnue n'a aucune séance.
+    let ids: Vec<_> = courses.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["9909", "9910", "9920"]);
+    let rooms: Vec<_> = campus
+        .seen()
+        .iter()
+        .filter_map(|seen| seen.strip_prefix("/api/room/"))
+        .map(|rest| rest.split('?').next().unwrap().to_owned())
+        .collect();
+    assert_eq!(rooms, ["6", "1503", "777"]);
+}
+
+#[tokio::test]
+async fn autre_page_a_la_place_de_celle_des_salles() {
+    let campus = campus().await;
+    campus.tempo.lock().unwrap().rooms_gone = true;
+    let mut session = session(vec![signed_in(), common::tgc()]);
+
+    let error = timetable_tree(&mut context(&campus.university, &mut session), &[])
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::UpstreamChanged);
+    // Une ouverture de session, une seconde lecture, pas davantage.
+    let pages = campus
+        .seen()
+        .iter()
+        .filter(|seen| *seen == "/rooms")
+        .count();
+    assert_eq!(pages, 2);
 }

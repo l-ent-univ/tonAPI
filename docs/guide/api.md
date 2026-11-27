@@ -24,7 +24,7 @@ Hors dev, `/docs` et `/openapi.json` ne sont pas servis par défaut ([serveur.md
 | Session | `POST /v1/auth/login`, `POST /v1/auth/mfa` | non |
 | Session | `POST /v1/auth/service-login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout` | oui |
 | Étudiant | `GET /v1/me`, `PUT /v1/me/establishment` | oui |
-| Données | `GET /v1/timetable`, `/v1/timetable/groups`, `/v1/grades`, `/v1/grades/notice`, `/v1/grades/{semester}/transcript`, `/v1/grades/{semester}/evaluations/{evaluation}/distribution`, `/v1/absences`, `/v1/exams`, `/v1/homework`, `/v1/mail/inbox`, `/v1/apps`, `/v1/documents`, `/v1/documents/{id}` | oui |
+| Données | `GET /v1/timetable`, `/v1/timetable/groups`, `/v1/timetable/tree`, `/v1/timetable/resources`, `/v1/grades`, `/v1/grades/notice`, `/v1/grades/{semester}/transcript`, `/v1/grades/{semester}/evaluations/{evaluation}/distribution`, `/v1/absences`, `/v1/exams`, `/v1/homework`, `/v1/mail/inbox`, `/v1/apps`, `/v1/documents`, `/v1/documents/{id}` | oui |
 | Appel groupé | `GET /v1/overview` | oui |
 | Documentation | `GET /openapi.json`, `GET /docs` (si `TONAPI_DOCS`) | non |
 
@@ -139,15 +139,56 @@ lundi au dimanche de la semaine en cours, dans le fuseau de l'université. Écar
 ## Emploi du temps d'une ressource
 
 `GET /v1/timetable?resources=<id>,<id>` renvoie les cours des ressources demandées au lieu de ceux
-de l'étudiant : des identifiants de `/v1/timetable/groups`, ou d'une autre ressource du logiciel
-(pour ADE : un groupe, une salle ou un enseignant de l'arbre). 30 identifiants au plus. Sans le
-paramètre, ou vide, la route répond comme avant.
+de l'étudiant : des identifiants de `/v1/timetable/groups`, `/v1/timetable/resources` ou
+`/v1/timetable/tree` (un groupe, une salle ou un enseignant). 30 identifiants au plus. Sans le
+paramètre, ou vide, la route répond comme avant. Une séance commune à plusieurs ressources
+demandées n'est rendue qu'une fois.
 
-Seuls `ade-portal-rest` et la démo le font. Les autres fournisseurs répondent `not_implemented`
-(501) plutôt que l'emploi du temps de l'étudiant. L'appel groupé ne prend pas ce paramètre.
+`ade-portal-rest`, `tempo` et la démo le font. Les autres fournisseurs répondent `not_implemented`
+(501) plutôt que l'emploi du temps de l'étudiant. `tempo` ne lit ainsi que des salles, une requête
+par salle. L'appel groupé ne prend pas ce paramètre.
+
+Une ressource que le logiciel ne connaît pas, ou qu'il ferme à ce compte, donne `not_found` (404)
+quand elle est demandée seule ; demandée avec d'autres, ADE l'ignore. Un dossier de l'arbre n'a
+pas d'emploi du temps : la réponse est vide. Avec `tempo`, une salle inconnue donne une réponse
+vide, et l'identifiant d'un dossier `invalid_request`.
+
+## Groupes, enseignants et salles
+
+Deux routes donnent les ressources dont on peut demander l'emploi du temps. Elles lisent le même
+arbre, celui de toute l'université.
+
+`GET /v1/timetable/tree?kind=room` rend l'arbre : les dossiers de premier niveau, chacun avec ses
+`children`. Un nœud porte `id`, `name`, `kind` (`group`, `teacher`, `room` ou `other`) et
+`folder`, et `selected: true` pour un groupe que l'étudiant suit (le champ est absent sinon). Seul un nœud qui n'est pas un dossier se passe à `resources`. `kind` prend une ou
+plusieurs natures séparées par des virgules ; sans lui, l'arbre est entier (à Rennes : 20 000
+nœuds, 1,7 Mo).
+
+`GET /v1/timetable/resources?kind=room,teacher&q=amphi lannion&limit=20` rend une liste à plat,
+dans l'ordre de l'arbre : `id`, `name`, `kind` et `path`, le chemin dans l'arbre, la ressource en
+dernier.
+
+- `q` : des mots, sans tenir compte de la casse ni des accents. Chacun doit se trouver dans le
+  nom de la ressource ou d'un de ses dossiers, et l'un au moins dans son nom. 100 caractères au
+  plus.
+- `limit` : 100 par défaut, 50 000 au plus (toutes les salles ou tous les enseignants d'un coup).
+
+`/v1/timetable/groups` reste la liste des groupes d'étudiants, avec ceux que suit l'étudiant
+(`selected`).
+
+Avec `ade-portal-rest`, le serveur garde l'arbre une demi-heure pour tous les comptes d'un même
+profil ADE : seule la première demande le lit dans ADE. Avec `tempo`, chaque appel relit la page
+des salles. Un client qui cherche au fil de la frappe garde de toute façon la liste
+(`meta.cacheSecs`) et la filtre lui-même.
+
+`ade-portal-rest` et la démo servent ces deux routes pour toutes les natures ; `tempo`, pour les
+salles seulement (une autre nature rend une liste vide). Les autres fournisseurs répondent
+`not_implemented` (501).
 
 Chaque cours porte `color` et `activityId` quand le logiciel les donne (ADE par son API REST :
-couleur `R,V,B`, numéro de l'activité) ; `null` sinon.
+couleur `R,V,B`, numéro de l'activité ; TEMPO : couleur en six chiffres hexadécimaux) ; `null`
+sinon. `link` est le lien que l'établissement joint à la séance (`{ url, label }`, une adresse en
+`http` ou `https`) : TEMPO seulement, `null` ailleurs.
 
 ## Notes
 

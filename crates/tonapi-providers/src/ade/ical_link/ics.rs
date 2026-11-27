@@ -230,6 +230,7 @@ impl RawEvent {
             description: (!notes.is_empty()).then(|| notes.join("\n")),
             color: None,
             activity_id: None,
+            link: None,
         })
     }
 }

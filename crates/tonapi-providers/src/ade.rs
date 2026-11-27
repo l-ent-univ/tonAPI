@@ -8,6 +8,10 @@
 //! | `ade-myplanning` | client GWT `direct/myplanning.jsp` (ADE 6.x), appels GWT-RPC puis `anonymous_cal.jsp` | une page `myplanning.jsp` et des requêtes `…ServiceProxy` | Paul-Valéry |
 //! | `ade-portal-rest` | portail web (Angular) et son API `RestApi/portal/…` | une adresse en `/portal/` et des requêtes `RestApi` | IUT de Lannion |
 //!
+//! Seul `ade-portal-rest` rend l'arbre de toute l'université (groupes, enseignants, salles) et
+//! l'emploi du temps d'une ressource choisie ; `ade-myplanning` n'ouvre que les dossiers qui mènent
+//! aux ressources de l'étudiant, et un lien iCal ne contient que ses séances.
+//!
 //! Le numéro de version d'ADE n'est pas exposé par ces interfaces à un compte étudiant : le choix
 //! se fait sur l'interface observée, pas sur un numéro.
 //!

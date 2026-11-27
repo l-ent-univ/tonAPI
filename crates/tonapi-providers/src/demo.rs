@@ -1,6 +1,8 @@
 //! Université de démonstration : données fictives, stables et calées sur les dates demandées, pour
 //! essayer l'API sans compte universitaire. Identifiants `demo` / `demo`.
 
+use std::collections::HashSet;
+
 use chrono::{
     DateTime, Datelike, Duration, DurationRound, FixedOffset, NaiveDate, TimeZone, Utc, Weekday,
 };
@@ -8,10 +10,11 @@ use chrono_tz::Europe::Paris;
 use tonapi_core::{
     Absence, AbsenceReport, AbsenceTotals, App, Course, Document, DocumentKind, ErrorCode,
     Evaluation, Exam, Grade, GradeReport, Homework, MailAddress, MailInbox, MailMessage,
-    ModuleGrades, Problem, Profile, SemesterGrades, SemesterRef, TimetableGroup, UnitGrade,
+    ModuleGrades, Problem, Profile, ResourceKind, ResourceNode, SemesterGrades, SemesterRef,
+    TimetableGroup, TimetableResource, UnitGrade,
 };
 
-use crate::Download;
+use crate::{Download, ResourceQuery, resource_tree};
 
 pub(crate) fn check_credentials(username: &str, password: &str) -> Result<(), Problem> {
     if username == "demo" && password == "demo" {
@@ -179,56 +182,151 @@ pub(crate) fn timetable(from: NaiveDate, to: NaiveDate) -> Vec<Course> {
                     description: None,
                     color: None,
                     activity_id: None,
+                    link: None,
                 })
         })
         .collect()
 }
 
-/// Cours des groupes demandés par leur identifiant ([`groups`]) ; un identifiant inconnu ne
-/// donne aucun cours.
-pub(crate) fn timetable_of(from: NaiveDate, to: NaiveDate, resources: &[String]) -> Vec<Course> {
-    let names: Vec<String> = groups()
-        .into_iter()
-        .filter(|group| resources.contains(&group.id))
-        .map(|group| group.name)
-        .collect();
-    timetable(from, to)
-        .into_iter()
-        .filter(|course| course.groups.iter().any(|group| names.contains(group)))
-        .collect()
+/// Arbre des ressources de la démonstration : les groupes de l'étudiant, puis les enseignants et
+/// les salles de son emploi du temps.
+pub(crate) fn tree() -> Vec<ResourceNode> {
+    fn leaf(kind: ResourceKind, id: &str, name: &str) -> ResourceNode {
+        ResourceNode {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            kind,
+            folder: false,
+            children: Vec::new(),
+            selected: false,
+        }
+    }
+    fn folder(
+        kind: ResourceKind,
+        id: &str,
+        name: &str,
+        children: Vec<ResourceNode>,
+    ) -> ResourceNode {
+        ResourceNode {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            kind,
+            folder: true,
+            children,
+            selected: false,
+        }
+    }
+    use ResourceKind::{Group, Room, Teacher};
+    vec![
+        folder(
+            Group,
+            "demo-universite",
+            "Université de démonstration",
+            vec![folder(
+                Group,
+                "demo-but-info",
+                "BUT Informatique",
+                vec![folder(
+                    Group,
+                    "demo-info-a2",
+                    "Informatique A2",
+                    vec![
+                        leaf(Group, "demo-td1", "TD1"),
+                        leaf(Group, "demo-tp1a", "TP1A"),
+                        leaf(Group, "demo-tp1b", "TP1B"),
+                    ],
+                )],
+            )],
+        ),
+        folder(
+            Teacher,
+            "demo-enseignants",
+            "Département Informatique",
+            vec![
+                leaf(Teacher, "demo-ens-bernard", "M. Bernard"),
+                leaf(Teacher, "demo-ens-durand", "Mme Durand"),
+                leaf(Teacher, "demo-ens-leroy", "Mme Leroy"),
+                leaf(Teacher, "demo-ens-martin", "M. Martin"),
+                leaf(Teacher, "demo-ens-moreau", "M. Moreau"),
+                leaf(Teacher, "demo-ens-petit", "Mme Petit"),
+                leaf(Teacher, "demo-ens-smith", "Mme Smith"),
+            ],
+        ),
+        folder(
+            Room,
+            "demo-campus",
+            "Campus de démonstration",
+            vec![
+                folder(
+                    Room,
+                    "demo-amphis",
+                    "Amphithéâtres",
+                    vec![
+                        leaf(Room, "demo-salle-amphi-a", "Amphi A"),
+                        leaf(Room, "demo-salle-amphi-b", "Amphi B"),
+                    ],
+                ),
+                folder(
+                    Room,
+                    "demo-batiment-b",
+                    "Bâtiment B",
+                    vec![
+                        leaf(Room, "demo-salle-b012", "B012"),
+                        leaf(Room, "demo-salle-b104", "B104"),
+                    ],
+                ),
+                folder(
+                    Room,
+                    "demo-batiment-c",
+                    "Bâtiment C",
+                    vec![
+                        leaf(Room, "demo-salle-c105", "C105"),
+                        leaf(Room, "demo-salle-c201", "C201"),
+                        leaf(Room, "demo-salle-c203", "C203"),
+                    ],
+                ),
+            ],
+        ),
+    ]
 }
 
-pub(crate) fn groups() -> Vec<TimetableGroup> {
-    let path = |leaf: &str| {
-        [
-            "Université de démonstration",
-            "BUT Informatique",
-            "Informatique A2",
-            leaf,
-        ]
-        .map(str::to_owned)
-        .to_vec()
+/// Cours des ressources demandées par leur identifiant ([`tree`]) : ceux d'un groupe, d'un
+/// enseignant ou d'une salle. Un identifiant inconnu ne donne aucun cours.
+pub(crate) fn timetable_of(from: NaiveDate, to: NaiveDate, resources: &[String]) -> Vec<Course> {
+    let asked: Vec<TimetableResource> =
+        resource_tree::resources(&tree(), &ResourceQuery::default())
+            .into_iter()
+            .filter(|resource| resources.contains(&resource.id))
+            .collect();
+    let takes_part = |course: &Course| {
+        asked.iter().any(|resource| {
+            let names = match resource.kind {
+                ResourceKind::Group => &course.groups,
+                ResourceKind::Teacher => &course.teachers,
+                ResourceKind::Room => &course.rooms,
+                ResourceKind::Other => return false,
+            };
+            names.contains(&resource.name)
+        })
     };
-    vec![
-        TimetableGroup {
-            id: "demo-td1".into(),
-            name: "TD1".into(),
-            path: path("TD1"),
-            selected: true,
-        },
-        TimetableGroup {
-            id: "demo-tp1a".into(),
-            name: "TP1A".into(),
-            path: path("TP1A"),
-            selected: true,
-        },
-        TimetableGroup {
-            id: "demo-tp1b".into(),
-            name: "TP1B".into(),
-            path: path("TP1B"),
-            selected: false,
-        },
-    ]
+    timetable(from, to).into_iter().filter(takes_part).collect()
+}
+
+/// Groupes que suit l'étudiant de la démonstration : son TD et son TP.
+fn followed() -> HashSet<String> {
+    HashSet::from(["demo-td1", "demo-tp1a"].map(str::to_owned))
+}
+
+/// L'arbre des ressources, ses groupes suivis marqués.
+pub(crate) fn followed_tree() -> Vec<ResourceNode> {
+    let mut tree = tree();
+    resource_tree::mark_followed(&mut tree, &followed());
+    tree
+}
+
+/// Groupes de la démonstration ; l'étudiant suit son TD et son TP.
+pub(crate) fn groups() -> Vec<TimetableGroup> {
+    resource_tree::groups(&tree(), &followed())
 }
 
 fn grade(value: f64) -> Grade {

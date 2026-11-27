@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><title>Tempo - Disponibilité des salles</title></head>
+<body>
+<main class="container-lg pt-5">
+<div class="pt-2"><h1 class="text-white">Disponibilité des salles</h1></div>
+<article id="main-content" class="text-bg-light bg-body-tertiary p-3 rounded">
+<div class="d-flex flex-row tempo-rooms gap-2">
+  <div class="flex flex-shrink-0 flex-grow-0 w-25 p-2 tempo-room-select tempo-filter-stop">
+    <h2 class="mb-2"> Salles</h2>
+    <input type="text" id="filter" name="filter" class="form-control my-2" aria-label="Filtrer" />
+    <div class="shadow-sm accordion accordion-flush">
+      <div class="accordion-item">
+        <h3 class="accordion-header tempo-tree-header border-start border-2 d-flex align-items-center" id="heading-9001"  filter="01 - amphitheatres (2)" filter-full=".01 - amphitheatres (2)">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-9001" aria-expanded="false" aria-controls="collapse-9001">
+            01 - AMPHITHEATRES (2)
+          </button>
+        </h3>
+        <div id="collapse-9001" class="accordion-collapse collapse p-1 bg-secondary" aria-labelledby="heading-9001">
+          <div class="shadow-sm accordion accordion-flush">
+            <div class="accordion-item">
+              <h3 class="accordion-header tempo-tree-header border-start border-2 d-flex align-items-center" id="heading-9002"  parentid="#heading-9001" filter="a1 amphi (d&eacute;mo) - 133 pl." filter-full="01 - amphitheatres (2)..a1 amphi (d&eacute;mo) - 133 pl.">
+                <div class="accordion-button collapsed tempo-room-btn tempo-course-btn mx-0 flex-shrink-0" value="6" ade-name="A1 Amphi (D&eacute;mo) - 133 pl." ade-path="01 - AMPHITHEATRES (2) &gt;  A1 Amphi (D&eacute;mo) - 133 pl." >
+                  A1 Amphi (D&eacute;mo) - 133 pl.
+                </div>
+              </h3>
+            </div>
+            <div class="accordion-item">
+              <h3 class="accordion-header tempo-tree-header border-start border-2 d-flex align-items-center" id="heading-9003"  parentid="#heading-9001" filter="b019 amphi - 92 pl." filter-full="01 - amphitheatres (2)..b019 amphi - 92 pl.">
+                <div class="accordion-button collapsed tempo-room-btn tempo-course-btn mx-0 flex-shrink-0" value="1503" ade-name="B019 Amphi - 92 pl." ade-path="01 - AMPHITHEATRES (2) &gt;  B019 Amphi - 92 pl." >
+                  B019 Amphi - 92 pl.
+                </div>
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h3 class="accordion-header tempo-tree-header border-start border-2 d-flex align-items-center" id="heading-9010"  filter="02 - salles de cours (2)" filter-full=".02 - salles de cours (2)">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-9010" aria-expanded="false" aria-controls="collapse-9010">
+            02 - SALLES DE COURS (2)
+          </button>
+        </h3>
+        <div id="collapse-9010" class="accordion-collapse collapse p-1 bg-secondary" aria-labelledby="heading-9010">
+          <div class="accordion-item">
+            <h3 class="accordion-header tempo-tree-header border-start border-2 d-flex align-items-center" id="heading-9011"  parentid="#heading-9010" filter="01 - ufr d&eacute;mo (2)" filter-full="02 - salles de cours (2)..01 - ufr d&eacute;mo (2)">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-9011" aria-expanded="false" aria-controls="collapse-9011">
+                01 - UFR D&Eacute;MO (2)
+              </button>
+            </h3>
+            <div id="collapse-9011" class="accordion-collapse collapse p-1 bg-secondary" aria-labelledby="heading-9011">
+              <div class="accordion-item">
+                <h3 class="accordion-header tempo-tree-header border-start border-2 d-flex align-items-center" id="heading-9012"  parentid="#heading-9011" filter="b009 (44 pl.+1)" filter-full="02 - salles de cours (2)..01 - ufr d&eacute;mo (2)..b009 (44 pl.+1)">
+                  <div class="accordion-button collapsed tempo-room-btn tempo-course-btn mx-0 flex-shrink-0" value="2204" ade-name="B009 (44 pl.+1)" ade-path="02 - SALLES DE COURS (2) &gt; 01 - UFR D&Eacute;MO (2) &gt;  B009 (44 pl.+1)" >
+                    B009 (44 pl.+1)
+                  </div>
+                </h3>
+              </div>
+              <div class="accordion-item">
+                <h3 class="accordion-header tempo-tree-header border-start border-2 d-flex align-items-center" id="heading-9013"  parentid="#heading-9011" filter="e402 (24 pc+1)" filter-full="02 - salles de cours (2)..01 - ufr d&eacute;mo (2)..e402 (24 pc+1)">
+                  <div class="accordion-button collapsed tempo-room-btn tempo-course-btn mx-0 flex-shrink-0" value="9001" ade-name="E402 (24 PC+1)" ade-path="02 - SALLES DE COURS (2) &gt; 01 - UFR D&Eacute;MO (2) &gt;  E402 (24 PC+1)" >
+                    E402 (24 PC+1)
+                  </div>
+                </h3>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="flex-grow-1">
+    <input type="hidden" value="" id="campus_code">
+    <div data-controller="symfony--ux-vue--vue" data-symfony--ux-vue--vue-component-value="RoomsTimeline" data-symfony--ux-vue--vue-props-value="{&quot;minDate&quot;:&quot;2026-07-21&quot;,&quot;maxDate&quot;:&quot;2027-08-31&quot;,&quot;start&quot;:&quot;08:00&quot;,&quot;end&quot;:&quot;22:00&quot;,&quot;locale&quot;:&quot;fr-FR&quot;}"></div>
+  </div>
+</div>
+</article>
+</main>
+</body>
+</html>

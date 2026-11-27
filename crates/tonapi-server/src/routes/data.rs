@@ -8,8 +8,9 @@ use serde::Deserialize;
 use tonapi_config::ServiceKind;
 use tonapi_core::{
     AbsenceReport, App, Course, Document, Exam, GradeDistribution, GradeNotice, GradeReport,
-    Homework, MailInbox, Problem, TimetableGroup,
+    Homework, MailInbox, Problem, ResourceKind, ResourceNode, TimetableGroup, TimetableResource,
 };
+use tonapi_providers::ResourceQuery;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::AppState;
@@ -23,6 +24,12 @@ const MAX_RANGE_DAYS: i64 = 92;
 const MAX_RESOURCES: usize = 30;
 /// Longueur maximale d'un identifiant de ressource.
 const MAX_RESOURCE_LENGTH: usize = 64;
+/// Ressources rendues par `/v1/timetable/resources` sans `limit`.
+const DEFAULT_RESOURCES_LISTED: usize = 100;
+/// Ressources rendues au plus par `/v1/timetable/resources`.
+const MAX_RESOURCES_LISTED: usize = 50_000;
+/// Longueur maximale du texte cherché parmi les ressources.
+const MAX_SEARCH_LENGTH: usize = 100;
 
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -68,8 +75,9 @@ pub struct TimetableQuery {
     /// Dernier jour inclus. Défaut : dimanche qui suit `from`.
     to: Option<NaiveDate>,
     /// Ressources dont on veut les cours, séparées par des virgules : identifiants de
-    /// `/v1/timetable/groups` ou d'une autre ressource du logiciel (30 au plus). Défaut : les
-    /// groupes de l'étudiant. `not_implemented` si le fournisseur ne sait pas le faire.
+    /// `/v1/timetable/groups`, de `/v1/timetable/resources` ou de `/v1/timetable/tree` (groupe,
+    /// enseignant ou salle, 30 au plus). Défaut : les groupes de l'étudiant. `not_implemented` si
+    /// le fournisseur ne sait pas le faire.
     resources: Option<String>,
 }
 
@@ -107,7 +115,7 @@ fn requested_resources(raw: Option<&str>) -> Result<Vec<String>, ApiError> {
         (status = 200, description = "Succès", body = DataResponse<Vec<Course>>),
         (status = 400, description = "`invalid_request` : paramètres invalides", body = Problem, content_type = "application/problem+json"),
         (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
-        (status = 404, description = "`service_absent`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`service_absent` ; `not_found` : ressource demandée inconnue, ou fermée à ce compte", body = Problem, content_type = "application/problem+json"),
         (status = 501, description = "`not_implemented` : ce fournisseur ne lit pas une ressource choisie", body = Problem, content_type = "application/problem+json"),
     )
 )]
@@ -153,6 +161,134 @@ pub async fn timetable_groups(
 ) -> Result<Response, ApiError> {
     respond(&state, session, Some(ServiceKind::Timetable), async |ctx| {
         tonapi_providers::timetable_groups(ctx).await
+    })
+    .await
+}
+
+/// Natures de la liste `kind`, sans doublon. Absente ou vide : toutes (liste vide).
+fn requested_kinds(raw: Option<&str>) -> Result<Vec<ResourceKind>, ApiError> {
+    let mut kinds = Vec::new();
+    for name in raw.unwrap_or_default().split(',').map(str::trim) {
+        let kind = match name {
+            "" => continue,
+            "group" => ResourceKind::Group,
+            "teacher" => ResourceKind::Teacher,
+            "room" => ResourceKind::Room,
+            "other" => ResourceKind::Other,
+            _ => {
+                return Err(invalid(
+                    "`kind` : `group`, `teacher`, `room` ou `other`, séparés par des virgules",
+                ));
+            }
+        };
+        if !kinds.contains(&kind) {
+            kinds.push(kind);
+        }
+    }
+    Ok(kinds)
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct TreeQuery {
+    /// Natures voulues, séparées par des virgules : `group`, `teacher`, `room`, `other`.
+    /// Défaut : toutes.
+    kind: Option<String>,
+}
+
+/// Arbre des ressources d'emploi du temps de l'université : dossiers, groupes, enseignants et
+/// salles. L'`id` d'un nœud qui n'est pas un dossier se passe à `/v1/timetable?resources=`.
+/// L'arbre d'une université compte des milliers de nœuds : un client le garde
+/// (`meta.cacheSecs`) plutôt que de le redemander.
+#[utoipa::path(
+    get,
+    path = "/v1/timetable/tree",
+    tag = "données",
+    security(("session" = [])),
+    params(TreeQuery),
+    responses(
+        (status = 200, description = "Succès", body = DataResponse<Vec<ResourceNode>>),
+        (status = 400, description = "`invalid_request` : `kind` invalide", body = Problem, content_type = "application/problem+json"),
+        (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`service_absent` (avec `link` si le service est un simple lien)", body = Problem, content_type = "application/problem+json"),
+        (status = 501, description = "`not_implemented` : ce fournisseur n'expose pas son arbre", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn timetable_tree(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+    query: Result<Query<TreeQuery>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let Query(query) = query.map_err(|e| invalid(e.body_text()))?;
+    let kinds = requested_kinds(query.kind.as_deref())?;
+    respond(&state, session, Some(ServiceKind::Timetable), async |ctx| {
+        tonapi_providers::timetable_tree(ctx, &kinds).await
+    })
+    .await
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ResourcesQuery {
+    /// Natures voulues, séparées par des virgules : `group`, `teacher`, `room`, `other`.
+    /// Défaut : toutes.
+    kind: Option<String>,
+    /// Mots à trouver, sans tenir compte de la casse ni des accents (100 caractères au plus) :
+    /// chacun dans le nom de la ressource ou d'un de ses dossiers, l'un au moins dans son nom
+    /// (`amphi lannion`). Défaut : toutes les ressources.
+    q: Option<String>,
+    /// Nombre de ressources rendues au plus (défaut 100, 50 000 au plus).
+    limit: Option<usize>,
+}
+
+/// Ressources d'emploi du temps (groupes, enseignants, salles), chacune avec son chemin dans
+/// l'arbre, dans l'ordre de l'arbre : une recherche par nom, ou la liste d'une nature. L'`id`
+/// d'une ressource se passe à `/v1/timetable?resources=`.
+#[utoipa::path(
+    get,
+    path = "/v1/timetable/resources",
+    tag = "données",
+    security(("session" = [])),
+    params(ResourcesQuery),
+    responses(
+        (status = 200, description = "Succès", body = DataResponse<Vec<TimetableResource>>),
+        (status = 400, description = "`invalid_request` : paramètres invalides", body = Problem, content_type = "application/problem+json"),
+        (status = 401, description = "`invalid_token` ou `session_expired`", body = Problem, content_type = "application/problem+json"),
+        (status = 404, description = "`service_absent` (avec `link` si le service est un simple lien)", body = Problem, content_type = "application/problem+json"),
+        (status = 501, description = "`not_implemented` : ce fournisseur n'expose pas ses ressources", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub async fn timetable_resources(
+    State(state): State<AppState>,
+    AuthSession(session): AuthSession,
+    query: Result<Query<ResourcesQuery>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let Query(query) = query.map_err(|e| invalid(e.body_text()))?;
+    let search = query
+        .q
+        .map(|q| q.trim().to_owned())
+        .filter(|q| !q.is_empty());
+    if search
+        .as_ref()
+        .is_some_and(|q| q.chars().count() > MAX_SEARCH_LENGTH)
+    {
+        return Err(invalid(format!(
+            "`q` : {MAX_SEARCH_LENGTH} caractères au plus"
+        )));
+    }
+    let limit = query.limit.unwrap_or(DEFAULT_RESOURCES_LISTED);
+    if limit == 0 || limit > MAX_RESOURCES_LISTED {
+        return Err(invalid(format!(
+            "`limit` : entre 1 et {MAX_RESOURCES_LISTED}"
+        )));
+    }
+    let query = ResourceQuery {
+        kinds: requested_kinds(query.kind.as_deref())?,
+        search,
+        limit: Some(limit),
+    };
+    respond(&state, session, Some(ServiceKind::Timetable), async |ctx| {
+        tonapi_providers::timetable_resources(ctx, &query).await
     })
     .await
 }

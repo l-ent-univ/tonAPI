@@ -1,10 +1,12 @@
 //! Fournisseur `ade-portal-rest` contre un faux CAS et un faux portail ADE locaux : ouverture de la
 //! session par le TGC, jeton SSO, `ssologin`, renouvellement du jeton sur 401 (un seul nouvel essai),
-//! sélection, événements, arbre des groupes et composante détectée par le chemin d'un groupe. Aucune
-//! donnée réelle, aucun accès à un vrai service.
+//! sélection, événements, arbre des ressources (groupes, enseignants, salles), recherche et
+//! composante détectée par le chemin d'un groupe. Aucune donnée réelle, aucun accès à un vrai
+//! service.
 
 mod common;
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -14,9 +16,10 @@ use axum::http::{HeaderMap, Method, Response, StatusCode, Uri, header};
 use chrono::{NaiveDate, Utc};
 use serde_json::json;
 use tonapi_config::ResolvedUniversity;
-use tonapi_core::{ErrorCode, EstablishmentSource};
+use tonapi_core::{ErrorCode, EstablishmentSource, ResourceKind};
 use tonapi_providers::{
-    Context, NetSettings, timetable, timetable_groups, timetable_of, with_detected_establishment,
+    Context, NetSettings, ResourceQuery, timetable, timetable_groups, timetable_of,
+    timetable_resources, timetable_tree, with_detected_establishment,
 };
 use tonapi_session::{EstablishmentPick, SessionData};
 use url::Url;
@@ -25,6 +28,9 @@ use common::{has_cookie, query};
 
 const EVENTS: &str = include_str!("fixtures/ade_portal_rest/events.json");
 const TREE: &str = include_str!("fixtures/ade_portal_rest/resourcestree.json");
+const EVENTS_DENIED: &str = include_str!("fixtures/ade_portal_rest/events_denied.json");
+/// Ressource que le faux portail refuse, comme ADE refuse une ressource inconnue.
+const UNKNOWN_RESOURCE: &str = "resources;404404/";
 const EVENTS_PATH: &str =
     "resources;14961/startdate;09012026/enddate;09302026/level;=8/field;Nom;CODEZ_RESOURCE;OWNER;";
 
@@ -47,6 +53,9 @@ struct Mock {
     events_calls: u32,
     events_paths: Vec<String>,
     selection_calls: u32,
+    tree_calls: u32,
+    /// Profil ADE rendu par `ssologin` ; vide : ADE n'en donne pas.
+    profile: String,
 }
 
 type Shared = Arc<Mutex<Mock>>;
@@ -83,6 +92,36 @@ fn issue(mock: &mut Mock) -> (String, String) {
     mock.valid_access = format!("acc-{}", mock.issued);
     mock.valid_refresh = format!("ref-{}", mock.issued);
     (mock.valid_access.clone(), mock.valid_refresh.clone())
+}
+
+/// Données du projet 1, pour le jeton d'API du moment.
+fn project(mock: &mut Mock, rest: &str, headers: &HeaderMap) -> Response<Body> {
+    if !bearer_is(headers, &mock.valid_access) {
+        return status(StatusCode::UNAUTHORIZED);
+    }
+    if rest == "user/properties/name/PortalResourcesAllSelection" {
+        mock.selection_calls += 1;
+        json_ok(&json!({"data": mock.selection}))
+    } else if rest == "resourcestree" {
+        mock.tree_calls += 1;
+        response(StatusCode::OK, "application/json", TREE.to_owned())
+    } else if let Some(filter) = rest.strip_prefix("resourcesEventsPortal/") {
+        mock.events_calls += 1;
+        mock.events_paths.push(filter.to_owned());
+        if mock.events_always_401 {
+            return status(StatusCode::UNAUTHORIZED);
+        }
+        if filter.starts_with(UNKNOWN_RESOURCE) {
+            return response(
+                StatusCode::FORBIDDEN,
+                "application/json",
+                EVENTS_DENIED.to_owned(),
+            );
+        }
+        response(StatusCode::OK, "application/json", EVENTS.to_owned())
+    } else {
+        status(StatusCode::NOT_FOUND)
+    }
 }
 
 async fn handle(
@@ -150,9 +189,13 @@ async fn handle(
             }
             mock.ssologin_calls += 1;
             let (access, refresh) = issue(&mut mock);
-            json_ok(&json!({"data": {"projectId": 0, "authData": {
+            let mut auth = json!({
                 "projectId": 1, "accessToken": access, "refreshToken": refresh, "resources": []
-            }}}))
+            });
+            if !mock.profile.is_empty() {
+                auth["profile"] = json!(mock.profile);
+            }
+            json_ok(&json!({"data": {"projectId": 0, "authData": auth}}))
         }
         ("GET", "/portal/RestApi/portal/refreshtoken") => {
             mock.refresh_calls += 1;
@@ -165,37 +208,23 @@ async fn handle(
             }
         }
         ("GET", p) if p.starts_with("/portal/RestApi/portal/projects/1/") => {
-            let rest = p
-                .trim_start_matches("/portal/RestApi/portal/projects/1/")
-                .to_owned();
-            if !bearer_is(&headers, &mock.valid_access) {
-                return status(StatusCode::UNAUTHORIZED);
-            }
-            if rest == "user/properties/name/PortalResourcesAllSelection" {
-                mock.selection_calls += 1;
-                json_ok(&json!({"data": mock.selection}))
-            } else if rest == "resourcestree" {
-                response(StatusCode::OK, "application/json", TREE.to_owned())
-            } else if let Some(filter) = rest.strip_prefix("resourcesEventsPortal/") {
-                mock.events_calls += 1;
-                mock.events_paths.push(filter.to_owned());
-                if mock.events_always_401 {
-                    return status(StatusCode::UNAUTHORIZED);
-                }
-                response(StatusCode::OK, "application/json", EVENTS.to_owned())
-            } else {
-                status(StatusCode::NOT_FOUND)
-            }
+            let rest = p.trim_start_matches("/portal/RestApi/portal/projects/1/");
+            project(&mut mock, rest, &headers)
         }
         _ => status(StatusCode::NOT_FOUND),
     }
 }
+
+/// Un profil par faux portail : l'arbre gardé par profil ne passe pas d'un test à l'autre, même
+/// si deux faux portails reçoivent le même port.
+static PROFILES: AtomicU32 = AtomicU32::new(0);
 
 async fn start(selection: &str) -> (Shared, String) {
     let (listener, base) = common::listen().await;
     let shared: Shared = Arc::new(Mutex::new(Mock {
         base: base.clone(),
         selection: selection.to_owned(),
+        profile: format!("etudiant-{}", PROFILES.fetch_add(1, Ordering::Relaxed)),
         ..Mock::default()
     }));
     let app = Router::new().fallback(handle).with_state(shared.clone());
@@ -416,7 +445,7 @@ async fn selection_vide_donne_aucun_cours_sans_requete_d_evenements() {
 }
 
 #[tokio::test]
-async fn plusieurs_ressources_une_requete_chacune_sans_doublon() {
+async fn plusieurs_ressources_une_seule_requete_sans_doublon() {
     let (mock, base) = start("14961;14962").await;
     let university = university(&base);
     let mut session = session();
@@ -429,7 +458,9 @@ async fn plusieurs_ressources_une_requete_chacune_sans_doublon() {
 
     // Le même événement revient sous chaque ressource : une seule séance.
     assert_eq!(courses.len(), 2);
-    assert_eq!(mock.lock().unwrap().events_calls, 2);
+    let mock = mock.lock().unwrap();
+    assert_eq!(mock.events_calls, 1);
+    assert!(mock.events_paths[0].starts_with("resources;14961;14962/startdate;09012026/"));
 }
 
 #[tokio::test]
@@ -456,7 +487,7 @@ async fn ressources_demandees_a_la_place_de_la_selection() {
         .iter()
         .map(|path| path.split('/').next().unwrap())
         .collect();
-    assert_eq!(asked_of_ade, ["resources;777", "resources;888"]);
+    assert_eq!(asked_of_ade, ["resources;777;888"]);
 }
 
 #[tokio::test]
@@ -531,6 +562,220 @@ async fn groupes_avec_selection() {
             "TP 2"
         ]
     );
+}
+
+#[tokio::test]
+async fn ressource_inconnue_ou_interdite_sans_nouvel_essai() {
+    let (mock, base) = start("").await;
+    let university = university(&base);
+    let mut session = session();
+    let (from, to) = september();
+
+    let problem = timetable_of(
+        &mut ctx!(university, session),
+        from,
+        to,
+        &["404404".to_owned()],
+    )
+    .await
+    .unwrap_err();
+
+    // Le 403 d'ADE n'est ni une panne ni une session perdue : rien n'est renouvelé ni rejoué.
+    assert_eq!(problem.code, ErrorCode::NotFound);
+    assert!(!problem.to_string().contains("404404"));
+    let mock = mock.lock().unwrap();
+    assert_eq!((mock.events_calls, mock.refresh_calls), (1, 0));
+    assert_eq!(mock.ssologin_calls, 1);
+    assert!(session.tokens.contains_key(&token_key(&base)));
+}
+
+#[tokio::test]
+async fn arbre_des_ressources_entier_ou_d_une_nature() {
+    let (mock, base) = start("14962").await;
+    let university = university(&base);
+    let mut session = session();
+
+    let fetched = timetable_tree(&mut ctx!(university, session), &[])
+        .await
+        .unwrap();
+    assert_eq!(fetched.provider, "ade-portal-rest");
+    let kinds: Vec<_> = fetched.data.iter().map(|node| node.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            ResourceKind::Group,
+            ResourceKind::Teacher,
+            ResourceKind::Room
+        ]
+    );
+    // Le groupe que l'étudiant suit est marqué, et lui seul.
+    let td = &fetched.data[0].children[0].children[0];
+    let marked: Vec<_> = td
+        .children
+        .iter()
+        .map(|n| (n.id.as_str(), n.selected))
+        .collect();
+    assert_eq!(marked, [("14961", false), ("14962", true)]);
+    assert!(!td.selected && !fetched.data[1].children[0].selected);
+
+    let rooms = timetable_tree(&mut ctx!(university, session), &[ResourceKind::Room])
+        .await
+        .unwrap()
+        .data;
+    assert_eq!(rooms.len(), 1);
+    let building = &rooms[0].children[0];
+    assert_eq!(
+        (building.name.as_str(), building.folder),
+        ("Bâtiment 01", true)
+    );
+    assert_eq!(building.children[0].id, "800");
+
+    // L'arbre lu la première fois sert à la seconde ; la sélection n'est lue que pour la
+    // première, qui rend des groupes.
+    let mock = mock.lock().unwrap();
+    assert_eq!((mock.tree_calls, mock.ssologin_calls), (1, 1));
+    assert_eq!(mock.selection_calls, 1);
+}
+
+#[tokio::test]
+async fn arbre_garde_pour_les_comptes_du_meme_profil() {
+    let (mock, base) = start("14962").await;
+    let university = university(&base);
+    let mut first = session();
+    let mut second = session();
+
+    timetable_tree(&mut ctx!(university, first), &[])
+        .await
+        .unwrap();
+    // Un autre étudiant du même profil : sa session ADE s'ouvre (son profil vient de là), mais
+    // l'arbre n'est pas relu. Sa sélection, elle, reste la sienne.
+    let groups = timetable_groups(&mut ctx!(university, second))
+        .await
+        .unwrap()
+        .data;
+    let rooms = timetable_resources(
+        &mut ctx!(university, second),
+        &ResourceQuery {
+            kinds: vec![ResourceKind::Room],
+            ..ResourceQuery::default()
+        },
+    )
+    .await
+    .unwrap()
+    .data;
+
+    assert_eq!(groups.iter().filter(|g| g.selected).count(), 1);
+    assert_eq!(rooms.len(), 2);
+    let mock = mock.lock().unwrap();
+    assert_eq!((mock.tree_calls, mock.ssologin_calls), (1, 2));
+    // Chacun sa sélection : une lecture pour l'arbre du premier, une pour les groupes du second.
+    assert_eq!(mock.selection_calls, 2);
+}
+
+#[tokio::test]
+async fn arbre_relu_a_chaque_fois_sans_profil_connu() {
+    let (mock, base) = start("").await;
+    mock.lock().unwrap().profile = String::new();
+    let university = university(&base);
+    let mut session = session();
+
+    for _ in 0..2 {
+        timetable_tree(&mut ctx!(university, session), &[])
+            .await
+            .unwrap();
+    }
+
+    // ADE ne dit pas le profil : rien n'est gardé, et la session n'est pas rouverte pour autant.
+    let mock = mock.lock().unwrap();
+    assert_eq!((mock.tree_calls, mock.ssologin_calls), (2, 1));
+}
+
+#[tokio::test]
+async fn session_ade_d_avant_le_profil_rouverte_une_fois() {
+    let (mock, base) = start("").await;
+    let university = university(&base);
+    let mut session = session();
+    let (from, to) = september();
+    // Une session ADE ouverte, dont on retire le profil : celle d'une version précédente.
+    timetable_of(
+        &mut ctx!(university, session),
+        from,
+        to,
+        &["14961".to_owned()],
+    )
+    .await
+    .unwrap();
+    let key = token_key(&base);
+    let mut stored: serde_json::Value = serde_json::from_str(&session.tokens[&key]).unwrap();
+    assert!(stored["profile"].as_str().unwrap().starts_with("etudiant-"));
+    stored.as_object_mut().unwrap().remove("profile");
+    session.tokens.insert(key.clone(), stored.to_string());
+
+    for _ in 0..2 {
+        timetable_tree(&mut ctx!(university, session), &[])
+            .await
+            .unwrap();
+    }
+
+    let mock = mock.lock().unwrap();
+    assert_eq!((mock.ssologin_calls, mock.tree_calls), (2, 1));
+    assert!(session.tokens[&key].contains("\"profile\""));
+}
+
+#[tokio::test]
+async fn recherche_d_une_salle_puis_son_emploi_du_temps() {
+    let (mock, base) = start("").await;
+    let university = university(&base);
+    let mut session = session();
+    let (from, to) = september();
+
+    let found = timetable_resources(
+        &mut ctx!(university, session),
+        &ResourceQuery {
+            kinds: vec![ResourceKind::Room, ResourceKind::Teacher],
+            search: Some("salle 12".to_owned()),
+            limit: Some(10),
+        },
+    )
+    .await
+    .unwrap()
+    .data;
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].kind, ResourceKind::Room);
+    assert_eq!(found[0].path[..2], ["00-Campus Démo", "Bâtiment 01"]);
+
+    // L'identifiant trouvé se demande tel quel à l'emploi du temps.
+    timetable_of(
+        &mut ctx!(university, session),
+        from,
+        to,
+        std::slice::from_ref(&found[0].id),
+    )
+    .await
+    .unwrap();
+    assert!(mock.lock().unwrap().events_paths[0].starts_with("resources;800/"));
+}
+
+#[tokio::test]
+async fn arbre_et_ressources_indisponibles_avec_un_autre_fournisseur() {
+    let university = common::university(json!({
+        "id": "test",
+        "name": "Université de test",
+        "sso": {"kind": "cas", "base-url": "https://cas.exemple.test/"},
+        "services": {"timetable": {"provider": "ade-myplanning", "base-url": "https://ade.exemple.test/"}},
+    }));
+    let mut session = session();
+
+    // Refusé sans requête : l'adresse de ce faux service ne répond à rien.
+    let tree = timetable_tree(&mut ctx!(university, session), &[])
+        .await
+        .unwrap_err();
+    let list = timetable_resources(&mut ctx!(university, session), &ResourceQuery::default())
+        .await
+        .unwrap_err();
+    assert_eq!(tree.code, ErrorCode::NotImplemented);
+    assert_eq!(list.code, ErrorCode::NotImplemented);
+    assert!(tree.to_string().contains("ade-myplanning"));
 }
 
 /// L'université de test avec une composante reconnue au chemin d'un groupe ADE.

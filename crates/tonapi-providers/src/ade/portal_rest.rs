@@ -12,11 +12,27 @@
 //!
 //! Les ressources à interroger sont celles que le client demande ; sans demande, la sélection
 //! personnelle de l'étudiant (`PortalResourcesAllSelection`), sinon celles qu'ADE lui attribue dans
-//! la réponse de `ssologin`.
+//! la réponse de `ssologin`. Toutes partent dans une seule requête `resourcesEventsPortal`.
 //! Les jetons ADE restent dans `session.tokens["ade-rest.<hôte>"]`, jamais le mot de passe.
 //!
-//! Faits non confirmés par la documentation, marqués `[inconnu]` ci-dessous : format exact de la
-//! sélection, champs de l'arbre au-delà de `id`/`name`/`branch`/`leaf`, type de séance.
+//! `resourcestree` rend d'un coup l'arbre de toute l'université (étudiants, enseignants, salles) :
+//! l'arbre, la liste des ressources, leur recherche et les groupes en sont tous tirés.
+//!
+//! L'arbre lu est gardé une demi-heure en mémoire ([`TREES`]), par portail, projet et **profil
+//! ADE** du compte (`authData.profile`, `etudiant` pour un étudiant). ADE donne ses droits de
+//! lecture par profil, et un compte étudiant d'une composante voit les ressources de toutes les
+//! autres ([vu] Rennes, 27/11/2026) : deux comptes du même profil lisent le même arbre [déduit].
+//! Un compte dont le profil est inconnu ne lit ni n'écrit ce cache. L'arbre ne contient que des
+//! noms de groupes, d'enseignants et de salles ; l'emploi du temps d'une ressource reste demandé
+//! à ADE avec le jeton du compte, qui le refuse à qui n'y a pas droit.
+//!
+//! Formes vues sur le portail de l'Université de Rennes le 27/11/2026, sans valeur recopiée :
+//! `docs/recherche/rennes/apis/ade-portal-rest.md`, section 11. Reste `[inconnu]` : le format d'une
+//! sélection personnelle non vide et le type de séance (CM, TD, TP).
+
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::NaiveDate;
 use chrono_tz::Tz;
@@ -25,24 +41,32 @@ use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tonapi_config::Signal;
-use tonapi_core::{Course, ErrorCode, Problem, TimetableGroup};
+use tonapi_core::{
+    Course, ErrorCode, Problem, ResourceKind, ResourceNode, TimetableGroup, TimetableResource,
+};
 use url::Url;
 
-use crate::Context;
+use crate::cache::Shared;
 use crate::common::token_key;
 use crate::net::{Net, upstream};
+use crate::{Context, ResourceQuery, resource_tree};
 
 mod parse;
 
 use parse::{
-    events_filter, group_signals, normalize, parse_events, parse_groups, parse_refresh,
-    parse_requested, parse_selection, parse_sso_token, parse_ssologin,
+    events_filter, group_signals, parse_events, parse_refresh, parse_requested, parse_selection,
+    parse_sso_token, parse_ssologin, parse_tree,
 };
 
 /// Nom du fournisseur dans les messages d'erreur.
 const PROVIDER: &str = "ade-portal-rest";
-/// Nombre maximal de ressources interrogées pour une même plage (une requête chacune).
+/// Nombre maximal de ressources interrogées pour une même plage.
 const MAX_RESOURCES: usize = 30;
+
+/// Arbres des ressources déjà lus, par portail, projet et profil ADE : les mêmes pour tous les
+/// comptes d'un profil. Une demi-heure : l'arbre change quand la scolarité crée un groupe ou une
+/// salle, pas dans la journée d'un étudiant.
+static TREES: Shared<Arc<Vec<ResourceNode>>> = Shared::new(Duration::from_secs(30 * 60));
 
 /// Jetons ADE gardés dans la session de l'étudiant (`ade-rest.<hôte>`).
 #[derive(Clone, Serialize, Deserialize)]
@@ -58,12 +82,18 @@ struct Tokens {
     /// avant que ce champ existe : la session ADE est alors rouverte pour le lire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     resources: Option<Vec<i64>>,
+    /// Profil ADE du compte (`authData.profile`), vide si ADE n'en donne pas. Absent des sessions
+    /// émises avant que ce champ existe : la session ADE est alors rouverte pour le lire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    profile: Option<String>,
 }
 
-/// Réponse d'ADE : des données, ou une session perdue (401 ou redirection, p. ex. vers le CAS).
+/// Réponse d'ADE : des données, une session perdue (401 ou redirection, p. ex. vers le CAS), ou
+/// un refus (403).
 enum Reply {
     Data(Value),
     Lost,
+    Denied,
 }
 
 struct Client {
@@ -163,8 +193,8 @@ impl Client {
         Ok(headers)
     }
 
-    /// Une requête. 401 et redirections donnent [`Reply::Lost`] ; les autres statuts d'erreur et les
-    /// corps non JSON donnent une erreur qui ne cite ni corps ni jeton.
+    /// Une requête. 401 et redirections donnent [`Reply::Lost`], 403 [`Reply::Denied`] ; les autres
+    /// statuts d'erreur et les corps non JSON donnent une erreur qui ne cite ni corps ni jeton.
     async fn send(
         &mut self,
         method: Method,
@@ -180,6 +210,9 @@ impl Client {
             .await?;
         if status == reqwest::StatusCode::UNAUTHORIZED || status.is_redirection() {
             return Ok(Reply::Lost);
+        }
+        if status == reqwest::StatusCode::FORBIDDEN {
+            return Ok(Reply::Denied);
         }
         if !status.is_success() {
             return Err(Problem::new(ErrorCode::ServiceUnavailable)
@@ -198,7 +231,7 @@ impl Client {
             .await?
         {
             Reply::Data(value) => Ok(parse_sso_token(&value)),
-            Reply::Lost => Ok(None),
+            Reply::Lost | Reply::Denied => Ok(None),
         }
     }
 
@@ -223,7 +256,7 @@ impl Client {
                 self.fresh = true;
                 Ok(())
             }
-            Reply::Lost => Err(Problem::new(ErrorCode::SessionExpired)
+            Reply::Lost | Reply::Denied => Err(Problem::new(ErrorCode::SessionExpired)
                 .detail("ADE a refusé le jeton SSO : se reconnecter")),
         }
     }
@@ -244,6 +277,7 @@ impl Client {
                     refresh: new_refresh.or(tokens.refresh),
                     project: tokens.project,
                     resources: tokens.resources,
+                    profile: tokens.profile,
                 });
                 self.fresh = true;
                 return Ok(());
@@ -253,46 +287,75 @@ impl Client {
     }
 
     /// `GET` d'une ressource du projet, avec le contrat « un seul nouvel essai sur 401 ».
+    ///
+    /// Un refus (403) n'est pas une session perdue : le jeton est bon, c'est ce qu'on demande
+    /// qu'ADE ne donne pas à ce compte. [vu] Rennes, 27/11/2026 : `resourcesEventsPortal` répond
+    /// 403 (`error.code` 1805) pour une ressource inconnue. La réponse est `not_found`.
     async fn get_project(&mut self, path: &str) -> Result<Value, Problem> {
         if self.tokens.is_none() {
             self.login().await?;
         }
-        let url = |client: &Self| -> Result<Url, Problem> {
-            let project = client.tokens.as_ref().map_or(0, |t| t.project);
-            client.url(&format!("RestApi/portal/projects/{project}/{path}"))
-        };
-        let access = |client: &Self| client.tokens.as_ref().map(|t| t.access.clone());
-
-        let first = url(self)?;
-        if let Reply::Data(value) = self
-            .send(Method::GET, first, access(self).as_deref(), None, true)
-            .await?
-        {
-            self.fresh = false;
-            return Ok(value);
-        }
         let expired = || {
             Problem::new(ErrorCode::SessionExpired).detail("ADE refuse le jeton : se reconnecter")
         };
-        if self.fresh {
-            self.tokens = None;
-            return Err(expired());
+        match self.get_once(path).await? {
+            Reply::Data(value) => return Ok(value),
+            Reply::Denied => return Err(denied()),
+            Reply::Lost if self.fresh => {
+                self.tokens = None;
+                return Err(expired());
+            }
+            Reply::Lost => {}
         }
         self.renew().await?;
-        let second = url(self)?;
-        match self
-            .send(Method::GET, second, access(self).as_deref(), None, true)
-            .await?
-        {
-            Reply::Data(value) => {
-                self.fresh = false;
-                Ok(value)
-            }
+        match self.get_once(path).await? {
+            Reply::Data(value) => Ok(value),
+            Reply::Denied => Err(denied()),
             Reply::Lost => {
                 self.tokens = None;
                 Err(expired())
             }
         }
+    }
+
+    /// Un `GET` sous le projet, avec le jeton d'API du moment.
+    async fn get_once(&mut self, path: &str) -> Result<Reply, Problem> {
+        let project = self.tokens.as_ref().map_or(0, |t| t.project);
+        let access = self.tokens.as_ref().map(|t| t.access.clone());
+        let url = self.url(&format!("RestApi/portal/projects/{project}/{path}"))?;
+        let reply = self
+            .send(Method::GET, url, access.as_deref(), None, true)
+            .await?;
+        if matches!(reply, Reply::Data(_)) {
+            self.fresh = false;
+        }
+        Ok(reply)
+    }
+
+    /// Clé de l'arbre de ce compte dans [`TREES`] ; `None` si son profil ADE n'est pas connu.
+    fn tree_key(&self) -> Option<String> {
+        let tokens = self.tokens.as_ref()?;
+        let profile = tokens.profile.as_deref().filter(|p| !p.is_empty())?;
+        Some(format!("{}|{}|{profile}", self.base, tokens.project))
+    }
+
+    /// L'arbre des ressources de l'université, tel que le profil de ce compte le voit : celui
+    /// qu'un compte du même profil a lu depuis moins d'une demi-heure, sinon relu dans ADE.
+    async fn tree(&mut self) -> Result<Arc<Vec<ResourceNode>>, Problem> {
+        // Le profil vient de `ssologin` : sans session ADE, ou avec une session émise avant que
+        // le profil y soit gardé, on l'ouvre pour le connaître.
+        if self.tokens.as_ref().is_none_or(|t| t.profile.is_none()) {
+            self.login().await?;
+        }
+        let key = self.tree_key();
+        if let Some(tree) = key.as_deref().and_then(|key| TREES.get(key)) {
+            return Ok(tree);
+        }
+        let tree = Arc::new(parse_tree(&self.get_project("resourcestree").await?)?);
+        if let Some(key) = key {
+            TREES.put(key, Arc::clone(&tree));
+        }
+        Ok(tree)
     }
 
     /// Ressources à afficher : la sélection personnelle de l'étudiant, sinon celles qu'ADE lui
@@ -345,17 +408,24 @@ async fn timetable_with(
             "plus de {MAX_RESOURCES} groupes sélectionnés dans ADE : en retirer"
         )));
     }
-    // Le front envoie une requête par ressource ; on fait de même.
-    let mut courses = Vec::new();
-    for resource in resources {
-        let path = format!(
-            "resourcesEventsPortal/{}",
-            events_filter(resource, from, to)
-        );
-        let response = client.get_project(&path).await?;
-        courses.extend(parse_events(&response, tz, from, to)?);
+    if resources.is_empty() {
+        return Ok(Vec::new());
     }
-    Ok(normalize(courses))
+    let path = format!(
+        "resourcesEventsPortal/{}",
+        events_filter(&resources, from, to)
+    );
+    // La même séance revient sous chaque ressource qui y participe : `parse_events` n'en garde
+    // qu'une.
+    parse_events(&client.get_project(&path).await?, tz, from, to)
+}
+
+/// Ce qu'ADE refuse de donner à ce compte, sans dire s'il s'agit d'une ressource inconnue ou
+/// d'un droit qui manque.
+fn denied() -> Problem {
+    Problem::new(ErrorCode::NotFound).detail(format!(
+        "{PROVIDER} : ressource inconnue, ou fermée à ce compte"
+    ))
 }
 
 /// Signaux de rattachement : chemin, dans l'arbre ADE, de chaque groupe de l'étudiant.
@@ -371,8 +441,55 @@ pub(crate) async fn fetch_signals(
 
 async fn groups_with(client: &mut Client) -> Result<Vec<TimetableGroup>, Problem> {
     let selected = client.selection().await?;
-    let tree = client.get_project("resourcestree").await?;
-    parse_groups(&tree, &selected)
+    let selected: HashSet<String> = selected.iter().map(i64::to_string).collect();
+    Ok(resource_tree::groups(&client.tree().await?, &selected))
+}
+
+/// Arbre des ressources (étudiants, enseignants, salles), réduit aux natures demandées ; sans
+/// nature demandée, l'arbre entier. Les groupes que l'étudiant suit sont marqués `selected`.
+pub(crate) async fn fetch_tree(
+    ctx: &mut Context<'_>,
+    base_url: &Url,
+    kinds: &[ResourceKind],
+) -> Result<Vec<ResourceNode>, Problem> {
+    let (mut client, _) = Client::open(ctx, base_url)?;
+    let result = tree_with(&mut client, kinds).await;
+    client.finish(ctx);
+    result
+}
+
+async fn tree_with(
+    client: &mut Client,
+    kinds: &[ResourceKind],
+) -> Result<Vec<ResourceNode>, Problem> {
+    let shared = client.tree().await?;
+    // L'arbre gardé sert à tous : la réponse en reçoit une copie, réduite aux natures voulues.
+    let wanted = |node: &&ResourceNode| kinds.is_empty() || kinds.contains(&node.kind);
+    let mut tree: Vec<ResourceNode> = shared.iter().filter(wanted).cloned().collect();
+    // Les groupes de l'étudiant sont marqués sur sa copie : seulement si des groupes sont rendus,
+    // la sélection coûtant une requête de plus à ADE.
+    if kinds.is_empty() || kinds.contains(&ResourceKind::Group) {
+        let followed: HashSet<String> = client
+            .selection()
+            .await?
+            .iter()
+            .map(i64::to_string)
+            .collect();
+        resource_tree::mark_followed(&mut tree, &followed);
+    }
+    Ok(tree)
+}
+
+/// Ressources de l'arbre qui répondent à la recherche, chacune avec son chemin.
+pub(crate) async fn fetch_resources(
+    ctx: &mut Context<'_>,
+    base_url: &Url,
+    query: &ResourceQuery,
+) -> Result<Vec<TimetableResource>, Problem> {
+    let (mut client, _) = Client::open(ctx, base_url)?;
+    let result = client.tree().await;
+    client.finish(ctx);
+    Ok(resource_tree::resources(&result?, query))
 }
 
 /// Cours de la plage `from..=to` pour les ressources ADE demandées (`resources`, des ids de

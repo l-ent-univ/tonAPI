@@ -1,7 +1,8 @@
 #:schema ../../schema/university.schema.json
 # Université Rennes 2 (à ne pas confondre avec `univ-rennes`, l'Université de Rennes).
-# Tout vient du code de Tafac, qui sert cette université avec de vrais comptes ; tonAPI n'y a
-# jamais été essayé. Sources et provenance de chaque valeur : docs/recherche/rennes-2.md.
+# Écrite d'après le code de Tafac, puis essayée avec un compte étudiant le 27/11/2026 : connexion,
+# profil, applications, emploi du temps et devoirs ont répondu. Le statut reste `planned`.
+# Sources et provenance de chaque valeur : docs/recherche/rennes-2.md.
 
 id = "univ-rennes-2"
 name = "Université Rennes 2"
@@ -29,7 +30,8 @@ path = "tous-outils"
 view = "outils"
 item-path = "/outil/"
 
-# [code] TEMPO : emploi du temps personnel, `api/events`, session ouverte par `auth` et le CAS.
+# [vu] 27/11/2026. TEMPO : emploi du temps personnel (`api/events`), arbre des salles (`rooms`)
+# et emploi du temps d'une salle (`api/room/`), session ouverte par `auth` et le CAS.
 [services.timetable]
 provider = "tempo"
 base-url = "https://tempo.univ-rennes2.fr/"

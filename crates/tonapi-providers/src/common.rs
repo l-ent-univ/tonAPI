@@ -85,6 +85,27 @@ pub(crate) fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
+/// Texte ramené à une forme comparable pour une recherche : minuscules, sans les accents du
+/// français. Deux textes qui ne diffèrent que par la casse ou un accent deviennent égaux.
+pub(crate) fn fold(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars().flat_map(char::to_lowercase) {
+        match c {
+            'à' | 'â' | 'ä' => out.push('a'),
+            'ç' => out.push('c'),
+            'é' | 'è' | 'ê' | 'ë' => out.push('e'),
+            'î' | 'ï' => out.push('i'),
+            'ô' | 'ö' => out.push('o'),
+            'ù' | 'û' | 'ü' => out.push('u'),
+            'ÿ' => out.push('y'),
+            'œ' => out.push_str("oe"),
+            'æ' => out.push_str("ae"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 fn entity(name: &str) -> Option<char> {
     match name {
         "amp" => Some('&'),
@@ -233,6 +254,12 @@ mod tests {
 
     fn url(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn recherche_sans_casse_ni_accent() {
+        assert_eq!(fold("Amphithéâtre Ç — ŒUVRE"), "amphitheatre c — oeuvre");
+        assert_eq!(fold("DUPONT Zoé"), fold("dupont zoe"));
     }
 
     #[test]

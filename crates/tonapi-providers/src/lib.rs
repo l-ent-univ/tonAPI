@@ -17,6 +17,7 @@ mod isorbonne;
 mod mon_dossier_web;
 mod moodle;
 mod net;
+mod resource_tree;
 mod scodoc;
 mod sso;
 mod tempo;
@@ -32,7 +33,8 @@ use tonapi_config::{
 };
 use tonapi_core::{
     AbsenceReport, App, Course, Document, ErrorCode, EstablishmentSource, Exam, GradeDistribution,
-    GradeNotice, GradeReport, Homework, MailInbox, Problem, Profile, TimetableGroup,
+    GradeNotice, GradeReport, Homework, MailInbox, Problem, Profile, ResourceKind, ResourceNode,
+    TimetableGroup, TimetableResource,
 };
 use tonapi_session::{EstablishmentPick, SessionData};
 
@@ -311,11 +313,12 @@ pub async fn timetable(
     timetable_of(ctx, from, to, &[]).await
 }
 
-/// Emploi du temps des ressources demandées (identifiants de `timetable_groups`, ou toute autre
-/// ressource du logiciel : groupe, salle, enseignant). Sans ressource : comme [`timetable`].
+/// Emploi du temps des ressources demandées (identifiants de [`timetable_groups`],
+/// [`timetable_resources`] ou [`timetable_tree`]). Sans ressource : comme [`timetable`].
 ///
-/// Seul `ade-portal-rest` (et la démo) sait interroger une ressource choisie ; les autres
-/// fournisseurs répondent `not_implemented` plutôt que l'emploi du temps de l'étudiant.
+/// `ade-portal-rest` et la démo lisent un groupe, un enseignant ou une salle ; `tempo`, une salle
+/// seulement. Les autres fournisseurs répondent `not_implemented` plutôt que l'emploi du temps de
+/// l'étudiant.
 pub async fn timetable_of(
     ctx: &mut Context<'_>,
     from: NaiveDate,
@@ -338,7 +341,6 @@ pub async fn timetable_of(
         Some(TimetableService::AdeMyplanning { .. }) if !resources.is_empty() => {
             Err(by_resource("ade-myplanning"))
         }
-        Some(TimetableService::Tempo { .. }) if !resources.is_empty() => Err(by_resource("tempo")),
         Some(TimetableService::Demo) => Ok(fetched(demo::timetable(from, to), "demo")),
         Some(TimetableService::AdeIcalLink {
             link_page,
@@ -364,7 +366,7 @@ pub async fn timetable_of(
             Ok(fetched(courses, "ade-myplanning"))
         }
         Some(TimetableService::Tempo { base_url, .. }) => {
-            let courses = tempo::fetch_timetable(ctx, base_url, from, to).await?;
+            let courses = tempo::fetch_timetable(ctx, base_url, from, to, resources).await?;
             Ok(fetched(courses, "tempo"))
         }
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
@@ -396,6 +398,87 @@ pub async fn timetable_groups(
         Some(TimetableService::Link(_) | TimetableService::None) | None => {
             Err(absent(&services, ServiceKind::Timetable))
         }
+    }
+}
+
+/// Ce qu'on cherche parmi les ressources d'emploi du temps ([`timetable_resources`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResourceQuery {
+    /// Natures voulues ; vide : toutes.
+    pub kinds: Vec<ResourceKind>,
+    /// Mots à trouver, sans tenir compte de la casse ni des accents : chacun dans le nom de la
+    /// ressource ou d'un de ses dossiers, l'un au moins dans son nom.
+    pub search: Option<String>,
+    /// Nombre de ressources rendues au plus ; absent : toutes.
+    pub limit: Option<usize>,
+}
+
+/// Ce que seul un logiciel qui expose son arbre de ressources sait faire.
+fn no_resource_tree(services: &Services, what: &str) -> Problem {
+    match services
+        .availability()
+        .into_iter()
+        .find(|(kind, _)| *kind == ServiceKind::Timetable)
+    {
+        Some((_, ServiceAvailability::Api { provider })) => Problem::new(ErrorCode::NotImplemented)
+            .detail(format!("{provider} : {what} n'est pas disponible")),
+        _ => absent(services, ServiceKind::Timetable),
+    }
+}
+
+/// Arbre des ressources d'emploi du temps de l'université : dossiers et ressources (groupes,
+/// enseignants, salles), réduit aux natures demandées (`kinds` vide : toutes). Les groupes que
+/// l'étudiant suit sont marqués `selected`, comme dans [`timetable_groups`]. L'identifiant d'un
+/// nœud qui n'est pas un dossier se passe à [`timetable_of`].
+///
+/// `ade-portal-rest` et la démo exposent tout leur arbre ; `tempo`, celui des salles seulement.
+/// Les autres fournisseurs répondent `not_implemented`. L'arbre d'une université compte des
+/// milliers de nœuds : `ade-portal-rest` le garde une demi-heure par profil ADE, `tempo` relit
+/// sa page à chaque appel.
+pub async fn timetable_tree(
+    ctx: &mut Context<'_>,
+    kinds: &[ResourceKind],
+) -> Result<Fetched<Vec<ResourceNode>>, Problem> {
+    let services = ctx.services();
+    match &services.timetable {
+        Some(TimetableService::Demo) => Ok(fetched(
+            resource_tree::only_kinds(demo::followed_tree(), kinds),
+            "demo",
+        )),
+        Some(TimetableService::AdePortalRest { base_url, .. }) => {
+            let tree = ade::portal_rest::fetch_tree(ctx, base_url, kinds).await?;
+            Ok(fetched(tree, "ade-portal-rest"))
+        }
+        Some(TimetableService::Tempo { base_url, .. }) => {
+            let tree = tempo::fetch_tree(ctx, base_url, kinds).await?;
+            Ok(fetched(tree, "tempo"))
+        }
+        _ => Err(no_resource_tree(&services, "l'arbre des ressources")),
+    }
+}
+
+/// Ressources d'emploi du temps (groupes, enseignants, salles) qui répondent à la recherche,
+/// chacune avec son chemin, dans l'ordre de l'arbre. Mêmes fournisseurs et même coût que
+/// [`timetable_tree`], dont la liste est tirée.
+pub async fn timetable_resources(
+    ctx: &mut Context<'_>,
+    query: &ResourceQuery,
+) -> Result<Fetched<Vec<TimetableResource>>, Problem> {
+    let services = ctx.services();
+    match &services.timetable {
+        Some(TimetableService::Demo) => Ok(fetched(
+            resource_tree::resources(&demo::tree(), query),
+            "demo",
+        )),
+        Some(TimetableService::AdePortalRest { base_url, .. }) => {
+            let found = ade::portal_rest::fetch_resources(ctx, base_url, query).await?;
+            Ok(fetched(found, "ade-portal-rest"))
+        }
+        Some(TimetableService::Tempo { base_url, .. }) => {
+            let found = tempo::fetch_resources(ctx, base_url, query).await?;
+            Ok(fetched(found, "tempo"))
+        }
+        _ => Err(no_resource_tree(&services, "la liste des ressources")),
     }
 }
 

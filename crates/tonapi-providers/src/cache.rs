@@ -1,6 +1,7 @@
 //! Cache en mémoire des données **communes à tous les étudiants** d'un service : signatures GWT
 //! d'ADE, noms de l'arbre des ressources, liens des portlets. Jamais de donnée personnelle ni
-//! de cookie : une entrée doit être la même quel que soit le compte qui l'a lue.
+//! de cookie : une entrée doit être la même quel que soit le compte qui l'a lue. Quand ce qu'on
+//! lit dépend d'un profil (l'arbre du portail ADE), le profil fait partie de la clé.
 //!
 //! Le cache vit dans le processus (rien sur disque) ; il est vidé au redémarrage et borné en taille.
 
